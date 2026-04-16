@@ -70,7 +70,7 @@ Run via Bash: `git --version`
 - `wiki/.scripts/`
 - `wiki/.meta/`
 
-### 3. Install the Custom Schema (CLAUDE.md)
+### 3. Install the Schemas and Workflows
 
 - Ask the user: *"What kind of knowledge base are you building? (e.g., AI Research, Cooking, Law, RPG Campaign)"*
 - If they haven't provided this context, **wait for their answer**.
@@ -81,11 +81,17 @@ Run via Bash: `git --version`
 - Using a find-and-replace, overwrite the default AI-centric "Seed
   categories" section with your newly generated custom categories.
 - Write this customized schema to `wiki/CLAUDE.md`. The schema is
-  auto-loaded by Claude Code when working in `wiki/`.
-- Also write the same content to `wiki/AGENTS.md` for multi-tool
-  compatibility (Codex CLI, Cursor, Antigravity, Gemini CLI, OpenCode).
-  Both files are identical — the different filenames trigger auto-loading
-  in different tools.
+  loaded natively by Claude Code when working in `wiki/`.
+- Also write the same content to `wiki/AGENTS.md` to ensure multi-tool awareness.
+- **Find the workflows template:** Run Glob for `**/wiki-init/templates/WORKFLOWS.md`. Read it and write it to `wiki/WORKFLOWS.md`. This file provides universal LLM operational guidance.
+- **Provide Tool Pointers:** Write `.cursorrules` and `.windsurfrules` into the project root directory (alongside `wiki/`). These files should contain exactly:
+
+  ```markdown
+  # Wiki Forge
+  See `wiki/AGENTS.md` for full schema and structural rules.
+  See `wiki/WORKFLOWS.md` for step-by-step operational instructions.
+  Helper scripts are in `wiki/.scripts/` — run them via terminal.
+  ```
 
 ### 4. Install helper scripts
 

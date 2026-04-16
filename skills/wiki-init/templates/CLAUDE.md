@@ -13,6 +13,10 @@ auto-loaded by Claude Code when working in `wiki/` and is referenced by the
 3. **This CLAUDE.md + the wiki-* skills** — The schema and operational rules
    that turn the agent into a disciplined maintainer.
 
+## Tooling Compatibility
+
+If your AI platform (Cursor, Windsurf, Gemini, etc.) does not natively support Claude Code's `/skills` commands or subagent dispatch, refer to `WORKFLOWS.md` for step-by-step manual execution instructions. All operations can be performed using standard terminal commands and the helper scripts in `.scripts/`.
+
 ## Directory layout
 
 ```text
