@@ -17,25 +17,27 @@ This file provides cross-LLM operational parity. If your platform (Gemini, Curso
 4. **Authoring:** Create or append to pages in `wiki/concepts/`, `wiki/entities/`, etc. as outlined by the schema in `AGENTS.md`. Maintain the exact frontmatter specifications. Avoid creating highly redundant pages.
 5. **Update State:** When finished, run `python wiki/.scripts/update_index.py wiki/` to accurately reconstruct the hierarchical sub-indices.
 6. **Log:** Keep a permanent audit trail by running `python wiki/.scripts/append_log.py ingest --title "<Source_Title>" --wiki wiki/`.
+7. **Commit:** If git is available, commit all changes with a descriptive message (e.g., `git add wiki/ && git commit -m "ingest: <Source_Title>"`). This creates an audit trail and enables easy rollback with `git revert`.
 
 ### 2. Query the Wiki
-1. Run `python wiki/.scripts/hybrid_search.py wiki/ "<query>"` to perform a keyword or semantic search across the entire local knowledge base.
-2. If there are hits, closely read the specific returned files containing context (`wiki/concepts/xyz.md`).
-3. If search lacks precision or the wiki is extremely small, manually read the sub-indices located inside `wiki/indexes/`.
-4. Present a comprehensively synthesized answer, citing the wiki pages directly (using `[[knowledge-management]]` formatting).
-5. At the end, ask the user if the result warrants saving as a permanent synthesis page in `wiki/syntheses/`.
+1. **Check wiki size:** Count the total lines in `wiki/indexes/` sub-indices. If the combined index is short (roughly under 200 entries), read the sub-indices directly and skip to step 3.
+2. **Search (large wikis only):** Run `python wiki/.scripts/hybrid_search.py wiki/ "<query>"` to find relevant pages.
+3. **Read and synthesize:** Read the returned pages (or index entries for small wikis). Synthesize a comprehensively accurate answer, citing wiki pages using `[[wikilink]]` format.
+4. **Offer to save:** Ask the user if the result warrants saving as a permanent synthesis page in `wiki/syntheses/`.
 
 ### 3. Lint the Wiki
 1. **Mechanical Check:** Run `python wiki/.scripts/lint_wiki.py wiki/ --json`.
 2. **Topological Check:** Run `python wiki/.scripts/graph_analyzer.py wiki/ --json`.
 3. Read and synthesize the final outputs. Using your semantic reasoning, review any files flagged for conflicting categorization or stale dependencies.
 4. Provide a structured review report to the user and immediately offer to execute fixes for orphans or broken links.
+5. **Commit:** If git is available and you made any fixes, commit `wiki/` with a descriptive message (e.g., `git add wiki/ && git commit -m "lint: fix broken links"`).
 
 ### 4. Capture from URL
-1. Use your native Web Fetch tool or run an equivalent `curl`/`python` script to download active browser content.
+1. Use your web fetching capabilities (e.g., `curl`, a browser automation tool, or your platform's built-in web access) to download active browser content.
 2. Format the response as pristine, pure markdown, aggressively cleaning out navigation boilerplate and advertisements.
 3. Save it to `vault/YYYY-MM-DD-slug.md`. Be sure to prepend a minimal frontmatter block with source URLs tracking metadata if possible.
-4. Proceed immediately to Workflow #1 ("Ingest a Source").
+4. **Commit:** Ensure you `git add vault/ && git commit -m "capture: <URL_Slug>"` before proceeding.
+5. Proceed immediately to Workflow #1 ("Ingest a Source").
 
 ### 5. View the Log
 1. Run `cat wiki/log.md` (or use generic local reading tools) to see recent operations. You can grep for specific issues if looking for historical contradiction fixes or taxonomy changes.

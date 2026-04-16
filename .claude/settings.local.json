@@ -33,7 +33,10 @@
       "Bash(python hybrid_search.py /tmp/test-wiki-audit \"neural networks gradient descent\")",
       "Bash(python lint_wiki.py /tmp/test-wiki-audit --json)",
       "Bash(python graph_analyzer.py /tmp/test-wiki-audit --json)",
-      "Bash(python -c ':*)"
+      "Bash(python -c ':*)",
+      "Bash(find . -type f ! -path './.git/*' -exec stat -c '%y %n' {} \\\\;)",
+      "Bash(xargs ls:*)",
+      "Bash(grep -E \"\\\\.py$\")"
     ]
   }
 }

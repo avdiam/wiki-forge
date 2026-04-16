@@ -70,7 +70,7 @@ Run via Bash: `git --version`
 - `wiki/.scripts/`
 - `wiki/.meta/`
 
-### 3. Install the Schemas and Workflows
+### 3. Install the Schema and Workflows
 
 - Ask the user: *"What kind of knowledge base are you building? (e.g., AI Research, Cooking, Law, RPG Campaign)"*
 - If they haven't provided this context, **wait for their answer**.
@@ -84,7 +84,9 @@ Run via Bash: `git --version`
   loaded natively by Claude Code when working in `wiki/`.
 - Also write the same content to `wiki/AGENTS.md` to ensure multi-tool awareness.
 - **Find the workflows template:** Run Glob for `**/wiki-init/templates/WORKFLOWS.md`. Read it and write it to `wiki/WORKFLOWS.md`. This file provides universal LLM operational guidance.
-- **Provide Tool Pointers:** Write `.cursorrules` and `.windsurfrules` into the project root directory (alongside `wiki/`). These files should contain exactly:
+- Add a prompt:
+  > "Generate IDE pointer files (`.cursorrules`, `.windsurfrules`) in the project root? These help tools like Cursor and Windsurf discover the wiki schema automatically."
+- Only generate if the user says yes. These files should contain exactly:
 
   ```markdown
   # Wiki Forge
