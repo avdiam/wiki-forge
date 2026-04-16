@@ -1,0 +1,19 @@
+{
+  "name": "wiki-forge",
+  "description": "Turn your AI agent into a knowledge compiler. Feed sources once, build a persistent cross-referenced wiki that compounds over time. Hybrid BM25+semantic search, split indices, contradiction tracking, graph analysis. Based on Karpathy's LLM Wiki pattern.",
+  "version": "0.1.0",
+  "author": {
+    "name": "wiki-forge Contributors"
+  },
+  "license": "MIT",
+  "tags": [
+    "knowledge-management",
+    "wiki",
+    "obsidian",
+    "second-brain",
+    "rag-alternative",
+    "research",
+    "karpathy",
+    "semantic-search"
+  ]
+}
