@@ -77,7 +77,7 @@ Works for any domain — AI research, cooking, law, RPG campaigns. The
 
 ```bash
 # Clone the repo
-git clone https://github.com/anthropics/wiki-forge.git
+git clone https://github.com/avdiam/wiki-forge.git
 
 # Load as a local plugin (for development/testing)
 claude --plugin-dir ./wiki-forge
