@@ -278,7 +278,7 @@ pip install zvec
 ## Credits
 
 Based on synthesis from:
-- Andrej Karpathy's original `llm-wiki.md` gist (concept)
-- Balu Kosuri's hands-on implementation (repo + workflow)
-- "Andrej Karpathy Stopped Using AI to Write Code" (architecture details)
+- [Andrej Karpathy's original `llm-wiki.md` gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) (concept)
+- [Balu Kosuri's hands-on implementation](https://medium.com/@k.balu124/i-used-karpathys-llm-wiki-to-build-a-knowledge-base-that-maintains-itself-with-ai-df968e4f5ea0) (repo + workflow)
+- ["Andrej Karpathy Stopped Using AI to Write Code"](https://medium.com/neuralnotions/andrej-karpathy-stopped-using-ai-to-write-code-hes-using-it-to-build-a-second-brain-instead-cddceadc5df5) (architecture details)
 - [Reza Rezvani's production Claude Code skill](https://github.com/alirezarezvani/claude-skills) (subagents, scripts, schema)
