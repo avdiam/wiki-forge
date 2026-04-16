@@ -21,6 +21,13 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Claude Code local settings (per-developer)
+.claude/settings.local.json
+
+# IDE pointer files (generated per-project by wiki-init)
+.cursorrules
+.windsurfrules
+
 # Wiki runtime (generated when wiki-init runs, not part of the kit)
 .meta/
 .scripts/models/
