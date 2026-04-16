@@ -1,0 +1,27 @@
+# Wiki Forge
+
+> Turn your AI agent into a knowledge compiler. Feed sources once and let the LLM build a persistent, cross-referenced wiki that compounds over time. Install as a Claude Code plugin or use standalone.
+
+Wiki Forge solves the problem of LLMs forgetting between sessions. Instead of re-reading raw documents every time (like RAG), sources are compiled once into structured wiki pages with cross-references, confidence levels, and contradiction tracking. Queries read pre-compiled knowledge, not raw documents.
+
+## Core commands
+
+- [/wiki-init](skills/wiki-init/): Bootstrap wiki + vault in any project. Creates directory structure, schema, and helper scripts.
+- [/wiki-capture](skills/wiki-capture/): Fetch URL, normalize to markdown, and ingest into the wiki.
+- [/wiki-ingest](skills/wiki-ingest/): Compile a vault source into wiki pages. Extracts concepts, entities, claims. Cross-references with existing pages. Flags contradictions.
+- [/wiki-query](skills/wiki-query/): Answer questions from compiled wiki knowledge. Every claim cites a wiki page. Surfaces contradictions between sources.
+- [/wiki-lint](skills/wiki-lint/): Three-pass health check — mechanical, semantic, and prioritized report.
+
+## Agents
+
+- [wiki-librarian](agents/wiki-librarian.md): Subagent that searches and retrieves wiki pages for query answering.
+- [wiki-ingestor](agents/wiki-ingestor.md): Subagent that processes a single source into wiki pages.
+
+## Wiki structure
+
+After initialization, the wiki has these directories: sources/ (one summary per vault file), concepts/ (ideas from multiple sources), entities/ (people, tools, orgs), comparisons/ (X vs Y), syntheses/ (saved query answers). All pages use YAML frontmatter with type, confidence, sources, tags, aliases, and wikilinks.
+
+## Optional
+
+- [README](README.md): Full documentation with architecture, search details, best practices, and installation instructions.
+- [Helper scripts](wiki/.scripts/): Pure stdlib Python utilities for indexing, search, linting, and graph analysis.
