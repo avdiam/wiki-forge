@@ -281,4 +281,4 @@ Based on synthesis from:
 - Andrej Karpathy's original `llm-wiki.md` gist (concept)
 - Balu Kosuri's hands-on implementation (repo + workflow)
 - "Andrej Karpathy Stopped Using AI to Write Code" (architecture details)
-- Reza Rezvani's production Claude Code skill (subagents, scripts, schema)
+- [Reza Rezvani's production Claude Code skill](https://github.com/alirezarezvani/claude-skills) (subagents, scripts, schema)
