@@ -30,6 +30,10 @@ from pathlib import Path
 
 from frontmatter import parse_frontmatter
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 
 PAGE_TYPES = ["sources", "concepts", "entities", "comparisons", "syntheses"]
 REQUIRED_FIELDS = ["title", "type", "category", "summary", "confidence", "sources", "last_updated"]

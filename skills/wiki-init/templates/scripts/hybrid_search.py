@@ -31,6 +31,10 @@ import sys
 import time
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 # Threshold: if total index tokens are below this, the LLM can read
 # the indices directly — no need for search overhead.
 INDEX_TOKEN_THRESHOLD = 4000

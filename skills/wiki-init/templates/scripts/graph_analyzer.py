@@ -21,6 +21,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 PAGE_TYPES = ["sources", "concepts", "entities", "comparisons", "syntheses"]
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 
