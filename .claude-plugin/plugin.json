@@ -1,7 +1,7 @@
 {
   "name": "wiki-forge",
-  "description": "Turn your AI agent into a knowledge compiler. Feed sources once, build a persistent cross-referenced wiki that compounds over time. Hybrid BM25+semantic search, split indices, contradiction tracking, graph analysis. Based on Karpathy's LLM Wiki pattern.",
-  "version": "0.1.0",
+  "description": "Turn your AI agent into a knowledge compiler. Feed sources once, build a persistent cross-referenced wiki that compounds over time. Ships nine skills (capture, ingest, query, lint, log, overview, triage, retract, init) and four subagents (ingestor, librarian, linter, curator), plus hybrid BM25+semantic search, split indices, contradiction tracking, typed cross-references, graph analysis, structured telemetry (5 JSONLs covering ingest/query/lint/overview/source-freshness), pre-write secret scanning, and content-drift polling. Based on Karpathy's LLM Wiki pattern. Default install is generic wiki-only; pass /wiki-init --dual-claude to additionally bootstrap the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape.",
+  "version": "0.2.0",
   "author": {
     "name": "wiki-forge Contributors"
   },
@@ -14,6 +14,12 @@
     "rag-alternative",
     "research",
     "karpathy",
-    "semantic-search"
+    "semantic-search",
+    "telemetry",
+    "secret-scanning",
+    "source-freshness",
+    "dual-claude",
+    "subagents",
+    "skills"
   ]
 }
