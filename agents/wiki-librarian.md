@@ -3,7 +3,9 @@ name: wiki-librarian
 description: Reads specific wiki pages and synthesizes an answer with [[wikilink]] citations. Receives a pre-filtered page list from the wiki-query skill — does NOT do page discovery. Optionally files the answer as a synthesis page. Dispatched by wiki-query for large wikis only — not invoked directly.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
+effort: medium
 context: fork
+maxTurns: 20
 ---
 
 # wiki-librarian
@@ -66,8 +68,12 @@ Write the answer following these rules:
   `stale: true`, say so in the answer.
 - **Be concise.** 3–6 short paragraphs is almost always enough. The user
   can ask for more.
-- **Don't invent.** If the wiki doesn't cover something, say "The wiki has
-  no page on this" — don't fall back on general knowledge without flagging it.
+- **Don't invent.** Never answer from training knowledge or web-search results — full stop, regardless of how confident you feel.
+- **Coverage-gap protocol — MUST follow when the wiki doesn't cover the question:**
+  1. Say so explicitly.
+  2. Offer the capture onramp: *"Do you have a source on this?"* — if yes, suggest `/wiki-capture <source>`.
+  3. Offer the web-search onramp: *"Want me to search for authoritative sources you could capture?"* — if yes, run a web search via the host harness's search tool (e.g., `WebSearch` in Claude Code; whatever equivalent the host exposes elsewhere). Bias toward official documentation, primary sources, academic papers, and established publications. Return 3–5 candidate links with titles and one-line descriptions. **Do not synthesize an answer from the search results** — the user evaluates and captures what's worth ingesting. Avoid forums, anonymous blogs, and unattributed content. If no web-search tool is available in the host harness, say so and stop.
+  4. Both onramps are mandatory — surface both, do not pick one.
 
 ### 4. Offer to file
 
@@ -107,6 +113,20 @@ Return the answer itself (the synthesis), followed by a brief footer:
 Pages consulted: [[page-1]], [[page-2]], [[page-3]]
 Filed as: syntheses/<slug>.md   (or: Not filed)
 ```
+
+**Parser contract — do not reformat.** The dispatching `/wiki-query` skill
+parses these two footer lines to write a telemetry row to
+`.meta/query_log.jsonl` (schema in [`wiki/CLAUDE.md`](../../wiki/CLAUDE.md)
+under "Telemetry"). Specifically:
+
+- `pages_consulted` — extracted via regex `\[\[([^\]]+)\]\]` over the
+  `Pages consulted:` line.
+- `filed_as` — the slug after `Filed as:`; the literal `Not filed` maps
+  to null.
+
+Both lines must appear on their own line, in this exact phrasing, with
+Obsidian-style wikilinks for pages. Don't prose-ify or merge them into
+the answer body.
 
 ## Rules
 

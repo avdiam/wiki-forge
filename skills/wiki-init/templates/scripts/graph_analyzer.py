@@ -21,12 +21,16 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from constants import PAGE_TYPES
+from frontmatter import parse_frontmatter
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-PAGE_TYPES = ["sources", "concepts", "entities", "comparisons", "syntheses"]
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
+TYPED_EDGE_FIELDS = ("contradicts", "supersedes", "superseded_by")
+TYPED_LINK_RE = re.compile(r"^\[\[([^\]|#]+?)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]$")
 
 
 def build_graph(wiki_root: Path) -> tuple[set[str], dict[str, set[str]], dict[str, set[str]]]:
@@ -73,6 +77,40 @@ def build_graph(wiki_root: Path) -> tuple[set[str], dict[str, set[str]], dict[st
                     inbound[target].add(slug)
 
     return nodes, dict(outbound), dict(inbound)
+
+
+def count_typed_edges(wiki_root: Path) -> dict[str, int]:
+    """Count typed-edge declarations across all pages by field.
+
+    Reads each page's frontmatter and tallies how many wikilinks appear in
+    the `contradicts:`, `supersedes:`, and `superseded_by:` fields. Each
+    edge is counted on both sides for symmetric fields — `contradicts: [B]`
+    on page A contributes 1 to the contradicts count; the inverse on B
+    contributes another 1, so a single symmetric pair shows as 2.
+
+    Returns `{"contradicts": N, "supersedes": N, "superseded_by": N}`.
+    """
+    counts: dict[str, int] = {field: 0 for field in TYPED_EDGE_FIELDS}
+    for page_type in PAGE_TYPES:
+        type_dir = wiki_root / page_type
+        if not type_dir.is_dir():
+            continue
+        for md in sorted(type_dir.glob("*.md")):
+            try:
+                fm = parse_frontmatter(md.read_text(encoding="utf-8", errors="ignore"))
+            except OSError:
+                continue
+            for field in TYPED_EDGE_FIELDS:
+                value = fm.get(field)
+                if not value:
+                    continue
+                candidates = [value] if isinstance(value, str) else value
+                if not isinstance(candidates, list):
+                    continue
+                for c in candidates:
+                    if isinstance(c, str) and TYPED_LINK_RE.match(c.strip()):
+                        counts[field] += 1
+    return counts
 
 
 def find_components(
@@ -122,6 +160,7 @@ def analyze(wiki_root: Path, top: int = 10) -> dict:
             "sinks": [],
             "components": [],
             "component_count": 0,
+            "typed_edges": {field: 0 for field in TYPED_EDGE_FIELDS},
         }
 
     total_edges = sum(len(v) for v in outbound.values())
@@ -154,6 +193,7 @@ def analyze(wiki_root: Path, top: int = 10) -> dict:
             {"size": len(c), "sample": sorted(c)[:5]} for c in components[:10]
         ],
         "component_count": len(components),
+        "typed_edges": count_typed_edges(wiki_root),
     }
 
 
@@ -194,6 +234,16 @@ def render_human(report: dict) -> str:
         lines.append(f"Disconnected clusters ({report['component_count']} components):")
         for i, c in enumerate(report["components"][:5]):
             lines.append(f"  Component {i + 1}: {c['size']} pages — {', '.join(c['sample'])}")
+        lines.append("")
+
+    typed = report.get("typed_edges") or {}
+    typed_total = sum(typed.values())
+    if typed_total > 0:
+        lines.append(
+            f"Typed edges: {typed.get('contradicts', 0)} contradicts, "
+            f"{typed.get('supersedes', 0)} supersedes, "
+            f"{typed.get('superseded_by', 0)} superseded_by"
+        )
 
     return "\n".join(lines)
 

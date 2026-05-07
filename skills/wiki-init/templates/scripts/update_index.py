@@ -26,10 +26,9 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
+from constants import PAGE_TYPES
 from frontmatter import parse_frontmatter
 
-
-PAGE_TYPES = ["sources", "concepts", "entities", "comparisons", "syntheses"]
 
 TYPE_HEADINGS = {
     "sources": "Sources",
@@ -182,6 +181,19 @@ def write_stats(wiki_root: Path, total_pages: int) -> None:
     """Write .meta/index_stats.json for the conditional search threshold."""
     meta_dir = wiki_root / ".meta"
     meta_dir.mkdir(exist_ok=True)
+    
+    # Compute inbound links for hub dampening
+    inbound_counts = {}
+    try:
+        import sys
+        scripts_dir = str(wiki_root / ".scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from graph_analyzer import build_graph
+        _, _, inbound = build_graph(wiki_root)
+        inbound_counts = {slug: len(sources) for slug, sources in inbound.items()}
+    except Exception as e:
+        print(f"warning: failed to compute graph stats for index_stats.json: {e}", file=sys.stderr)
 
     # Estimate tokens across all index files in indexes/
     indexes_dir = wiki_root / "indexes"
@@ -200,6 +212,7 @@ def write_stats(wiki_root: Path, total_pages: int) -> None:
         "total_pages": total_pages,
         "estimated_tokens": estimated_tokens,
         "generated_at": date.today().isoformat(),
+        "inbound_links": inbound_counts,
     }
     stats_path = meta_dir / "index_stats.json"
     stats_path.write_text(json.dumps(stats, indent=2) + "\n", encoding="utf-8")

@@ -5,6 +5,8 @@ description: Health-check the wiki for contradictions, staleness, orphans, broke
 
 # wiki-lint (dispatcher)
 
+*Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 2) per `_template-complex/SKILL.md`.*
+
 Thin skill that dispatches to the `wiki-linter` subagent.
 
 ## Workflow
@@ -39,6 +41,46 @@ user approval.
 ### 3. Relay
 Return the report to the user. If the linter asked about applying fixes,
 relay the offer and the user's answer back to the subagent.
+
+### 4. Chain to /wiki-overview --soft (when due)
+
+After the linter returns (and after any user-approved fix application),
+check whether the overview is due for a soft refresh. The soft-refresh
+cadence is every 10 ingests, aligned with the lint cadence.
+
+```bash
+# Count ingests since the last mechanical-refresh marker in overview.md
+prev_n=$(grep -oP '_Mechanical refresh at ingest #\K\d+' wiki/overview.md | head -1)
+curr_n=$(awk '/^## \[.*\] ingest / {c++} END {print c+0}' wiki/log.md)
+prev_n=${prev_n:-0}
+delta=$((curr_n - prev_n))
+```
+
+If `delta >= 10`, invoke `/wiki-overview --soft` (Mode A: mechanical
+script + bounded narrative refresh of the `## Recent ingests N–M`
+section). The skill owns its own commit and log entry — this skill just
+chains and relays.
+
+If `delta < 10`, skip the chain. The next lint run will re-evaluate.
+
+The chain always passes `--soft`; structural realignment (Mode B / full
+rewrite) is a separate user decision and never auto-fires.
+
+### 5. Finalize telemetry
+
+The linter has already appended a row to `.meta/lint_log.jsonl` with the
+cost fields null as placeholders (`total_tokens`, `input_tokens`,
+`cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`,
+`tool_uses`). Parse the `<usage>` block the Agent tool surfaced on
+subagent return — extract each field independently with
+`<field>:\s*(\d+)` so format drift doesn't lose the row — then rewrite
+the last line of `.meta/lint_log.jsonl` with the captured fields
+populated. Leave every other field untouched. Missing fields stay null.
+
+If the subagent dispatched more than once in this run (fix-application
+turn), aggregate every numeric token field and `tool_uses` across all
+turns; use the final turn's wall-clock for `duration_ms` only if the
+linter's trailing footer didn't already populate it.
 
 ## Rules
 - Dispatch via the Agent tool (model: opus); don't run the lint in the main session (it reads many files)

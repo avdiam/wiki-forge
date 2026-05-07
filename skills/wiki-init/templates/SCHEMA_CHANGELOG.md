@@ -1,0 +1,13 @@
+# Schema changelog
+
+One-line entry per `schema_version:` bump. Newest first. The version field lives at the top of [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md) (must match — `lint_wiki.py`'s `schema_sync` check enforces byte-identical content).
+
+**Bump on breaking changes:** new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change. **Don't bump on:** seed-category additions, template tweaks, rule clarifications, prose edits to existing rules, helper-script changes, agent/skill playbook edits.
+
+When you bump, also update the version line in both `CLAUDE.md` and `AGENTS.md`, and add the new entry below.
+
+---
+
+- **v2 (2026-05-05):** Categories promoted from "flexible suggestion" to **enumerated, lint-enforced taxonomy**. The seed list is now the *authoritative* list — `lint_wiki.py`'s new `unknown_category` check rejects any page whose `category:` is not in the enumeration with a hard error. Adding a new category requires editing both schema files and bumping the version (this entry is the first such case). Four categories were already in widespread use but missing from v1's seed list and are now formalized: `personal-knowledge-management` (17 pages, the wiki's own founding cluster), `ai-product-strategy` (7 pages), `ai-research-frontiers` (5 pages, JEPA/world-models/etc.), `ai-labs` (2 pages, Anthropic/OpenAI; previously mentioned in `ai-infrastructure` prose but absent from the list). No page edits were required — all 31 previously-out-of-seed pages map cleanly into the four newly-enumerated categories. Motivated by Phase B of the inline-vs-fork experiment which mis-categorized `vector-similarity-metrics` as `tool-use-and-skills`; the lint check now catches that class of error mechanically. Also clarifies the version-bump policy in CLAUDE.md's top line: category-list addition or removal now bumps; only template tweaks / rule clarifications / prose edits don't.
+
+- **v1 (2026-04-28):** Versioning starts here. Snapshot of the current schema as of session 21 — page types (source / concept / entity / comparison / synthesis), required frontmatter (title / type / category / summary / tags / aliases / confidence / sources / last_updated / stale) plus the conditional fields (source_type / captured / source_hash on sources, status on entities, verify on any page), seed categories (llm-architectures / coding-agents / agentic-sdks / prompt-engineering / tool-use-and-skills / languages-and-frameworks / training-and-fine-tuning / ai-practitioners). Prior schema evolution before this point is captured in `git log` on both schema files and in `dev/sessions.md` — not retroactively versioned. The first real bump will be v2 on the next breaking change.

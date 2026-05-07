@@ -1,6 +1,7 @@
 ---
 name: wiki-log
 description: Show recent entries from the wiki's operation log (log.md), optionally filtered by operation type or date. Use when the user runs /wiki-log, asks "what happened in the wiki recently", "show wiki activity", "when did we last ingest X", or wants an audit trail.
+argument-hint: "[-n N] [--op TYPE] [--since DATE]"
 ---
 
 # wiki-log

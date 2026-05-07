@@ -32,7 +32,8 @@ def parse_frontmatter(text: str) -> dict:
         if line.startswith(" ") or line.startswith("\t"):
             stripped = line.strip()
             if current_key and stripped.startswith("- "):
-                data.setdefault(current_key, [])
+                if data.get(current_key) is None:
+                    data[current_key] = []
                 if isinstance(data[current_key], list):
                     data[current_key].append(_coerce(stripped[2:].strip()))
             continue
@@ -43,7 +44,7 @@ def parse_frontmatter(text: str) -> dict:
         value = value.strip()
         current_key = key
         if value == "":
-            data[key] = []
+            data[key] = None
         elif value.startswith("[") and value.endswith("]"):
             inner = value[1:-1].strip()
             data[key] = [_coerce(x.strip()) for x in inner.split(",")] if inner else []

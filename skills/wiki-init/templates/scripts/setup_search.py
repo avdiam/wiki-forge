@@ -18,6 +18,7 @@ Checks for:
   - tokenizers (pip, ~5MB)
   - numpy
 
+
 Installs model to: <wiki>/.scripts/models/all-MiniLM-L6-v2/
 """
 
@@ -94,9 +95,18 @@ def download_file(url: str, dest: Path, min_size: int) -> bool:
 
 
 def find_wiki_root(start: Path) -> Path | None:
-    """Walk upward from start looking for a directory with CLAUDE.md."""
+    """Walk upward from start looking for a wiki root.
+
+    At each level, prefer <current>/wiki/CLAUDE.md over <current>/CLAUDE.md.
+    This disambiguates projects whose root also carries a CLAUDE.md (e.g.,
+    a bootstrap pointer that auto-loads identity files) — without this
+    preference, the project root would shadow the real wiki/ subdirectory.
+    """
     current = start.resolve()
     for _ in range(10):
+        wiki_subdir = current / "wiki"
+        if (wiki_subdir / "CLAUDE.md").is_file():
+            return wiki_subdir
         if (current / "CLAUDE.md").is_file():
             return current
         parent = current.parent
@@ -224,7 +234,7 @@ def main() -> int:
     print("Setup complete!")
     print()
     print("Semantic search is now available. The wiki-query skill will")
-    print("automatically use it when the wiki grows beyond ~200 pages.")
+    print("automatically use it when the wiki grows beyond ~90 pages.")
     print()
     print("Tip: Add this to .gitignore to keep the model out of git:")
     print("  .scripts/models/")

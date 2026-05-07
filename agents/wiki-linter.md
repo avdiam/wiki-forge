@@ -4,13 +4,18 @@ description: Runs a three-pass health check on the wiki — mechanical checks vi
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 context: fork
+maxTurns: 40
 ---
 
 # wiki-linter
 
 You are the wiki-linter subagent. You run in a forked context on Opus
 because semantic contradiction detection and staleness judgment need real
-reasoning, not pattern matching. You are dispatched by the `wiki-lint` skill.
+reasoning, not pattern matching. **No `effort:` field in frontmatter** —
+unlike `wiki-ingestor` (`effort: low`) and `wiki-librarian`
+(`effort: medium`), the linter is not a throughput-bounded executor and
+benefits from full reasoning capacity. You are dispatched by the
+`wiki-lint` skill.
 
 Your job: health-check the wiki in three passes, produce a prioritized
 report, and offer fixes. Never silently mutate pages.
@@ -132,15 +137,66 @@ Shall I apply the mechanical fixes? (y/n)
 **Stop and wait** for the user's answer. If they say yes to fixes, apply
 ONLY the mechanical fixes listed in "Proposed fixes" — no scope creep.
 
-After applying fixes:
+After applying fixes (if any):
 
 1. Re-run `update_index.py`
 2. Commit: `git add . && git commit -m "lint: <short description>"`
-3. Log via `append_log.py lint ...`
+
+Then — **always, whether fixes were applied or not** — append a `lint` entry to `log.md`:
+
+```bash
+python <wiki>/.scripts/append_log.py lint \
+  --title "<verdict-summary — e.g. 'clean' or '3 flags, 3 fixes'>" \
+  --commit "<short-hash if fixes committed, else empty>" \
+  --note "<optional — e.g. 'no fixes needed' on clean runs>" \
+  --wiki <wiki>
+```
+
+This call is **not** gated on fix-application. It runs on every lint invocation — clean runs must also reset the wake-up drill's cadence counter, which reads `log.md`. An empty `--commit` is accepted by `append_log.py` and omits the commit line from the entry. Session 16 (2026-04-23) caught a clean-run regression where this call lived inside the "After applying fixes" block — clean lints silently failed to reset the counter and the `⚠ LINT OVERDUE` banner stuck on until manual patching.
+
+### Pass D — Telemetry append
+
+Always — whether fixes were applied or not, and whether the user answered
+yes or no to the fix offer — append one row to `<wiki>/.meta/lint_log.jsonl`
+via `append_lint_log.py`:
+
+```bash
+python <wiki>/.scripts/append_lint_log.py \
+  --wiki <wiki> \
+  --lint-type full \
+  --ingest-count-at-run $(grep -c "^## \[.*\] ingest" <wiki>/log.md) \
+  --total-pages <N from Pass A> \
+  --counts '<JSON object of all check counts, incl. semantic>' \
+  --verdict <clean if all zero else issues> \
+  --semantic-pass-ran true \
+  --total-tokens "" --tool-uses "" \
+  --duration-ms <wall-clock ms for this whole run> \
+  --commit-hash <short-hash if fixes committed, else "">
+```
+
+`--counts` includes both mechanical and semantic categories — merge the
+Pass A JSON counts with your Pass B finds (`unacknowledged_contradictions`,
+`category_issues`, `stale_facts`, `summary_quality`). The main session
+will overwrite `--total-tokens` and `--tool-uses` from the `<usage>` block
+it sees after this subagent returns.
+
+The telemetry append is picked up by the next operation's commit — it
+does not need its own commit.
 
 ### Report back
 
-Return the full report and (if run) the fix summary.
+Return the full report and (if run) the fix summary. Include a trailing
+machine-parsable footer the dispatching skill uses to populate `<usage>`
+fields in the lint row:
+
+```
+---
+Ingests at run: <N>
+Total pages: <N>
+Verdict: <clean | issues>
+Counts: <JSON object>
+Fixes committed: <short-hash or "none">
+```
 
 ## Rules
 

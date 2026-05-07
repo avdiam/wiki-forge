@@ -1,6 +1,7 @@
 ---
 name: wiki-init
 description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs CLAUDE.md (the schema) with custom domain categories, copies helper scripts to wiki/.scripts/, seeds indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
+disable-model-invocation: true
 ---
 
 # wiki-init
@@ -30,6 +31,39 @@ Run via Bash: `python3 --version || python --version`
   during installation or has an uncommon OS/package manager, use WebSearch
   to find current OS-specific installation instructions and present them.
 
+**Python interpreter identity check (Windows-specific footgun):**
+
+If both `python3` and `python` commands resolve, verify they point at the
+same interpreter. On Windows, `python3` often maps to the Microsoft Store
+stub while `python` maps to a separately-installed runtime — both pass
+the `>= 3.9` check, but `setup_search.py` installs packages via
+`sys.executable`, so packages land under whichever command invoked it.
+Later calls using the other command then fail with `ImportError`.
+
+Run via Bash:
+
+```bash
+python3 -c "import sys; print(sys.executable)" 2>/dev/null
+python  -c "import sys; print(sys.executable)" 2>/dev/null
+```
+
+- If only one command resolves: skip this check — there's no ambiguity.
+- If both resolve to the **same** path: continue silently.
+- If both resolve to **different** paths: **WARN** the user:
+
+  > "Your `python3` and `python` commands resolve to different interpreters:
+  > - `python3` → `<path-A>`
+  > - `python`  → `<path-B>`
+  >
+  > `setup_search.py` installs packages under whichever command invokes
+  > it — if you later call scripts via the other command, imports will
+  > fail. Pick one and use it consistently throughout the wiki's lifetime."
+
+  Ask: "Which command would you like me to use going forward — `python3`
+  or `python`?" Record the choice and use it in every subsequent Bash
+  invocation this session. Include it in the final report at step 8 so
+  the user can reproduce it later.
+
 **Git (recommended):**
 
 Run via Bash: `git --version`
@@ -49,6 +83,32 @@ Run via Bash: `git --version`
   that all git-related steps (init, commits) will be skipped throughout
   the wiki lifecycle. If the user encounters install issues, use
   WebSearch to find current instructions.
+
+**Git identity (required when using git):**
+
+If Git is available and the user intends to use it, also verify commit
+identity is configured. Without `user.name` and `user.email`, the first
+commit in step 7 fails with *"Please tell me who you are"*.
+
+Run via Bash:
+
+```bash
+git config user.name
+git config user.email
+```
+
+- If both print values: continue.
+- If either is missing: **STOP** before step 7. Tell the user:
+
+  > "Git is installed but commit identity is not configured. Run:
+  > - `git config --global user.name \"Your Name\"`
+  > - `git config --global user.email \"you@example.com\"`
+  >
+  > (Or configure locally inside the wiki after init if you prefer
+  > per-repo identity.) Once set, we can continue — or say the word and
+  > I'll proceed without git tracking (step 7 will be skipped)."
+
+  Wait for the user to configure or opt out before proceeding.
 
 ### 1. Determine location
 
@@ -83,7 +143,13 @@ Run via Bash: `git --version`
 - Write this customized schema to `wiki/CLAUDE.md`. The schema is
   loaded natively by Claude Code when working in `wiki/`.
 - Also write the same content to `wiki/AGENTS.md` to ensure multi-tool awareness.
-- **Find the workflows template:** Run Glob for `**/wiki-init/templates/WORKFLOWS.md`. Read it and write it to `wiki/WORKFLOWS.md`. This file provides universal LLM operational guidance.
+- **Find the workflows template:** Run Glob for `**/wiki-init/templates/WORKFLOWS.md` to locate it, then copy it verbatim to `wiki/WORKFLOWS.md` via Bash:
+
+  ```bash
+  cp <path-to-templates>/WORKFLOWS.md wiki/WORKFLOWS.md
+  ```
+
+  This file is a verbatim copy (no customization), so a single `cp` is faster and quieter than Read+Write. It provides universal LLM operational guidance.
 - Add a prompt:
   > "Generate IDE pointer files (`.cursorrules`, `.windsurfrules`) in the project root? These help tools like Cursor and Windsurf discover the wiki schema automatically."
 - Only generate if the user says yes. These files should contain exactly:
@@ -97,11 +163,23 @@ Run via Bash: `git --version`
 
 ### 4. Install helper scripts
 
-**Find the scripts:** Run Glob for `**/wiki-init/templates/scripts/*.py`
-to locate all helper scripts. Read each file and write it to `wiki/.scripts/`
-with the same filename.
+**Find the scripts directory:** Run Glob for `**/wiki-init/templates/scripts/*.py`
+to locate the templates folder. The scripts are verbatim copies — no
+customization happens at install time — so use a single Bash `cp` rather
+than Read+Write per file:
 
-The scripts to install:
+```bash
+cp <path-to-templates>/scripts/*.py wiki/.scripts/
+```
+
+This is instant and silent compared to looping Read+Write across each
+script (which produces visible "Writing X..." steps and burns tokens for
+no benefit). Claude Code runs Git Bash on Windows per the project shell
+contract, so `cp` works cross-platform; if a future PowerShell-only
+environment ever needs to be supported, fall back to
+`python -c "import shutil, glob, pathlib; [shutil.copy(p, 'wiki/.scripts/') for p in glob.glob('<path>/scripts/*.py')]"`.
+
+The scripts installed:
 
 - `frontmatter.py` — shared YAML frontmatter parser (imported by other scripts)
 - `update_index.py` — regenerates split index files from page frontmatter
@@ -114,6 +192,11 @@ The scripts to install:
 
 The core scripts are pure stdlib Python 3. `hybrid_search.py` gracefully
 degrades to BM25-only if ONNX dependencies are not installed.
+
+**Reserve Read+Write for files that get customized at install** — currently
+`CLAUDE.md` (seed categories find-and-replace) and `AGENTS.md` (mirror of
+the customized CLAUDE.md). Verbatim files (every Python script,
+`WORKFLOWS.md`) go through `cp`.
 
 ### 5. Optional: Semantic search setup
 
@@ -128,7 +211,7 @@ python wiki/.scripts/setup_search.py --check
 - If output is `not installed`: tell the user:
 
   > "Semantic search enables hybrid keyword+meaning search for larger wikis
-  > (200+ pages). It requires ~100MB of dependencies (onnxruntime, tokenizers,
+  > (~90+ pages). It requires ~100MB of dependencies (onnxruntime, tokenizers,
   > numpy). Small wikis work fine without it — the LLM reads indices directly."
 
   Ask: "Install semantic search dependencies now?"
@@ -163,7 +246,7 @@ Write them to the wiki with these mappings:
 - `log.md` → `wiki/log.md`
 - `overview.md` → `wiki/overview.md`
 
-Replace any `<DATE>` placeholder with today's ISO date (YYYY-MM-DD).
+Replace any `<DATE>` placeholder with today's ISO date (YYYY-MM-DD), and any `<TIME>` placeholder with the current wall-clock time (HH:MM, 24-hour). The init entry in `log.md` must match the `YYYY-MM-DD HH:MM` format every subsequent `append_log.py` call uses — otherwise `/wiki-log --since <date>` filtering and any awk-based log parsing mis-sort the leading entry.
 
 ### 7. Git setup
 
@@ -179,9 +262,9 @@ commit after every operation)"
 Tell the user:
 
 - Where the wiki was created (full path)
-- The five commands now available: `/wiki-capture`, `/wiki-ingest`,
-  `/wiki-query`, `/wiki-lint`, `/wiki-log`
-- The three subagents installed: `wiki-ingestor`, `wiki-librarian`, `wiki-linter`
+- The commands now available: `/wiki-capture`, `/wiki-ingest`,
+  `/wiki-query`, `/wiki-lint`, `/wiki-log`, `/wiki-overview`, `/wiki-triage`, `/wiki-retract`
+- The four subagents installed: `wiki-ingestor`, `wiki-librarian`, `wiki-linter`, `wiki-curator`
 - Pre-flight results: Python version, Git status (available or skipped)
 - Whether semantic search is set up (and how to add it later if not)
 - If semantic search is not installed, mention `zvec` as a future option:
