@@ -9,7 +9,7 @@ argument-hint: "<path|neighbors|subgraph> <slug> [<slug>] [--depth N] [--json]"
 User-facing graph traversal over the wiki's wikilink topology. Three subcommands wrap `wiki/.scripts/graph_query.py`:
 
 - `path A B` — shortest path between two slugs (undirected).
-- `neighbors X [--depth N]` — pages within N hops of X. Default depth 2.
+- `neighbors X [--depth N]` — pages within N hops of X. Default depth 1 (the wiki is dense; depth 2 from a hub commonly reaches most of the graph).
 - `subgraph X` — full connected component containing X.
 
 Walks the **wikilink graph only** (page-body `[[wikilinks]]`); typed-edge frontmatter (`contradicts:` / `supersedes:` / `superseded_by:`) is excluded by default. Pure script output — no librarian, no synthesis, no token cost beyond this skill's prompt.
@@ -28,7 +28,7 @@ Slug arguments accept bare slugs, `[[wikilink]]` form, or `<slug>.md`. The scrip
 If the user passed a question in plain English instead of a subcommand, classify and translate:
 
 - "how does X connect to Y" / "path between X and Y" → `path X Y`
-- "what's near X" / "neighbors of X" / "N-hop around X" → `neighbors X [--depth N]` (default 2)
+- "what's near X" / "neighbors of X" / "N-hop around X" → `neighbors X [--depth N]` (default 1; user-requested "N-hop" overrides)
 - "subgraph around X" / "cluster of X" / "connected to X" → `subgraph X`
 
 When translating, surface the translation inline before invoking, so the dispatch is auditable:
@@ -80,7 +80,7 @@ Notes:
 - **Read-only.** Never modify wiki pages.
 - **No librarian.** Graph queries are deterministic stdlib; do not dispatch a subagent.
 - **No synthesis.** The script's output is the answer. Don't paraphrase, summarize, or add framing — the user asked a structural question, not a prose question.
-- **Default depth = 2** for `neighbors`. The wiki is dense (354 pages, 2 components) — depth 3+ often returns most of the graph. Suggest `--depth 1` if the user wants a tight result and `--depth 2` returned >50 pages.
+- **Default depth = 1** for `neighbors`. The wiki is dense (363 pages, 2 components, hubs at 152/106/71 inbound) — depth-2 from a moderately-connected slug commonly reaches most of the graph (`agent-harness` measured at 120 pages depth-1 → 350 pages depth-2 = 96% of the corpus). Default-1 returns the immediate-neighborhood signal that's actually informative; users wanting wider scope opt in via `--depth 2` (or 3) explicitly. Mirrors the read-vs-write asymmetry already established for the Phase-2 router: default to the cheap/narrow option, let users opt into more.
 - **Slug ambiguity → ask once.** Single bounded multiple-choice; never chain follow-ups.
 - **Genuinely vague question → fall through.** If the user's input doesn't match any of the three subcommands and slug resolution can't disambiguate, suggest they re-ask via `/wiki-query` for prose synthesis.
 - **No edits to log.md.** Graph queries do not produce a `## [<timestamp>] <op>` log entry — `query_log.jsonl` is the audit trail for read operations. Same as `/wiki-query`.

@@ -276,21 +276,35 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         description="Run path / neighbors / subgraph queries over the wikilink graph"
     )
     p.add_argument("wiki_root", type=Path, help="Path to the wiki root")
-    p.add_argument("--json", action="store_true", help="Emit JSON instead of human format")
     sub = p.add_subparsers(dest="op", required=True, metavar="OP")
+
+    json_flag_kwargs = dict(action="store_true", help="Emit JSON instead of human format")
 
     sp_path = sub.add_parser("path", help="Shortest path between two slugs")
     sp_path.add_argument("source")
     sp_path.add_argument("target")
+    sp_path.add_argument("--json", **json_flag_kwargs)
     sp_path.set_defaults(func=cmd_path)
 
     sp_neigh = sub.add_parser("neighbors", help="Pages within N hops of a slug")
     sp_neigh.add_argument("slug")
-    sp_neigh.add_argument("--depth", type=int, default=2, help="Hop limit (default 2)")
+    sp_neigh.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help=(
+            "Hop limit (default 1). Default chosen for dense wikis where depth=2 "
+            "from a hub commonly reaches most of the graph (e.g., agent-harness at "
+            "106 inbound: depth-1 → 120 pages, depth-2 → 350/363). Pass --depth 2 or 3 "
+            "for wider neighborhoods."
+        ),
+    )
+    sp_neigh.add_argument("--json", **json_flag_kwargs)
     sp_neigh.set_defaults(func=cmd_neighbors)
 
     sp_sub = sub.add_parser("subgraph", help="Connected component containing a slug")
     sp_sub.add_argument("slug")
+    sp_sub.add_argument("--json", **json_flag_kwargs)
     sp_sub.set_defaults(func=cmd_subgraph)
 
     return p.parse_args(argv)
