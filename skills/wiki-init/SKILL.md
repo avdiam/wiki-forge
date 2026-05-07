@@ -1,12 +1,21 @@
 ---
 name: wiki-init
-description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs CLAUDE.md (the schema) with custom domain categories, copies helper scripts to wiki/.scripts/, seeds indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
+description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs CLAUDE.md (the schema) with custom domain categories, copies helper scripts to wiki/.scripts/, seeds indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
+argument-hint: "[--dual-claude]"
 disable-model-invocation: true
 ---
 
 # wiki-init
 
 Bootstrap a new LLM Wiki in the current working directory.
+
+## Argument parsing
+
+Before step 0, parse `$ARGUMENTS` for flags:
+
+- `--dual-claude` — install the dual-Claude bootstrap (wiki-side identity files + SessionStart hook). Adds optional step 7 between the seed step and git setup. Default off — `/wiki-init` produces a generic wiki-only install unless this flag is passed.
+
+If the flag is unrecognized or the argument string is empty, proceed with defaults.
 
 ## Workflow
 
@@ -248,7 +257,47 @@ Write them to the wiki with these mappings:
 
 Replace any `<DATE>` placeholder with today's ISO date (YYYY-MM-DD), and any `<TIME>` placeholder with the current wall-clock time (HH:MM, 24-hour). The init entry in `log.md` must match the `YYYY-MM-DD HH:MM` format every subsequent `append_log.py` call uses — otherwise `/wiki-log --since <date>` filtering and any awk-based log parsing mis-sort the leading entry.
 
-### 7. Git setup
+### 7. Optional: Dual-Claude bootstrap (only when `--dual-claude` flag is set)
+
+If `--dual-claude` was NOT passed: skip this entire step.
+
+If `--dual-claude` WAS passed: install the wiki-side identity files and the SessionStart hook so the project supports the dual-Claude shape — a primary Claude Code instance (the wiki, this side) plus a separate restricted instance (the clipper) that drops raw material into `vault/` and communicates via `vault/_mailbox/`.
+
+The clipper-side implementation is **not** scaffolded by this step — only the wiki-side hooks for it are. Authoring the clipper (REST API plugin, browser automation, file-drop service, or any other restricted-write mechanism) is left to the user's project. The skeletons installed here document the contract clipper-side code must honor.
+
+**Templates installed by this step** (sourced from `templates/dual-claude/`):
+
+- `vault/.wiki-identity.md` ← `templates/dual-claude/wiki-identity.md` (rules + protocol; loaded everywhere via `@-include` from project-root `CLAUDE.md`)
+- `vault/.wiki-identity-bootstrap.md` ← `templates/dual-claude/wiki-identity-bootstrap.md` (welcome report + wake-up drill; main-session only via SessionStart hook)
+- `vault/_mailbox/` directory with a starter `README.md` (canonical mailbox protocol — author or copy from a reference implementation; the skeleton points users to do this manually for now)
+
+**Settings hook merge.** The fragment in `templates/dual-claude/settings-hook.json` carries the `hooks.SessionStart` entry that loads the bootstrap file as `additionalContext` into the main session. Merge into `.claude/settings.json` rather than overwriting:
+
+1. Read existing `.claude/settings.json` if present (create empty `{}` if not).
+2. Read `templates/dual-claude/settings-hook.json` and strip the `_comment` field.
+3. Deep-merge the `hooks.SessionStart` array — append the new entry rather than replacing any existing `SessionStart` hooks the user may have configured.
+4. Write back `.claude/settings.json`.
+5. Surface the merge to the user in the final report so they can verify it landed correctly.
+
+**Project-root `CLAUDE.md` `@-include`.** The dual-Claude pattern requires the rules-only identity file to be auto-loaded everywhere, including forked subagents. If the project doesn't already have a project-root `CLAUDE.md`, create one with a single line: `@vault/.wiki-identity.md`. If the project already has a `CLAUDE.md`, append the `@-include` line at the bottom (don't overwrite the user's existing content).
+
+**Recommended additional permissions** for `.claude/settings.local.json` when running with `--dual-claude` (mailbox script):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(python wiki/.scripts/archive_mailbox.py:*)",
+      "Bash(python wiki/.scripts/drill_state.py:*)",
+      "Bash(python wiki/.scripts/format_graph_snapshot.py:*)"
+    ]
+  }
+}
+```
+
+**Caveat to surface in the final report.** The skeletons reference a `vault/.clipper-identity.md` and `vault/.clipper-rules.md` for the clipper side; those are NOT installed by this step. The wiki side will work without them, but the dual-Claude pattern is only fully realized once the user authors a clipper implementation and its identity/rules files.
+
+### 8. Git setup
 
 Ask: "Initialize git tracking for the wiki? (recommended — the subagents
 commit after every operation)"
@@ -257,7 +306,7 @@ commit after every operation)"
 - **Yes, parent is not a git repo** → `git init` inside `wiki/`
 - **No** → skip (but note: no audit trail for operations)
 
-### 8. Report and next steps
+### 9. Report and next steps
 
 Tell the user:
 
@@ -296,6 +345,12 @@ Tell the user:
   ```
 
   Only suggest this — do not write the file without user approval.
+
+- **If `--dual-claude` was passed,** also report:
+  - The three files installed under `vault/` (`.wiki-identity.md`, `.wiki-identity-bootstrap.md`, `_mailbox/`)
+  - Whether the project-root `CLAUDE.md` was created or appended to (with the `@vault/.wiki-identity.md` line)
+  - Whether `.claude/settings.json` was created or merged (with the `SessionStart` hook)
+  - The reminder that the **clipper side** (identity, rules, write mechanism) is NOT installed by `/wiki-init` and must be authored by the user before the dual-Claude pattern is fully realized
 
 ## Rules
 

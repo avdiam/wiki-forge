@@ -1,0 +1,18 @@
+{
+  "_comment": "SessionStart hook fragment installed by /wiki-init --dual-claude. Merges into the project's .claude/settings.json under the 'hooks' key. Loads vault/.wiki-identity-bootstrap.md as additionalContext into the main session ONLY (forked subagents don't see it). Requires CLAUDE_PROJECT_DIR env var, which Claude Code sets automatically.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "python -c \"import json, pathlib, os; text=(pathlib.Path(os.environ['CLAUDE_PROJECT_DIR'])/'vault/.wiki-identity-bootstrap.md').read_text(encoding='utf-8'); print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}}))\"",
+            "statusMessage": "Loading wiki bootstrap...",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
