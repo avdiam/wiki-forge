@@ -33,11 +33,26 @@ TYPED_EDGE_FIELDS = ("contradicts", "supersedes", "superseded_by")
 TYPED_LINK_RE = re.compile(r"^\[\[([^\]|#]+?)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]$")
 
 
-def build_graph(wiki_root: Path) -> tuple[set[str], dict[str, set[str]], dict[str, set[str]]]:
+def build_graph(
+    wiki_root: Path,
+    *,
+    include_typed_edges: bool = False,
+) -> tuple[set[str], dict[str, set[str]], dict[str, set[str]]]:
     """Build the wikilink graph from type directories under wiki root.
 
     Returns (nodes, outbound_edges, inbound_edges) where nodes are slugs
     and edges map slug → set of slugs.
+
+    When `include_typed_edges=True`, frontmatter typed-edge declarations
+    (`contradicts:` / `supersedes:` / `superseded_by:`) are folded into
+    outbound/inbound alongside body wikilinks (untyped fold-in — edge
+    types are not preserved in the returned shape). Default `False`
+    preserves the wikilink-only semantics whole-graph analysis depends on
+    (`analyze()`, the welcome-report drill, lint Pass A). The flag is
+    forward-insurance for Tier-3 graph-traversal extensions where typed-
+    edge reachability matters; flipping it lets both `graph_analyzer.py`
+    callers and `graph_query.py` benefit at the same time without
+    re-architecting.
     """
     # Collect all page slugs and their paths (type dirs directly under wiki root)
     nodes: set[str] = set()
@@ -75,6 +90,30 @@ def build_graph(wiki_root: Path) -> tuple[set[str], dict[str, set[str]], dict[st
                 if target in nodes and target != slug:
                     outbound[slug].add(target)
                     inbound[target].add(slug)
+            if include_typed_edges:
+                try:
+                    fm = parse_frontmatter(text)
+                except Exception:
+                    fm = {}
+                for field in TYPED_EDGE_FIELDS:
+                    value = fm.get(field)
+                    if not value:
+                        continue
+                    candidates = [value] if isinstance(value, str) else value
+                    if not isinstance(candidates, list):
+                        continue
+                    for c in candidates:
+                        if not isinstance(c, str):
+                            continue
+                        match = TYPED_LINK_RE.match(c.strip())
+                        if not match:
+                            continue
+                        target = match.group(1).strip()
+                        if target.endswith(".md"):
+                            target = target[:-3]
+                        if target in nodes and target != slug:
+                            outbound[slug].add(target)
+                            inbound[target].add(slug)
 
     return nodes, dict(outbound), dict(inbound)
 

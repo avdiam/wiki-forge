@@ -582,13 +582,17 @@ SessionStart hook); `cache_read_input_tokens` is the cache-hit volume
 that scales with replayed conversation context. `total_tokens` remains
 the aggregate.
 
-**`.meta/query_log.jsonl`** — one row per `/wiki-query` invocation. Written
-on both paths: inline (small wiki, no subagent) and librarian-dispatch
-(large wiki).
+**`.meta/query_log.jsonl`** — one row per `/wiki-query` or `/wiki-graph`
+invocation. The `query_skill` field distinguishes the two origins.
+`/wiki-query` writes on both handling paths: inline (small wiki, no
+subagent) and librarian-dispatch (large wiki). `/wiki-graph` writes one
+row per traversal (path / neighbors / subgraph) — pure script output, no
+subagent, no model call.
 
 ```json
 {
   "timestamp": "2026-04-20T14:31:12",
+  "query_skill": "query",
   "query": "what is RAG",
   "query_variations": ["retrieval-augmented generation", "RAG pipeline"],
   "search_mode": "hybrid",
@@ -605,6 +609,11 @@ on both paths: inline (small wiki, no subagent) and librarian-dispatch
 }
 ```
 
+`query_skill` values: `"query"` (default; `/wiki-query` invocations) or
+`"graph"` (`/wiki-graph` invocations). Forward-compatible with rows
+predating the field — the absence of `query_skill` is treated as `"query"`
+by `query_stats.py`.
+
 On Path A (`search_mode: inline`) all six cost fields are `null` — no
 subagent is dispatched, so no `<usage>` metadata reaches the caller;
 `duration_ms` (main-session wall-clock) is the Path-A cost proxy. On
@@ -612,11 +621,17 @@ Path B (`search_mode: hybrid | hybrid_zvec | bm25_only`), every cost
 field is parsed independently from the librarian's `<usage>` block;
 fields the block omits stay `null`.
 
+For `query_skill: "graph"` rows, `search_mode` and all six cost fields
+are `null` (no model call). `query` carries the raw subcommand + args
+(e.g., `"neighbors lethal-trifecta --depth 2"`); `pages_consulted`
+carries the result set (path slugs / neighbor slugs / subgraph nodes);
+`duration_ms` is the script wall-clock from `graph_query.py`'s JSON output.
+
 `query_variations` (Phase 2 — multi-query expansion) is the JSON array of
 paraphrase variations the `/wiki-query` skill generated and passed to
 `hybrid_search.py`'s `--queries-json` flag, *excluding* the canonical
-first query (which lives in `query`). `null` on Path A (no expansion)
-and on N=1 Path B; populated when N>1.
+first query (which lives in `query`). `null` on Path A (no expansion),
+on N=1 Path B, and on all `query_skill: "graph"` rows.
 
 **`.meta/lint_log.jsonl`** — one row per lint run. Written from two paths:
 (a) the post-commit mechanical lint the ingestor runs on every ingest, and

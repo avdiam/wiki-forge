@@ -1,21 +1,31 @@
 #!/usr/bin/env python3
 """Append one row to wiki/.meta/query_log.jsonl.
 
-Called by the /wiki-query skill on both handling paths:
+Called by `/wiki-query` (both paths) and by `/wiki-graph` (graph queries).
+The `query_skill` field distinguishes the row's origin:
 
-  - Path A (inline, small wiki) — no subagent dispatched. Pass '' or 'null'
-    for --total-tokens / --tool-uses; duration-ms carries the main-session
-    wall-clock as the Path-A cost proxy.
-  - Path B (librarian dispatch) — parse cost fields from the <usage> block
-    the Agent tool surfaces on subagent completion.
+  - `query_skill: "query"` — `/wiki-query` invocation. Path A (inline) leaves
+    most cost fields null; Path B parses them from the librarian's <usage>.
+    `search_mode` is required for query rows.
+  - `query_skill: "graph"` — `/wiki-graph` invocation. Pure stdlib script,
+    no model call: all cost fields and `search_mode` are null. `pages_consulted`
+    holds the result set (path / neighbors / subgraph pages); `duration_ms`
+    is the script wall-clock.
 
 Schema documented in wiki/CLAUDE.md under "Telemetry".
 
 Usage:
+    # /wiki-query Path A
     python append_query_log.py --wiki <wiki-root> \
         --query "what is RAG" --search-mode inline \
         --pages-consulted "concepts/rag,concepts/llm-wiki-pattern" \
         --duration-ms 8100
+
+    # /wiki-graph
+    python append_query_log.py --wiki <wiki-root> --query-skill graph \
+        --query "neighbors lethal-trifecta --depth 2" \
+        --pages-consulted "agent-harness,prompt-injection,..." \
+        --duration-ms 800
 """
 
 from __future__ import annotations
@@ -32,6 +42,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 VALID_SEARCH_MODES = {"inline", "hybrid", "hybrid_zvec", "bm25_only"}
+VALID_QUERY_SKILLS = {"query", "graph"}
 
 
 def optional_int(raw: str) -> int | None:
@@ -80,7 +91,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Append a row to .meta/query_log.jsonl")
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
     p.add_argument("--query", required=True, help="The user's raw query string")
-    p.add_argument("--search-mode", required=True, help=f"One of: {', '.join(sorted(VALID_SEARCH_MODES))}")
+    p.add_argument(
+        "--query-skill",
+        default="query",
+        choices=sorted(VALID_QUERY_SKILLS),
+        help="Origin skill: 'query' (/wiki-query) or 'graph' (/wiki-graph). Default: query.",
+    )
+    p.add_argument(
+        "--search-mode",
+        default=None,
+        help=(
+            f"One of: {', '.join(sorted(VALID_SEARCH_MODES))}. "
+            "Required for query_skill=query; null for query_skill=graph."
+        ),
+    )
     p.add_argument("--pages-consulted", default="", help="Comma-separated slugs (or paths)")
     p.add_argument("--top-score", type=optional_float, default=None, help="Normalized [0,1]; null on inline")
     p.add_argument("--filed-as", type=optional_str, default=None, help="Synthesis slug if filed, else null")
@@ -107,6 +131,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def build_row(args: argparse.Namespace) -> dict:
     return {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "query_skill": args.query_skill,
         "query": args.query,
         "query_variations": args.query_variations,
         "search_mode": args.search_mode,
@@ -126,13 +151,23 @@ def build_row(args: argparse.Namespace) -> dict:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
 
-    if args.search_mode not in VALID_SEARCH_MODES:
-        print(
-            f"error: invalid search_mode '{args.search_mode}'. "
-            f"Valid: {', '.join(sorted(VALID_SEARCH_MODES))}",
-            file=sys.stderr,
-        )
-        return 2
+    if args.query_skill == "query":
+        if not args.search_mode:
+            print(
+                "error: --search-mode is required when --query-skill=query",
+                file=sys.stderr,
+            )
+            return 2
+        if args.search_mode not in VALID_SEARCH_MODES:
+            print(
+                f"error: invalid search_mode '{args.search_mode}'. "
+                f"Valid: {', '.join(sorted(VALID_SEARCH_MODES))}",
+                file=sys.stderr,
+            )
+            return 2
+    elif args.query_skill == "graph":
+        # search_mode is null for graph rows; ignore any value passed
+        args.search_mode = None
 
     wiki_root = Path(args.wiki).resolve()
     if not (wiki_root / "CLAUDE.md").is_file():

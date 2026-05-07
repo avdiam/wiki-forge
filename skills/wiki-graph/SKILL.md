@@ -1,0 +1,86 @@
+---
+name: wiki-graph
+description: Run path / neighbor / subgraph queries over the wiki's wikilink graph. Deterministic stdlib output (no librarian dispatch, no model call). Use when the user runs /wiki-graph, asks "how does X connect to Y", "what's near X", "N-hop neighbors of X", or wants the structural connection rather than a synthesized prose answer.
+argument-hint: "<path|neighbors|subgraph> <slug> [<slug>] [--depth N] [--json]"
+---
+
+# wiki-graph
+
+User-facing graph traversal over the wiki's wikilink topology. Three subcommands wrap `wiki/.scripts/graph_query.py`:
+
+- `path A B` — shortest path between two slugs (undirected).
+- `neighbors X [--depth N]` — pages within N hops of X. Default depth 2.
+- `subgraph X` — full connected component containing X.
+
+Walks the **wikilink graph only** (page-body `[[wikilinks]]`); typed-edge frontmatter (`contradicts:` / `supersedes:` / `superseded_by:`) is excluded by default. Pure script output — no librarian, no synthesis, no token cost beyond this skill's prompt.
+
+*Architecturally: Option C (inline tool-orchestration) per `_template-simple/SKILL.md`. No subagent dispatch.*
+
+## Workflow
+
+### 1. Locate the wiki
+Find the wiki root in the current directory or upward (look for `wiki/CLAUDE.md`).
+
+### 2. Parse arguments
+First positional → subcommand (`path` | `neighbors` | `subgraph`).
+Slug arguments accept bare slugs, `[[wikilink]]` form, or `<slug>.md`. The script normalizes.
+
+If the user passed a question in plain English instead of a subcommand, classify and translate:
+
+- "how does X connect to Y" / "path between X and Y" → `path X Y`
+- "what's near X" / "neighbors of X" / "N-hop around X" → `neighbors X [--depth N]` (default 2)
+- "subgraph around X" / "cluster of X" / "connected to X" → `subgraph X`
+
+When translating, surface the translation inline before invoking, so the dispatch is auditable:
+
+> Routed to: `/wiki-graph neighbors lethal-trifecta --depth 2`
+
+If a slug doesn't resolve unambiguously (e.g., "Karpathy" matches both `andrej-karpathy` and `karpathy-llm-wiki-pattern`), ask a single bounded multiple-choice clarification before invoking. Fall through with a clear error if intent is genuinely vague.
+
+### 3. Run graph_query.py
+```bash
+python <wiki>/.scripts/graph_query.py <wiki> <op> <args>
+```
+
+Examples:
+```bash
+python wiki/.scripts/graph_query.py wiki path andrej-karpathy graphify
+python wiki/.scripts/graph_query.py wiki neighbors lethal-trifecta --depth 2
+python wiki/.scripts/graph_query.py wiki subgraph llm-wiki-pattern
+```
+
+Add `--json` if the user asked for machine-readable output, or if downstream chaining wants structured fields.
+
+### 4. Show the result to the user
+Default output is human-readable markdown with `[[wikilinks]]` so Obsidian renders them clickable. Pass through verbatim — do not synthesize prose around the result. The script's output IS the answer.
+
+For very large `subgraph` results (>40 edges) the script truncates with a `… (N more)` line. If the user asks for the full set, re-run with `--json`.
+
+### 5. Log query telemetry
+Write one row to `wiki/.meta/query_log.jsonl` so the operation is visible in `query_stats.py` analyses and Phase-2 router design has real `/wiki-graph` invocation data.
+
+```bash
+python <wiki>/.scripts/append_query_log.py --wiki <wiki> \
+  --query-skill graph \
+  --query "<op> <slug-args>" \
+  --pages-consulted "<comma-sep result slugs>" \
+  --duration-ms <wall_clock_ms>
+```
+
+Notes:
+- `--query-skill graph` distinguishes this row from `/wiki-query` rows.
+- `--query` is the raw subcommand + args (e.g., `"neighbors lethal-trifecta --depth 2"`), not a question.
+- `--pages-consulted` is the result set: path slugs for `path`; all neighbor slugs for `neighbors`; all subgraph nodes for `subgraph`.
+- `--search-mode` is omitted (graph rows are null on that field).
+- All cost fields (`--total-tokens`, `--tool-uses`, etc.) are omitted (no model call).
+- `--duration-ms` comes from the script's `duration_ms` field in `--json` output, OR a main-session wall-clock measurement if running without `--json`.
+
+## Rules
+
+- **Read-only.** Never modify wiki pages.
+- **No librarian.** Graph queries are deterministic stdlib; do not dispatch a subagent.
+- **No synthesis.** The script's output is the answer. Don't paraphrase, summarize, or add framing — the user asked a structural question, not a prose question.
+- **Default depth = 2** for `neighbors`. The wiki is dense (354 pages, 2 components) — depth 3+ often returns most of the graph. Suggest `--depth 1` if the user wants a tight result and `--depth 2` returned >50 pages.
+- **Slug ambiguity → ask once.** Single bounded multiple-choice; never chain follow-ups.
+- **Genuinely vague question → fall through.** If the user's input doesn't match any of the three subcommands and slug resolution can't disambiguate, suggest they re-ask via `/wiki-query` for prose synthesis.
+- **No edits to log.md.** Graph queries do not produce a `## [<timestamp>] <op>` log entry — `query_log.jsonl` is the audit trail for read operations. Same as `/wiki-query`.
