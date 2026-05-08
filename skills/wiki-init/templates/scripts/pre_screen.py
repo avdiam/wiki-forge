@@ -138,10 +138,18 @@ def pre_screen(wiki_root: Path, source_path: Path, vault_root: Path | None = Non
         quality = quality.lower().strip()
 
     # -- Check 2: source_tags overlap --
-    source_tags_raw = fm.get("tags", []) or fm.get("source_tags", [])
-    if isinstance(source_tags_raw, str):
-        source_tags_raw = [source_tags_raw]
-    source_tags = {t.lower().strip() for t in source_tags_raw if isinstance(t, str)}
+    # Prefer real `source_tags:` (author-attested page metadata, written by
+    # /wiki-capture's URL cascade or the clipper). Merge in `tags:` too,
+    # but exclude the `clippings` sentinel — that's a pre_screen-silencer
+    # marker, not a relevance signal.
+    real_tags = fm.get("source_tags", []) or []
+    marker_tags = fm.get("tags", []) or []
+    if isinstance(real_tags, str):
+        real_tags = [real_tags]
+    if isinstance(marker_tags, str):
+        marker_tags = [marker_tags]
+    combined = list(real_tags) + [t for t in marker_tags if t != "clippings"]
+    source_tags = {t.lower().strip() for t in combined if isinstance(t, str)}
 
     tag_overlap = source_tags & wiki_tags
     tag_overlap_ratio = len(tag_overlap) / max(len(source_tags), 1)

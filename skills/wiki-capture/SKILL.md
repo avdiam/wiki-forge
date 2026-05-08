@@ -83,7 +83,7 @@ Stop and wait for user direction. Do not write a stub.
 urllib reached the site. Use WebFetch to get the body (its preprocessor handles HTML→markdown cleanly). The `metadata` block in the script output is the source of truth for `source_tags:` — write those values into Step 5's frontmatter. Carry `tag_source:` forward (one of `arxiv-citation` / `page-meta` / `clippings-marker`).
 
 **`fallback-to-webfetch-with-verification`** (`classification: default`, `fetch_status: blocked|error`)
-urllib couldn't reach the site (4xx / 5xx / timeout). Try WebFetch with a metadata-targeted prompt extension (request OG / JSON-LD / `article:tag` / `citation_*` alongside the body). Then **gate the result on user confirmation** — round-2 probe finding (2026-05-08) was that WebFetch's preprocessor sometimes hallucinates metadata when `<head>` is stripped. Surface to the user:
+urllib couldn't reach the site (4xx / 5xx / timeout). Try WebFetch with the canonical metadata prompt below (`webfetch_metadata_prompt`). Then **gate the result on user confirmation** — round-2 probe finding (2026-05-08) was that WebFetch's preprocessor sometimes hallucinates metadata when `<head>` is stripped. Surface to the user:
 
 > "urllib couldn't reach `<domain>` (`<fetch_error>`), but WebFetch returned the body and claimed metadata: `<list>`. This may be hallucinated — verify it looks correct. Options:
 > 1. Confirm the metadata is real → I'll write `source_tags: [...]` and propose adding `<domain>` to the `head_preserving` list (so future captures from this domain skip the verification gate).
@@ -92,11 +92,40 @@ urllib couldn't reach the site (4xx / 5xx / timeout). Try WebFetch with a metada
 Wait for user choice. Apply their decision to `wiki/.scripts/url_classifier_lists.json` only after confirmation. `tag_source: needs-verification` until confirmed; once confirmed, becomes `page-meta` (option 1) or `clippings-marker` (option 2).
 
 **`use-webfetch-prompt`** (`classification: head_preserving`)
-The domain is already on the head_preserving list (validated previously via the verification gate). WebFetch with the metadata-targeted prompt is the canonical path; trust the returned metadata without re-asking. Carry `tag_source: page-meta` forward.
+The domain is already on the head_preserving list (validated previously via the verification gate). Use WebFetch with the canonical metadata prompt below (`webfetch_metadata_prompt`); trust the returned metadata without re-asking. Carry `tag_source: page-meta` forward.
+
+#### 3a-prompt. Canonical WebFetch metadata prompt
+
+Use this prompt verbatim with WebFetch on `head_preserving` and `fallback-to-webfetch-with-verification` paths. Returns a JSON object the skill can parse the same way it parses `extract_page_metadata.py`'s output.
+
+```
+Return ONLY a JSON object with these exact keys (no prose, no markdown):
+
+{
+  "og_tags": { "<og:property>": "<value>", ... },
+  "json_ld_keywords": [ ... ],
+  "article_tag_metas": [ ... ],
+  "citation_metas": { "<name>": "<value>", ... },
+  "head_content_visible": true | false,
+  "body_first_100_chars": "..."
+}
+
+Definitions:
+- og_tags: any Open Graph meta tags (og:title, og:description, og:type, og:image, og:tag, etc.)
+- json_ld_keywords: top-level strings from <script type="application/ld+json"> "keywords" / "about" / "articleSection" fields
+- article_tag_metas: any <meta property="article:tag"> or <meta name="article:tag"> values
+- citation_metas: any <meta name="citation_*"> tags (Highwire Press — citation_title, citation_author, citation_arxiv_id, citation_doi, citation_date, etc.)
+- head_content_visible: true if <head>/<meta> content is clearly readable; false if only the rendered body is available (preprocessor stripped <head>)
+- body_first_100_chars: first ~100 chars of the article body to confirm both head + body reachable
+
+If a field is empty, return [] or {} — don't omit. If <head> is stripped, set head_content_visible=false; do NOT infer keywords from body content (this leads to hallucination).
+```
+
+Map the response into `source_tags:` the same way Step 5 maps `extract_page_metadata.py` output: dedupe + lowercase across `og_tags` keyword-shaped values + `json_ld_keywords` + `article_tag_metas` + `citation_metas` (citation_subject only, skip identifying fields).
 
 #### 3b. Body fetch (after the cascade)
 
-Independent of which metadata path fired, fetch the rendered body via WebFetch and carry it to Step 4 for normalization. (auth_required is the exception — that branch stops in Step 3a.)
+Independent of which metadata path fired, fetch the rendered body via WebFetch and carry it to Step 4 for normalization. (auth_required is the exception — that branch stops in Step 3a.) The `head_preserving` and `fallback-to-webfetch-with-verification` branches use the same WebFetch call for both body + metadata (the canonical prompt above asks for `body_first_100_chars` as a sanity-check anchor; full body comes from a separate WebFetch call without the JSON-only constraint).
 
 ### 4. Normalize to clean markdown
 

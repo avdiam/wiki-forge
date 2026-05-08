@@ -18,9 +18,7 @@ check_source_freshness.py. No requests, no PyYAML, no trafilatura.
 """
 
 import gzip
-import io
 import json
-import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -97,13 +95,25 @@ class _MetaExtractor(HTMLParser):
             self._jsonld_buf.append(data)
 
 
-def _decode_body(raw_bytes, content_encoding):
+def _decode_body(raw_bytes, content_encoding, charset):
+    """Decompress (if gzip) and decode using the upstream-declared charset.
+
+    Falls back to UTF-8 with errors="replace" when no charset is declared or the
+    declared charset is unknown. Modern public web is overwhelmingly UTF-8, but
+    older sites and some i18n CMSes still declare ISO-8859-1 / Shift_JIS / GB2312
+    / etc. Honoring the declared charset keeps og:title and similar metadata
+    readable on those sites.
+    """
     if content_encoding and content_encoding.lower() == "gzip":
         try:
             raw_bytes = gzip.decompress(raw_bytes)
         except OSError:
             pass
-    return raw_bytes.decode("utf-8", errors="replace")
+    encoding = (charset or "utf-8").lower()
+    try:
+        return raw_bytes.decode(encoding, errors="replace")
+    except LookupError:
+        return raw_bytes.decode("utf-8", errors="replace")
 
 
 def _extract_jsonld_top_level(blob):
@@ -136,13 +146,19 @@ def _extract_jsonld_top_level(blob):
 
 
 def fetch_and_extract(url):
-    """Path 3: fetch via urllib + parse <head>. Returns (status_dict, metadata_dict)."""
+    """Path 3: fetch via urllib + parse <meta> / JSON-LD across the whole document.
+
+    Returns (status_dict, metadata_dict). status carries fetch_status (ok/blocked/error),
+    http_code when applicable, fetch_error for HTTP/network failures, and
+    parse_error for HTML-parser failures (rare — html.parser is permissive).
+    """
     try:
         req = Request(url, headers={"User-Agent": UA, "Accept-Encoding": "gzip, identity"})
         with urlopen(req, timeout=TIMEOUT_SECONDS) as r:
             body_bytes = r.read()
             ce = r.headers.get("Content-Encoding", "")
-            html = _decode_body(body_bytes, ce)
+            charset = r.headers.get_content_charset()
+            html = _decode_body(body_bytes, ce, charset)
             status = {"fetch_status": "ok", "http_code": r.status}
     except HTTPError as e:
         return {"fetch_status": "blocked", "http_code": e.code, "fetch_error": f"HTTP {e.code}"}, _empty_metadata()
@@ -155,7 +171,7 @@ def fetch_and_extract(url):
     try:
         parser.feed(html)
     except Exception as e:  # html.parser is permissive; this is defensive only
-        status["fetch_error"] = f"parse: {type(e).__name__}: {e}"
+        status["parse_error"] = f"{type(e).__name__}: {e}"
 
     og = {}
     article_tags = []
@@ -277,6 +293,8 @@ def main():
         result["http_code"] = status["http_code"]
     if "fetch_error" in status:
         result["fetch_error"] = status["fetch_error"]
+    if "parse_error" in status:
+        result["parse_error"] = status["parse_error"]
     print(json.dumps(result, indent=2))
 
 

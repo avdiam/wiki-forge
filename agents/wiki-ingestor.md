@@ -177,6 +177,8 @@ Use the source-summary template from `wiki/CLAUDE.md`. Frontmatter required:
 - `source_type:` — copy from the raw vault file's frontmatter (`source_type:` written by `/wiki-capture` or the clipper). Values: `article | paper | gist | blog | docs | transcript | notes | other`.
 - `captured:` — copy from the raw vault file's frontmatter (`captured:` from `/wiki-capture`, or `clipped:` from the clipper — accept either, write `captured:` on the source page). Fall back to the filename's `YYYY-MM-DD` prefix if neither field exists.
 - `source_hash:` — copy `sha256_short` from the source brief verbatim.
+- `source_tags:` — *optional, copy from raw vault frontmatter when present.* Author-attested page metadata (OG / JSON-LD / article:tag / citation_*) extracted by `/wiki-capture`'s URL cascade or the clipper. Carry forward verbatim onto the source-summary page; do **not** merge into the wiki-side `tags:` field, which is your synthesized cross-axis retrieval surface compiled from content during the takeaway pass. Author-attested and synthesized tags are two distinct surfaces — keep them separate.
+- `tag_source:` — *optional, copy from raw vault frontmatter when present.* Provenance flag for `source_tags:` — one of `page-meta | arxiv-citation | clippings-marker | needs-verification`. Carry forward unchanged; don't reinterpret.
 - `last_updated:` — today's ISO date.
 
 Body: title, author (if known), publication date (if known), URL (if any),
