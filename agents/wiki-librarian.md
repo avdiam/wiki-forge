@@ -69,6 +69,13 @@ grep -ril "<keyword>" <wiki>/
 
 Cap the total candidate set around 8 pages.
 
+**Survey mode exception.** When the dispatch prompt sets `Survey mode: true`,
+the cap and the supplement-with-grep behavior do **not** apply. The dispatching
+`/wiki-summarize` skill has already produced the canonical page set via Shape A
+(slug-anchored neighbors) or Shape B (top-25 hybrid search) — read the full
+dispatched list. Subsetting would distort the audit; supplementing would make
+the **Coverage gaps** section dishonest about what's actually in the wiki.
+
 ### 3. Synthesize
 
 **Mode gate — read this first.** If the dispatch prompt set `Survey mode: true`,
