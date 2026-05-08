@@ -48,20 +48,28 @@ or malformed.
 Build the wikilink graph and try slug resolution first; fall through to fuzzy
 search on miss.
 
+**Topic-passing convention.** `<topic>` is captured into a shell variable via a
+single-quoted heredoc (no expansion, opaque to bash) and passed to Python via
+`argv`. This survives `"`, `\`, `$`, backticks, apostrophes, and embedded
+newlines without escaping. Replace `<topic>` literally — do not pre-escape.
+
 ```bash
-python - <<'PY'
+WIKI_SUMMARIZE_TOPIC=$(cat <<'TOPIC_EOF'
+<topic>
+TOPIC_EOF
+)
+python - "$WIKI_SUMMARIZE_TOPIC" <<'PY'
 import sys
 from pathlib import Path
 sys.path.insert(0, "<wiki>/.scripts")
 from graph_analyzer import build_graph
 from graph_query import _resolve_slug, neighbors_within
 
+raw = sys.argv[1]
 nodes, outbound, inbound = build_graph(Path("<wiki>"))
 adj = {n: outbound.get(n, set()) | inbound.get(n, set()) for n in nodes}
 
-raw = "<topic>"
 slug = _resolve_slug(raw, nodes)
-
 if slug in nodes:
     pairs = neighbors_within(adj, slug, 1)
     pages = [slug] + [s for s, _ in pairs]
@@ -70,7 +78,7 @@ if slug in nodes:
     for s in pages:
         print(s)
 else:
-    print("SHAPE_B", raw, 0, 0)
+    print("SHAPE_B")
 PY
 ```
 
@@ -94,10 +102,16 @@ slug list (Shape A only).
 
 - `retrieval_shape = "hybrid"`, `coverage_anchor_slug = null`.
 - Run hybrid search at higher top-k than `/wiki-query` (surveys want recall, not
-  precision):
+  precision). Use the `--queries-json` heredoc form `/wiki-query` Path B
+  established — survives quotes/backslashes/special chars in the topic safely:
   ```bash
-  python <wiki>/.scripts/hybrid_search.py <wiki> "<topic>" --top-k 25
+  python <wiki>/.scripts/hybrid_search.py <wiki> --queries-json - --top-k 25 <<'JSON'
+  ["<topic-json-escaped>"]
+  JSON
   ```
+  Where `<topic-json-escaped>` is `<topic>` with `\` first escaped to `\\`, then
+  `"` escaped to `\"` (JSON string-content rules; tabs/newlines also need
+  `\t`/`\n`). The single-quoted `<<'JSON'` ensures no shell expansion.
 - Page list = JSON `results[].path` (the script's normalized field).
 - **Empty-result guard:** if `results` is empty, do **NOT** dispatch the librarian.
   Emit the dual onramp inline:

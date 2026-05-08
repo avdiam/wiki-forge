@@ -71,6 +71,15 @@ Cap the total candidate set around 8 pages.
 
 ### 3. Synthesize
 
+**Mode gate — read this first.** If the dispatch prompt set `Survey mode: true`,
+**skip the prose-Q-A rules in this step** and jump to step 3a. The rules below
+(including the "MUST follow" coverage-gap protocol) apply to prose-Q-A mode
+ONLY. Survey mode has its own template and a scope override — going through
+this section first risks firing the dual `/wiki-capture` + WebSearch onramp
+inside a survey, which is wrong behavior.
+
+If `Survey mode` is absent or false, proceed.
+
 Write the answer following these rules:
 
 - **Cite every factual claim** with a `[[wikilink]]` to the page it came from.
