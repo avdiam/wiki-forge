@@ -49,6 +49,8 @@ if hasattr(sys.stdout, "reconfigure"):
 REQUIRED_FIELDS = ["title", "type", "category", "summary", "confidence", "sources", "last_updated"]
 STALE_DAYS = 90
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
+AMBIGUOUS_MARKER_RE = re.compile(r"\*\[AMBIGUOUS\]\*")
+CLAIM_TAG_SCOPE_TYPES = {"concepts", "entities", "comparisons", "syntheses"}
 
 
 def collect_pages(wiki_root: Path) -> dict:
@@ -247,6 +249,22 @@ def check_needs_verification(pages: dict) -> list[str]:
         info["path"] for info in pages.values()
         if info["frontmatter"].get("verify") is True
     )
+
+
+def check_excessive_ambiguous(pages: dict, threshold: int = 3) -> list[str]:
+    """Pages with more than `threshold` *[AMBIGUOUS]* markers in body.
+
+    Concept / entity / comparison / synthesis pages only — source pages
+    are exempt by convention (source fidelity carried by source_type).
+    Per wiki/CLAUDE.md "claim-tag inline markers" rule.
+    """
+    flagged = []
+    for info in pages.values():
+        if info["type"] not in CLAIM_TAG_SCOPE_TYPES:
+            continue
+        if len(AMBIGUOUS_MARKER_RE.findall(info["body"])) > threshold:
+            flagged.append(info["path"])
+    return sorted(flagged)
 
 
 def check_drifted_sources(pages: dict) -> list[str]:
@@ -701,6 +719,7 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "broken_sources": check_broken_sources(vault_dir, pages),
         "missing_source_type": check_missing_source_type(pages),
         "needs_verification": check_needs_verification(pages),
+        "excessive_ambiguous": check_excessive_ambiguous(pages),
         "drifted_sources": check_drifted_sources(pages),
         "overview_staleness": check_overview_staleness(wiki_root),
         "single_page_categories": check_single_page_categories(pages),
@@ -730,6 +749,7 @@ def render_human(report: dict) -> str:
         f"Broken sources:      {len(report['broken_sources'])}",
         f"Missing source_type:  {len(report['missing_source_type'])}",
         f"Needs verification:   {len(report['needs_verification'])}",
+        f"Excessive AMBIGUOUS:  {len(report['excessive_ambiguous'])}",
         f"Drifted sources:      {len(report['drifted_sources'])}",
         f"Single-page cats:     {len(report['single_page_categories'])}",
         f"Unknown categories:   {len(report['unknown_category'])}",

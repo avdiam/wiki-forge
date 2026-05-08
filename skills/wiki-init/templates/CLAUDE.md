@@ -214,6 +214,39 @@ stale: false
   lint check surfaces single-source pages with `confidence > 0.6` and no
   `verify: true` as a soft-warning review queue — see "Creating new pages
   vs editing existing" below for the full rule.
+- **claim-tag inline markers** — *Optional, body-only, applies to concept /
+  entity / comparison / synthesis pages.* Italicized markers that follow a
+  claim to declare its evidentiary kind. Two values:
+  - `*[INFERRED]*` — claim is the ingestor's synthesis across multiple
+    sources, or a judgment-call inference from one source. Apply when the
+    claim is plausibly derivable from cited sources but is not a direct
+    extraction.
+  - `*[AMBIGUOUS]*` — claim is contested between sources, single-source
+    without independent corroboration, or otherwise deserves reader
+    scrutiny. Apply when the page-level `verify: true` flag is too coarse
+    — i.e., when one specific claim is uncertain and the rest of the page
+    is solid.
+
+  **Untagged claims are implicitly `EXTRACTED`** — directly attested in a
+  cited source. The convention is flag-as-exception (mirrors `verify:`):
+  apply markers only when a claim is not directly extracted, not as a
+  default annotation on every sentence.
+
+  **Format.** Place the marker immediately after the claim's terminal
+  punctuation, separated by one space. Example:
+
+  > Karpathy framed the wiki as a "personal LLM context engine." Mark
+  > Chen extends this to two-domain wikis. *[INFERRED]*
+
+  **Source pages are exempt.** Source summary pages carry source fidelity
+  by definition — every claim is verbatim or near-verbatim from the source
+  they summarize.
+
+  **Lint surface.** The `excessive_ambiguous` check counts `*[AMBIGUOUS]*`
+  markers per page and flags pages with more than 3 as a review queue
+  (similar shape to `needs_verification`). High AMBIGUOUS density signals a
+  page that needs corroborating sources, not a page that needs rewriting —
+  distinct from `stale: true` and `verify: true` (page-level signals).
 
 #### Typed cross-reference fields (optional, any page type)
 
@@ -669,6 +702,7 @@ distinguishes them.
     "source_backlog": 0, "stale_source": 0,
     "overview_staleness": 0, "single_page_categories": 1,
     "long_summary": 0, "needs_verification": 3,
+    "excessive_ambiguous": 0,
     "unacknowledged_contradictions": 0, "category_issues": 0
   },
   "verdict": "issues",
