@@ -36,25 +36,97 @@ TIMEOUT_SECONDS = 10
 def _load_lists():
     """Load url_classifier_lists.json from this script's directory."""
     p = Path(__file__).parent / "url_classifier_lists.json"
-    with p.open() as f:
+    with p.open(encoding="utf-8") as f:
         data = json.load(f)
     return data.get("head_preserving", []), data.get("auth_required", [])
 
 
-def _domain_matches(host, entry):
+def _load_credibility_lists():
+    """Load the four credibility-tier lists from url_classifier_lists.json.
+
+    Returns dict keyed by tier name ('tier_1' / 'tier_2' / 'tier_3' / 'denylist').
+    Used by /wiki-corroborate to classify WebSearch result URLs against the
+    seed lists. Lists may be empty; missing keys default to empty list.
+    """
+    p = Path(__file__).parent / "url_classifier_lists.json"
+    with p.open(encoding="utf-8") as f:
+        data = json.load(f)
+    return {
+        "tier_1": data.get("credibility_tier_1", []),
+        "tier_2": data.get("credibility_tier_2", []),
+        "tier_3": data.get("credibility_tier_3", []),
+        "denylist": data.get("credibility_denylist", []),
+    }
+
+
+def _url_matches(host, path, entry):
+    """Match a parsed (host, path) against a classifier entry.
+
+    Three pattern shapes, detected from entry prefix/content:
+      - '*.tld' (starts with '*.')   → wildcard suffix; host.endswith('.tld')
+      - 'host/path' (contains '/')   → path-prefix; host equals AND path starts with /<entry-path>
+      - 'host' (default)             → exact + subdomain (host == entry or host.endswith('.' + entry))
+
+    Path-prefix entries treat the first '/' as the host/path boundary.
+    The path comparison prepends '/' to the entry-side path so that
+    'linkedin.com/in/' matches '/in/karpathy' but NOT 'linkedin.com/insights'.
+    """
+    if entry.startswith("*."):
+        suffix = entry[1:]  # ".edu" / ".gov"
+        return host.endswith(suffix)
+    if "/" in entry:
+        e_host, _, e_path = entry.partition("/")
+        host_ok = host == e_host or host.endswith("." + e_host)
+        return host_ok and path.startswith("/" + e_path)
     return host == entry or host.endswith("." + entry)
+
+
+def _domain_matches(host, entry):
+    """Backward-compat shim — host-only matching for the cascade callers.
+
+    Existing callers (auth_required / head_preserving lists) pass exact-host
+    entries only. Path-prefix and wildcard entries don't appear in those
+    lists, so the path argument is irrelevant here. Routes through _url_matches
+    with an empty path so the entry-shape dispatch is consistent.
+    """
+    return _url_matches(host, "/", entry)
 
 
 def classify(url, head_preserving, auth_required):
     """Return ('auth_required'|'head_preserving'|'default', host)."""
-    host = (urlparse(url).hostname or "").lower()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or "/"
     for entry in auth_required:
-        if _domain_matches(host, entry):
+        if _url_matches(host, path, entry):
             return "auth_required", host
     for entry in head_preserving:
-        if _domain_matches(host, entry):
+        if _url_matches(host, path, entry):
             return "head_preserving", host
     return "default", host
+
+
+def classify_credibility(url, tier_lists=None):
+    """Classify a URL into a credibility tier for /wiki-corroborate.
+
+    Returns one of: 'tier_1', 'tier_2', 'tier_3', 'denylist', 'unclassified'.
+    Tiers checked in priority order so that path-prefix vendor entries
+    in tier_1 (e.g., 'github.com/anthropic') win over a bare-host fallback
+    in tier_3 (e.g., 'github.com').
+
+    `tier_lists` may be passed explicitly (lets the caller load once and
+    reuse across many URLs); when None, loads via `_load_credibility_lists`.
+    """
+    if tier_lists is None:
+        tier_lists = _load_credibility_lists()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or "/"
+    for tier in ("tier_1", "tier_2", "tier_3", "denylist"):
+        for entry in tier_lists.get(tier, []):
+            if _url_matches(host, path, entry):
+                return tier
+    return "unclassified"
 
 
 class _MetaExtractor(HTMLParser):

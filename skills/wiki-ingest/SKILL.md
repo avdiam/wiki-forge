@@ -396,6 +396,26 @@ Present in the main chat in this exact format:
 >   > NO VERBATIM PHRASE FOUND — fold into [[google-adk]] § Skills instead
 > ```
 
+### verify: true re-evaluation
+(only emitted when the proposed plan has EDIT operations on pages whose
+frontmatter currently carries `verify: true` — closes the loop with
+`/wiki-corroborate`. To detect, grep each EDIT target's frontmatter for
+`^verify: true` once before assembling the takeaway block; emit the section
+only if at least one EDIT target matches. Skip entirely otherwise — most
+ingests don't touch flagged pages.)
+
+For each EDIT page that currently has `verify: true`, surface one block:
+
+- **[[<slug>]]** — currently flagged with callout: `<existing callout text, abbreviated to ~120 chars>`
+- New source: [[<source-slug>]] (this ingest)
+- Decision (per page, default ASK):
+  - **(Y) Clear** — remove `verify: true` from frontmatter and delete the inline `⚠ needs verification:` callout. Confidence rises one tier (cap at 1.0); page enters normal cited-claim status.
+  - **(N) Retain** — new source adds breadth but doesn't address the specific verification target. Flag and callout stay.
+  - **(P) Partial** — narrow the callout to the still-unverified portion. Reply with the new callout text inline.
+
+Default: ask. Never auto-clear. The new source may corroborate the flagged
+claim, partially address it, or be unrelated — the user owns the call.
+
 ### Contradictions detected
 - [[page-name]] — older claim: <X>; new claim: <Y>
 - (or: "None.")
@@ -459,6 +479,12 @@ Proposed operations, Contradictions detected, New categories proposed>
 
 User emphasis / skip hints:
 <paste any guidance the user added on approval, or "none">
+
+Verify-clearing decisions:
+<for each `### verify: true re-evaluation` block in the takeaway, paste one
+line per page in the form:
+  <slug> — <Y | N | P: "<narrowed callout text>">
+Or "none" if the takeaway didn't surface any verify-clearing blocks.>
 
 Source brief:
 <paste the JSON from step 3 verbatim>

@@ -574,7 +574,7 @@ no findings / low only / any high.
 
 ### Telemetry (optional)
 
-Five append-only JSONL logs under `.meta/` capture per-operation cost
+Six append-only JSONL logs under `.meta/` capture per-operation cost
 and retrieval data — one per side-effecting operation (ingest, query,
 lint, overview) plus one for source-freshness polling — enabling
 empirical validation of the wiki pattern's
@@ -816,14 +816,69 @@ Drift-clear path: re-capture via clipper, ingestor regenerates the
 source page from the fresh vault file, drift flag and callout disappear
 naturally.
 
+**`.meta/corroborate_log.jsonl`** — one row per `verify: true` flag the
+`/wiki-corroborate` skill searched. Distinct from `query_log` because
+the skill is search-and-surface (no synthesis), telemetry granularity is
+per-flag (not per-invocation), and the row mutates twice after creation:
+once at `/wiki-capture` time when the user picks a candidate URL, once
+at `/wiki-ingest` time when the verify-clearing takeaway gate clears the
+flag. The two backfills make the row a one-stop record of "flag → search
+→ capture → clear" for the queue-drain.
+
+```json
+{
+  "timestamp": "2026-05-15T14:30:21",
+  "page_slug": "claude-managed-agents",
+  "page_type": "entity",
+  "page_bucket": "B",
+  "callout_text": "the 100KB persistent-memory cap and...",
+  "candidates_returned": 5,
+  "candidates_by_tier": {"tier_1": 2, "tier_2": 2, "tier_3": 1},
+  "include_tier_3_flag": false,
+  "user_picked": "https://docs.anthropic.com/...",
+  "user_action": "captured",
+  "captured_to_vault": "vault/Web Articles/2026-05-15-...",
+  "flag_cleared_at_ingest": "2026-05-15T14:55:11",
+  "total_tokens": null,
+  "tool_uses": null,
+  "duration_ms": null
+}
+```
+
+`page_bucket` values follow the 2026-05-08 queue audit: `A` (entity bio
+thinness — `category: ai-practitioners`), `B` (entity with specific
+factual claims), `C` (concept / comparison / synthesis), `D` (source —
+out of scope for `/wiki-corroborate` itself; reserved in the schema for
+hypothetical downstream callers that target source-internal warnings).
+
+`user_action` values: `deferred` (initial state — skill surfaced
+candidates, user has not yet acted), `captured` (user ran `/wiki-capture`
+on the picked URL — backfilled by the skill or by `/wiki-capture`), or
+`skipped` (user explicitly passed on this batch's hits — reserved for
+future interactive flow). `user_picked` and `captured_to_vault` are
+populated only in the `captured` state.
+
+`flag_cleared_at_ingest` is backfilled by the wiki-ingestor when the
+takeaway-approval gate's verify-clearing surface fires Y (clear flag);
+matches by `page_slug` + most-recent `user_action: captured`. Same
+shape as the `commit_hash` repair pattern in
+`vault/.wiki-identity.md` § Telemetry repair. Stays `null` on N
+(retain) and P (partial-narrow) decisions.
+
+Cost fields stay `null` in v1 — `/wiki-corroborate` is main-session
+only (no subagent dispatched), and per the session 42 finding
+`total_tokens` for main-session work isn't surfaced by the harness.
+Reserved fields kept for forward symmetry with the other JSONL logs.
+
 **Analysis:** `python .scripts/query_stats.py` reads the ingest and query
 logs and reports page-hit frequency, exact-string + canonicalized query
 repetition, dead pages (never consulted), and the bilateral amortization
 ratio (cumulative query cost per page ÷ per-page ingest cost). Lint,
-overview, and source-freshness telemetry have no dedicated stats script
-yet — query the JSONL directly with `jq` for ad-hoc analysis.
+overview, source-freshness, and corroborate telemetry have no dedicated
+stats script yet — query the JSONL directly with `jq` for ad-hoc
+analysis.
 
-**Commit policy.** All five JSONL files are committed to git — plain
+**Commit policy.** All six JSONL files are committed to git — plain
 text, inspectable, valuable as historical record at current scale.
 Revisit if they grow noisy or start carrying sensitive queries.
 
