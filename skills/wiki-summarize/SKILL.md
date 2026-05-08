@@ -66,17 +66,25 @@ from graph_analyzer import build_graph
 from graph_query import _resolve_slug, neighbors_within
 
 raw = sys.argv[1]
-nodes, outbound, inbound = build_graph(Path("<wiki>"))
+wiki = Path("<wiki>")
+nodes, outbound, inbound = build_graph(wiki)
 adj = {n: outbound.get(n, set()) | inbound.get(n, set()) for n in nodes}
 
 slug = _resolve_slug(raw, nodes)
 if slug in nodes:
+    # Map slugs → relative paths once, so the librarian receives paths
+    # directly (symmetric with /wiki-query Path B's hybrid_search.py output).
+    slug_to_path = {}
+    for type_dir in ("concepts", "entities", "sources", "comparisons", "syntheses"):
+        for p in (wiki / type_dir).glob("*.md"):
+            slug_to_path[p.stem] = f"{type_dir}/{p.name}"
+
     pairs = neighbors_within(adj, slug, 1)
     pages = [slug] + [s for s, _ in pairs]
     inbound_count = len(inbound.get(slug, set()))
     print("SHAPE_A", slug, len(pages), inbound_count)
     for s in pages:
-        print(s)
+        print(slug_to_path.get(s, f"# UNRESOLVED:{s}"))
 else:
     print("SHAPE_B")
 PY
@@ -87,14 +95,19 @@ this to the librarian via the prompt for the **Structural footprint** section
 (hub status: ≥50 inbound = hub).
 
 Capture stdout. The first line tells you which shape; subsequent lines are the
-slug list (Shape A only).
+**page paths** (Shape A only — relative to wiki root, e.g., `concepts/rag.md`).
+Lines starting with `# UNRESOLVED:` indicate a slug that's in the graph but has
+no corresponding `.md` file in the canonical type-dirs — surface as a warning
+in the relay (rare; signals graph drift) but proceed with the resolved pages.
 
 #### Shape A — slug-anchored
 
 - `retrieval_shape = "slug-anchored"`, `coverage_anchor_slug = <resolved slug>`.
 - Page list = anchor + depth-1 neighbors. Sort: anchor first, then neighbors in
   the order returned by `neighbors_within` (sorted by hop-distance asc, slug asc).
-- Map slugs to page paths via `<wiki>/indexes/index.md` or by scanning `<wiki>/{concepts,entities,sources,comparisons,syntheses}/<slug>.md`.
+- Page paths are resolved by the bash glue (`slug_to_path` dict scans the five
+  canonical type-dirs once); the librarian receives paths directly, no Glob
+  round-trips needed.
 - **Orphan case** (anchor exists but 0 neighbors): proceed with the single page.
   The five-section survey will surface the isolation honestly in **Structural footprint**.
 
