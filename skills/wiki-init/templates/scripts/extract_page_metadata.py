@@ -77,7 +77,12 @@ def _url_matches(host, path, entry):
     if "/" in entry:
         e_host, _, e_path = entry.partition("/")
         host_ok = host == e_host or host.endswith("." + e_host)
-        return host_ok and path.startswith("/" + e_path)
+        # Lowercase both sides of the path comparison — GitHub / HuggingFace /
+        # LinkedIn URL paths are routed case-insensitively at the platform
+        # level (github.com/MoonshotAI ≡ github.com/moonshotai). Strict
+        # case-sensitive match would miss the variant the search engine
+        # happens to return.
+        return host_ok and path.lower().startswith("/" + e_path.lower())
     return host == entry or host.endswith("." + entry)
 
 
