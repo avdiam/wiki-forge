@@ -208,6 +208,7 @@ gap it fills); leave **`## Pages updated`** empty until step 3e.
   NEVER silently overwrite. The plan already vetted these contradictions — apply them, don't re-evaluate.
 
   **Typed-edge obligation (active).** Whenever you write a `> [!WARNING] Contradiction Detected:` callout — whether plan-listed or late-found — also populate the `contradicts:` frontmatter on the touched page with quoted-flow wikilinks to the contradicting page(s). Add the inverse edge to each referenced page's `contradicts:` field so the relationship is symmetric (the `check_asymmetric_contradictions` lint flags one-way edges). Canonical YAML: `contradicts: ["[[other-slug]]"]`. Same pattern when surfacing supersession (entity X replaces entity Y): write `supersedes: ["[[Y]]"]` on X and `superseded_by: ["[[X]]"]` on Y, with `status: deprecated` on Y. The `check_invalid_typed_links` lint flags wikilinks in these fields that don't resolve. Per-ingest cost is near-zero — the wikilinks are already in the callout you're writing.
+- **Claim-tag markers (concept / entity / comparison / synthesis pages only).** Apply `*[INFERRED]*` after claims you synthesized across sources or inferred from one. Apply `*[AMBIGUOUS]*` after a specific contested or single-source claim where `verify: true` would be too coarse (the rest of the page is solid; one claim is the issue). Untagged claims are implicitly EXTRACTED — do not mark verbatim or near-verbatim source content. Skip on source pages entirely. The `excessive_ambiguous` lint flags pages with more than 3 `*[AMBIGUOUS]*` markers. Per wiki/CLAUDE.md "claim-tag inline markers" rule.
 
 #### 3c. CREATE lines — for each `CREATE <path>` in the plan
 
@@ -217,7 +218,7 @@ Use the right template (concept | entity | comparison) from `wiki/CLAUDE.md`. Re
 - **`tags:`** — 3–8 conceptual keywords spanning conceptual domain (e.g., `performance`, `cost-optimization`), related techniques, and use-case keywords (`production`, `prototyping`, `evaluation`).
 - **Entity pages — `status:` field.** Required. Default `active` when unclear; don't manufacture signal from weak evidence.
 - **Entity pages — verbatim citation in body.** Required for `type: entity` only. Place at least one block-quote line in the page body containing the verbatim phrase from the source that names this entity, with wikilink attribution to the source page. Format: `> "<exact phrase from source containing the entity name>" — [[source-id]]`. Typical home: just below the `# <Entity Name>` heading, or inside `## What it is` as the opening line. The quote must come from the verbatim-quotes list in step 2b (which the SKILL already collected at the takeaway gate). If the list has no quote covering this entity, the plan was approved on bad evidence — halt and return a HALT report rather than writing the page. Per wiki/CLAUDE.md "Verbatim citation for new entity pages" rule.
-- **`verify:` flag.** If the page asserts a claim you couldn't corroborate (single source, plausible but not confirmed, contested within the article itself), set `verify: true` AND add an inline `⚠ needs verification: <why>` callout at the claim.
+- **`verify:` flag.** If the page asserts a claim you couldn't corroborate (single source, plausible but not confirmed, contested within the article itself), set `verify: true` AND add an inline `⚠ needs verification: <why>` callout at the claim. **For the single-claim case** where most of the page is well-sourced and only one assertion is uncertain, prefer the `*[AMBIGUOUS]*` claim-tag marker (see step 3b) — finer-grained than the page-level flag.
 - **`confidence:`** — below 0.5 must be flagged inline with `⚠ low confidence: <why>`.
 
 **Listicle / survey sources.** If the source brief shows the raw frontmatter has `quality: listicle`, OR the plan's CREATE lines carry only the source page + 1–2 taxonomy concepts, treat it as a roundup: source page + taxonomy concepts only, no thin entity stubs. List the mentioned entities in a `## Entities mentioned` section on the source summary as plain text or unresolved `[[wikilinks]]`. Promote to entity pages only when a deeper source arrives later.
@@ -322,9 +323,10 @@ Run the post-commit mechanical lint as a sanity check:
 python <wiki>/.scripts/lint_wiki.py <wiki> --json
 ```
 
-Parse the JSON. If any of `broken_links`, `orphans`, `index_drift`, or
-`needs_verification` are non-zero, surface them in the final report so the
-user can decide whether to address immediately or defer. Do not auto-fix.
+Parse the JSON. If any of `broken_links`, `orphans`, `index_drift`,
+`needs_verification`, or `excessive_ambiguous` are non-zero, surface them
+in the final report so the user can decide whether to address immediately
+or defer. Do not auto-fix.
 
 Record the run in `<wiki>/.meta/lint_log.jsonl`:
 
