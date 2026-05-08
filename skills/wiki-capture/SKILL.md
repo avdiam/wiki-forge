@@ -55,10 +55,48 @@ source pages) runs in `/wiki-ingest` step 4 — they're complementary.
 
 ### 3. Fetch / read / accept the source
 
-- **URL**: fetch via WebFetch. If paywalled or inaccessible, ask the user to paste the text instead or use the clipper if available — do not write a stub.
-- **File path**: read the file.
-- **Pasted text**: use what the user provided.
-- **Conversation reference**: extract the relevant content from context.
+- **URL**: classify and fetch via the cascade below. **Don't go straight to WebFetch** — the metadata-extraction cascade decides which path to take.
+- **File path**: read the file. Skip the URL cascade — go to Step 4.
+- **Pasted text**: use what the user provided. Skip the URL cascade — go to Step 4.
+- **Conversation reference**: extract the relevant content from context. Skip the URL cascade — go to Step 4.
+
+#### 3a. URL classification + metadata cascade
+
+For URL captures, run the classifier first:
+
+```bash
+python wiki/.scripts/extract_page_metadata.py "<url>"
+```
+
+The script returns a JSON object with `classification`, `next_action`, `metadata`, `tag_source`, and (when applicable) `fetch_status` / `http_code` / `fetch_error`. Route on `next_action`:
+
+**`skip-redirect-to-clipper`** (`classification: auth_required`)
+The domain is on the auth-required list — `medium.com` and others known to require an authenticated browser session. WebFetch will return a paywalled stub or fail. **Don't fetch.** Tell the user:
+
+> "`<domain>` is known to require an authenticated browser session (paywall / Cloudflare / login wall). Two options:
+> 1. Use the clipper (Chrome browser session) — it's authenticated and can save the article via Obsidian REST API.
+> 2. Open the URL yourself, copy the article body, and paste it back here — I'll capture from the paste."
+
+Stop and wait for user direction. Do not write a stub.
+
+**`use-metadata-below`** (`classification: default`, `fetch_status: ok`)
+urllib reached the site. Use WebFetch to get the body (its preprocessor handles HTML→markdown cleanly). The `metadata` block in the script output is the source of truth for `source_tags:` — write those values into Step 5's frontmatter. Carry `tag_source:` forward (one of `arxiv-citation` / `page-meta` / `clippings-marker`).
+
+**`fallback-to-webfetch-with-verification`** (`classification: default`, `fetch_status: blocked|error`)
+urllib couldn't reach the site (4xx / 5xx / timeout). Try WebFetch with a metadata-targeted prompt extension (request OG / JSON-LD / `article:tag` / `citation_*` alongside the body). Then **gate the result on user confirmation** — round-2 probe finding (2026-05-08) was that WebFetch's preprocessor sometimes hallucinates metadata when `<head>` is stripped. Surface to the user:
+
+> "urllib couldn't reach `<domain>` (`<fetch_error>`), but WebFetch returned the body and claimed metadata: `<list>`. This may be hallucinated — verify it looks correct. Options:
+> 1. Confirm the metadata is real → I'll write `source_tags: [...]` and propose adding `<domain>` to the `head_preserving` list (so future captures from this domain skip the verification gate).
+> 2. Reject the metadata → I'll write `source_tags: []` with the `[clippings]` marker, and propose adding `<domain>` to the `auth_required` list (so future captures redirect to clipper)."
+
+Wait for user choice. Apply their decision to `wiki/.scripts/url_classifier_lists.json` only after confirmation. `tag_source: needs-verification` until confirmed; once confirmed, becomes `page-meta` (option 1) or `clippings-marker` (option 2).
+
+**`use-webfetch-prompt`** (`classification: head_preserving`)
+The domain is already on the head_preserving list (validated previously via the verification gate). WebFetch with the metadata-targeted prompt is the canonical path; trust the returned metadata without re-asking. Carry `tag_source: page-meta` forward.
+
+#### 3b. Body fetch (after the cascade)
+
+Independent of which metadata path fired, fetch the rendered body via WebFetch and carry it to Step 4 for normalization. (auth_required is the exception — that branch stops in Step 3a.)
 
 ### 4. Normalize to clean markdown
 
@@ -91,6 +129,8 @@ captured: <today's ISO date>
 title: <source title>
 author: <if known>
 tags: [clippings]
+source_tags: [<from Step 3a metadata.og + json_ld_keywords + article_tags + citation_metas, deduped, lowercased>]
+tag_source: page-meta | arxiv-citation | clippings-marker | needs-verification
 ---
 ```
 
@@ -102,6 +142,26 @@ during the takeaway pass. The marker silences a redundant
 "no-tags-in-frontmatter" warn reason from `pre_screen.py` so the
 load-bearing signal (topic-vocabulary overlap) stays the focus on warn
 flows.
+
+**`source_tags:` and `tag_source:` come from Step 3a.** Symmetric with the
+clipper-side `source_tags:` field (per `vault/.clipper-rules.md` step 2).
+For URL captures, populate both from the cascade output. For file-path /
+pasted-text / conversation captures (no live page to scrape), omit
+`source_tags:` and `tag_source:` — those fields are URL-only.
+
+How to derive `source_tags:` from the cascade's `metadata` block:
+- Take `og:keywords` / `og:tag` values (split on comma if string).
+- Concatenate `json_ld_keywords` (already a list).
+- Concatenate `article_tags` (already a list).
+- For arXiv, concatenate values from `citation_metas` that are tag-shaped
+  (e.g., `citation_subject`); skip identifying fields (`citation_doi`,
+  `citation_arxiv_id` — those belong as separate top-level frontmatter
+  fields when the ingestor produces the source-summary page, not in the
+  tag list).
+- Dedupe, lowercase, drop empty strings.
+
+If the cascade returned empty metadata or `tag_source: clippings-marker`,
+omit `source_tags:` (the field is optional) and set `tag_source: clippings-marker`.
 
 Then the cleaned markdown body. Write the file and confirm the path to
 the user.
@@ -135,3 +195,5 @@ produces.
 - **If fetching fails,** surface the error and ask for a paste — don't fabricate.
 - **Check for duplicate captures (URL-based) before writing** to `vault/`. The content-hash dedup happens later in `/wiki-ingest` — they're complementary.
 - **The capture-then-ingest chain is atomic from the user's perspective**; don't stop halfway without clear communication.
+- **`url_classifier_lists.json` updates only with user confirmation.** The fallback-to-WebFetch-with-verification branch proposes `head_preserving` or `auth_required` additions; the user accepts/rejects per session. Never silently mutate the file. Same shape as the takeaway gate — the user owns the durable state, the skill proposes.
+- **`source_tags:` is URL-only.** File-path / pasted-text / conversation-reference captures have no live page to scrape; omit the field. The wiki ingestor compiles real tags from content during the takeaway pass — `source_tags:` is just author-attested metadata when available.

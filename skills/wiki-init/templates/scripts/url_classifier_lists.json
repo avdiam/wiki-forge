@@ -1,0 +1,9 @@
+{
+  "_doc": "Per-domain routing for /wiki-capture URL handling. See extract_page_metadata.py for the cascade. Lists grow at the takeaway gate via user-confirmed proposals — never silently. Subdomain matching: a URL matches an entry if its hostname equals the entry OR ends with '.<entry>'.",
+  "head_preserving": [],
+  "_head_preserving_doc": "Domains where urllib is blocked (4xx / timeout / Cloudflare) but WebFetch's preprocessor preserves <head> metadata. Path 1 fires (WebFetch with extended metadata prompt). Add ONLY after user-confirmed verification that the WebFetch metadata is real and not hallucinated (round-2 probe finding, 2026-05-08). May stay empty in practice — most reachable cases are covered by Path 3 (urllib). Reference case: arxiv.org passes through head, but urllib also reaches arxiv.org so it stays as default.",
+  "auth_required": [
+    "medium.com"
+  ],
+  "_auth_required_doc": "Domains known to require an authenticated browser session (Cloudflare bot-fight, paywalls, login walls). /wiki-capture skips fetch entirely and redirects user to clipper or paste workflow. Seed: medium.com (verified 2026-05-08 — returns 403 even with Mozilla User-Agent in stdlib urllib)."
+}
