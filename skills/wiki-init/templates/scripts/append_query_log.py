@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Append one row to wiki/.meta/query_log.jsonl.
 
-Called by `/wiki-query` (both paths) and by `/wiki-graph` (graph queries).
-The `query_skill` field distinguishes the row's origin:
+Called by `/wiki-query` (both paths), `/wiki-graph` (graph queries), and
+`/wiki-summarize` (topic-coverage reports). The `query_skill` field
+distinguishes the row's origin:
 
   - `query_skill: "query"` — `/wiki-query` invocation. Path A (inline) leaves
     most cost fields null; Path B parses them from the librarian's <usage>.
@@ -11,6 +12,11 @@ The `query_skill` field distinguishes the row's origin:
     no model call: all cost fields and `search_mode` are null. `pages_consulted`
     holds the result set (path / neighbors / subgraph pages); `duration_ms`
     is the script wall-clock.
+  - `query_skill: "summarize"` — `/wiki-summarize` invocation. Always
+    dispatches the librarian (survey-mode), so cost fields are parsed from
+    `<usage>` like query Path B. `search_mode` is `"slug-anchored"` for
+    Shape A (topic resolves to an existing slug → graph_query.neighbors_within)
+    or `"hybrid"` for Shape B (fuzzy fallback → hybrid_search.search).
 
 Schema documented in wiki/CLAUDE.md under "Telemetry".
 
@@ -26,6 +32,13 @@ Usage:
         --query "neighbors lethal-trifecta --depth 2" \
         --pages-consulted "agent-harness,prompt-injection,..." \
         --duration-ms 800
+
+    # /wiki-summarize Shape A (slug-anchored)
+    python append_query_log.py --wiki <wiki-root> --query-skill summarize \
+        --query "rag" --search-mode slug-anchored \
+        --pages-consulted "concepts/rag,concepts/agentic-rag,..." \
+        --filed-as "syntheses/rag-coverage" \
+        --total-tokens 18000 --tool-uses 14 --duration-ms 32000
 """
 
 from __future__ import annotations
@@ -41,8 +54,8 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
-VALID_SEARCH_MODES = {"inline", "hybrid", "hybrid_zvec", "bm25_only"}
-VALID_QUERY_SKILLS = {"query", "graph"}
+VALID_SEARCH_MODES = {"inline", "hybrid", "hybrid_zvec", "bm25_only", "slug-anchored"}
+VALID_QUERY_SKILLS = {"query", "graph", "summarize"}
 
 
 def optional_int(raw: str) -> int | None:
@@ -95,14 +108,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--query-skill",
         default="query",
         choices=sorted(VALID_QUERY_SKILLS),
-        help="Origin skill: 'query' (/wiki-query) or 'graph' (/wiki-graph). Default: query.",
+        help=(
+            "Origin skill: 'query' (/wiki-query), 'graph' (/wiki-graph), "
+            "or 'summarize' (/wiki-summarize). Default: query."
+        ),
     )
     p.add_argument(
         "--search-mode",
         default=None,
         help=(
             f"One of: {', '.join(sorted(VALID_SEARCH_MODES))}. "
-            "Required for query_skill=query; null for query_skill=graph."
+            "Required for query_skill in {query, summarize}; null for query_skill=graph."
         ),
     )
     p.add_argument("--pages-consulted", default="", help="Comma-separated slugs (or paths)")
@@ -151,10 +167,10 @@ def build_row(args: argparse.Namespace) -> dict:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
 
-    if args.query_skill == "query":
+    if args.query_skill in {"query", "summarize"}:
         if not args.search_mode:
             print(
-                "error: --search-mode is required when --query-skill=query",
+                f"error: --search-mode is required when --query-skill={args.query_skill}",
                 file=sys.stderr,
             )
             return 2

@@ -582,12 +582,14 @@ SessionStart hook); `cache_read_input_tokens` is the cache-hit volume
 that scales with replayed conversation context. `total_tokens` remains
 the aggregate.
 
-**`.meta/query_log.jsonl`** — one row per `/wiki-query` or `/wiki-graph`
-invocation. The `query_skill` field distinguishes the two origins.
-`/wiki-query` writes on both handling paths: inline (small wiki, no
-subagent) and librarian-dispatch (large wiki). `/wiki-graph` writes one
-row per traversal (path / neighbors / subgraph) — pure script output, no
-subagent, no model call.
+**`.meta/query_log.jsonl`** — one row per `/wiki-query`, `/wiki-graph`,
+or `/wiki-summarize` invocation. The `query_skill` field distinguishes
+the origins. `/wiki-query` writes on both handling paths: inline (small
+wiki, no subagent) and librarian-dispatch (large wiki). `/wiki-graph`
+writes one row per traversal (path / neighbors / subgraph) — pure script
+output, no subagent, no model call. `/wiki-summarize` always dispatches
+the librarian in survey-mode and writes a row structurally similar to
+`/wiki-query` Path B.
 
 ```json
 {
@@ -609,10 +611,16 @@ subagent, no model call.
 }
 ```
 
-`query_skill` values: `"query"` (default; `/wiki-query` invocations) or
-`"graph"` (`/wiki-graph` invocations). Forward-compatible with rows
-predating the field — the absence of `query_skill` is treated as `"query"`
-by `query_stats.py`.
+`query_skill` values: `"query"` (default; `/wiki-query` invocations),
+`"graph"` (`/wiki-graph` invocations), or `"summarize"` (`/wiki-summarize`
+invocations). Forward-compatible with rows predating the field — the
+absence of `query_skill` is treated as `"query"` by `query_stats.py`.
+
+`search_mode` values: `"inline"` (Path A), `"hybrid" | "hybrid_zvec" |
+"bm25_only"` (Path B retrieval modes from `hybrid_search.py`),
+`"slug-anchored"` (`/wiki-summarize` Shape A — topic resolved to an
+existing slug, pages from `graph_query.neighbors_within`), or `null`
+(graph rows).
 
 On Path A (`search_mode: inline`) all six cost fields are `null` — no
 subagent is dispatched, so no `<usage>` metadata reaches the caller;
@@ -626,6 +634,17 @@ are `null` (no model call). `query` carries the raw subcommand + args
 (e.g., `"neighbors lethal-trifecta --depth 2"`); `pages_consulted`
 carries the result set (path slugs / neighbor slugs / subgraph nodes);
 `duration_ms` is the script wall-clock from `graph_query.py`'s JSON output.
+
+For `query_skill: "summarize"` rows, structure mirrors `query` Path B —
+the librarian is always dispatched in survey-mode, so cost fields are
+parsed from its `<usage>` block. `search_mode` is `"slug-anchored"` for
+Shape A (topic resolves to an existing slug; pages = anchor +
+`neighbors_within(depth=1)`) or `"hybrid"` for Shape B (fuzzy fallback;
+pages = `hybrid_search.search` top-k=25 results). `query` carries the
+raw user topic; `filed_as` records the coverage-report synthesis slug
+(`syntheses/<slug>-coverage`) if filed, else `null`. Empty Shape B
+results write no row — the skill emits the dual-onramp inline without
+dispatching the librarian.
 
 `query_variations` (Phase 2 — multi-query expansion) is the JSON array of
 paraphrase variations the `/wiki-query` skill generated and passed to
@@ -1000,3 +1019,24 @@ stale: false
 ## Confidence
 <Overall confidence and caveats>
 ```
+
+#### Coverage-report syntheses (filed by `/wiki-summarize`)
+
+Topic-coverage reports are syntheses with two optional extension fields
+in addition to the standard frontmatter:
+
+- `subtype: coverage-report` — marks the page as a topic-coverage audit
+  rather than a question-answer synthesis. Distinguishes filed
+  `/wiki-summarize` output from filed `/wiki-query` output. Optional;
+  absent on standard syntheses.
+- `coverage_anchor_slug: <slug>` — present only when retrieval was
+  Shape A (topic resolved to an existing slug). The anchor slug is the
+  starting point for the depth-1 neighbor walk; future freshness checks
+  can watch for activity on this slug + its 1-hop neighbors.
+  `null` on Shape B (fuzzy retrieval, no anchor).
+
+Re-run convention is **overwrite** — `/wiki-summarize <topic>` files at
+`syntheses/<slug>-coverage.md` and a second invocation on the same topic
+overwrites the body and advances `last_updated`. Old versions live in
+`git log`. Body shape is the five-section survey: Themes / Agreements /
+Disagreements / Coverage gaps / Structural footprint.
