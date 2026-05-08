@@ -1,0 +1,241 @@
+---
+name: wiki-summarize
+description: Produce a structured topic-coverage report from the wiki — five sections (Themes / Agreements / Disagreements / Coverage gaps / Structural footprint) auditing what the wiki currently knows about a topic. Distinct from /wiki-query (specific question, prose synthesis) and /wiki-graph (deterministic graph traversal). Use when the user runs /wiki-summarize, asks "what does the wiki know about X", "summarize coverage of X", or wants the topic audit rather than a question-answer or a graph walk.
+argument-hint: "<topic>"
+---
+
+# wiki-summarize
+
+User-facing topic-coverage skill. Produces a five-section audit of the wiki's
+material on a topic:
+
+- **Themes** — sub-areas the wiki has accumulated material on.
+- **Agreements** — cross-source claims that align.
+- **Disagreements** — contradictions, open questions, existing `> [!WARNING]` callouts.
+- **Coverage gaps** — single-source pages (`verify: true`), low-confidence pages (`confidence < 0.7`), and pages stale relative to newer adjacent ingests.
+- **Structural footprint** — page count, hub status (inbound count of the anchor page if it's a hub), connected-component placement.
+
+**Two-shape retrieval.** Shape A (slug-anchored): when `<topic>` resolves to an
+existing page slug, retrieval = the anchor page + its depth-1 wikilink neighbors
+(via `wiki/.scripts/graph_query.py`). Shape B (fuzzy): otherwise, retrieval =
+top-25 hybrid-search results (via `wiki/.scripts/hybrid_search.py`). Auto-detect.
+
+**Always dispatches the librarian** (no inline path). Surveys benefit from
+synthesis regardless of wiki size — the five-section shape is non-trivial to
+produce inline.
+
+*Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 4) per `_template-complex/SKILL.md`.*
+
+## Workflow
+
+### 1. Validate input
+
+Expect a single positional argument: a topic. Bare slug (`rag`), `[[wikilink]]`,
+or multi-word phrase (`"agent memory architectures"`). If empty, ask what topic
+to survey.
+
+### 2. Locate the wiki
+
+- Find `wiki/CLAUDE.md` in the current directory or upward.
+- If none: tell the user, suggest `/wiki-init`.
+
+Record the main-session wall-clock start time before retrieval — the telemetry
+row in step 6 needs `duration_ms` even if the librarian's `<usage>` is missing
+or malformed.
+
+### 3. Two-shape retrieval
+
+Build the wikilink graph and try slug resolution first; fall through to fuzzy
+search on miss.
+
+```bash
+python - <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, "<wiki>/.scripts")
+from graph_analyzer import build_graph
+from graph_query import _resolve_slug, neighbors_within
+
+nodes, outbound, inbound = build_graph(Path("<wiki>"))
+adj = {n: outbound.get(n, set()) | inbound.get(n, set()) for n in nodes}
+
+raw = "<topic>"
+slug = _resolve_slug(raw, nodes)
+
+if slug in nodes:
+    pairs = neighbors_within(adj, slug, 1)
+    pages = [slug] + [s for s, _ in pairs]
+    inbound_count = len(inbound.get(slug, set()))
+    print("SHAPE_A", slug, len(pages), inbound_count)
+    for s in pages:
+        print(s)
+else:
+    print("SHAPE_B", raw, 0, 0)
+PY
+```
+
+The fourth field on the SHAPE_A line is the anchor's inbound-link count — pass
+this to the librarian via the prompt for the **Structural footprint** section
+(hub status: ≥50 inbound = hub).
+
+Capture stdout. The first line tells you which shape; subsequent lines are the
+slug list (Shape A only).
+
+#### Shape A — slug-anchored
+
+- `retrieval_shape = "slug-anchored"`, `coverage_anchor_slug = <resolved slug>`.
+- Page list = anchor + depth-1 neighbors. Sort: anchor first, then neighbors in
+  the order returned by `neighbors_within` (sorted by hop-distance asc, slug asc).
+- Map slugs to page paths via `<wiki>/indexes/index.md` or by scanning `<wiki>/{concepts,entities,sources,comparisons,syntheses}/<slug>.md`.
+- **Orphan case** (anchor exists but 0 neighbors): proceed with the single page.
+  The five-section survey will surface the isolation honestly in **Structural footprint**.
+
+#### Shape B — fuzzy
+
+- `retrieval_shape = "hybrid"`, `coverage_anchor_slug = null`.
+- Run hybrid search at higher top-k than `/wiki-query` (surveys want recall, not
+  precision):
+  ```bash
+  python <wiki>/.scripts/hybrid_search.py <wiki> "<topic>" --top-k 25
+  ```
+- Page list = JSON `results[].path` (the script's normalized field).
+- **Empty-result guard:** if `results` is empty, do **NOT** dispatch the librarian.
+  Emit the dual onramp inline:
+  > The wiki has no material on **<topic>**. Two ways forward:
+  > 1. **`/wiki-capture <source>`** — if you have a source on this topic, capture it.
+  > 2. **Web search** — want me to look for authoritative sources you could capture? (host harness's web-search tool, e.g., `WebSearch`).
+  >
+  > Both onramps are mandatory — pick either or both.
+  Skip steps 4–6. Do not write a telemetry row for an empty dispatch.
+
+### 4. Dispatch wiki-librarian (survey mode)
+
+Use the Agent tool to spawn the wiki-librarian:
+- **model:** `"sonnet"`
+- **description:** `"Wiki survey — <topic>"`
+- **prompt:**
+
+```text
+You are the wiki-librarian subagent. Find your full playbook by running
+Glob for '**/agents/wiki-librarian.md' and read it in full before starting.
+
+Survey mode: true
+
+Context for this run:
+- Topic: <user input>
+- Wiki root: <absolute path to wiki/>
+- Retrieval shape: <slug-anchored | hybrid>
+- Coverage anchor slug: <slug or null>
+
+Pages to read:
+- <path 1> — <title or slug>
+  <hop-distance hint for Shape A; search snippet for Shape B>
+- <path 2> — ...
+- ...
+
+Read these specific pages in full and produce the five-section
+topic-coverage survey per the survey-mode block in your playbook
+(Themes / Agreements / Disagreements / Coverage gaps / Structural
+footprint). Offer to file as syntheses/<slug>-coverage.md (overwrite
+on re-run).
+```
+
+The librarian's playbook owns the five-section template, the dual-onramp
+scoping (route "we don't have material on sub-area X" findings into
+**Coverage gaps** rather than interrupting with capture/web-search prompts),
+and the filing prose. This skill just dispatches.
+
+### 5. User-gated filing
+
+The librarian's last user-visible turn includes the filing question and, on
+opt-in, files `syntheses/<slug>-coverage.md` with frontmatter:
+
+```yaml
+---
+title: "<topic> — coverage report"
+type: synthesis
+subtype: coverage-report
+category: <category from anchor or dominant page>
+summary: "<one-sentence audit headline>"
+tags: [coverage-report, <topic-tags>]
+aliases: []
+confidence: 0.7
+sources:
+  - vault/<source-1>.md
+coverage_anchor_slug: <slug>   # null on Shape B
+last_updated: <YYYY-MM-DD>
+stale: false
+---
+```
+
+Re-run convention is **overwrite** — `<slug>-coverage.md` is the canonical
+report; old versions live in `git log`.
+
+### 6. Log query telemetry
+
+Write one row to `wiki/.meta/query_log.jsonl`. Field values:
+
+- `--query-skill summarize`
+- `--query "<raw user topic>"`
+- `--search-mode <slug-anchored|hybrid>` (Shape A → `slug-anchored`; Shape B → `hybrid`)
+- `--pages-consulted` — parse from the librarian's footer `Pages consulted: [[…]]` via regex `\[\[([^\]]+)\]\]` (same as `/wiki-query` Path B)
+- `--top-score` — Shape B: top result's normalized `score` from `hybrid_search.py` JSON; Shape A: `""` (no search score)
+- `--filed-as` — parse from librarian's `Filed as:` footer line (slug or `Not filed` → null)
+- Cost fields — parse independently from the `<usage>` block via `<field>:\s*(\d+)`. Pass `""` for any field that doesn't match. If the block is missing, pass `""` for all and fall back to main-session wall-clock for `duration_ms`.
+- `--duration-ms` — `<usage>` block's value, or main-session wall-clock fallback.
+- `--query-variations ""` — `/wiki-summarize` does not expand queries (single-topic surveys).
+
+```bash
+python <wiki>/.scripts/append_query_log.py --wiki <wiki> \
+  --query-skill summarize \
+  --query "<raw topic>" \
+  --search-mode <slug-anchored|hybrid> \
+  --pages-consulted "<comma-sep slugs>" \
+  --top-score <float or ""> \
+  --filed-as "<synthesis-slug or "">" \
+  --total-tokens <N or ""> \
+  --input-tokens <N or ""> \
+  --cache-creation-input-tokens <N or ""> \
+  --cache-read-input-tokens <N or ""> \
+  --output-tokens <N or ""> \
+  --tool-uses <N or ""> \
+  --duration-ms <N>
+```
+
+Telemetry is observational — if the appender exits non-zero, mention it briefly
+in the relay but do NOT retry and do NOT fail the survey.
+
+### 7. Relay
+
+Return the librarian's survey to the user. Footer (same parser contract as
+`/wiki-query`):
+
+```text
+Pages consulted: [[page-1]], [[page-2]], …
+Filed as: syntheses/<slug>-coverage.md   (or: Not filed)
+```
+
+## Rules
+
+- **Always dispatches the librarian.** No inline path. Survey output is
+  non-trivial to produce inline; the cost is justified by the structured
+  five-section payoff.
+- **Shape auto-detect, no asking.** If the topic resolves to a slug, Shape A
+  fires silently. If not, Shape B fires silently. Never ask the user "is this a
+  slug or a phrase?" — the resolution is mechanical.
+- **Slug ambiguity → ask once.** If the resolved slug clashes with another
+  resolvable slug (e.g., `karpathy` matches both `andrej-karpathy` and
+  `karpathy-llm-wiki-pattern`), ask a single bounded multiple-choice
+  clarification before dispatching. Lifted from `/wiki-graph`'s convention.
+- **Empty Shape B = skill-side onramp.** Do not dispatch the librarian on zero
+  hits. The dual-onramp output IS the answer.
+- **Filing is user-gated.** Per project HITL discipline, never file without
+  explicit opt-in.
+- **Re-run = overwrite.** `<slug>-coverage.md` is the canonical report; second
+  run on the same topic overwrites the body and advances `last_updated`. Do not
+  date-prefix.
+- **No edits to log.md.** Read operations don't append to `log.md`;
+  `query_log.jsonl` is the audit trail. Same as `/wiki-query` and `/wiki-graph`.
+- **Top-k for Shape B is hardcoded at 25.** Survey-mode just *is* this — one
+  fewer knob the user thinks about. If telemetry later shows recall problems,
+  re-tune in a follow-up.
