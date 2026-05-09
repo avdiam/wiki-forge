@@ -60,7 +60,15 @@
     "proceedings.mlr.press",
     "papers.nips.cc",
     "aclanthology.org",
-    "ieeexplore.ieee.org"
+    "ieeexplore.ieee.org",
+    "cursor.com/docs",
+    "claude.com",
+    "platform.claude.com",
+    "docs.langchain.com",
+    "reference.langchain.com",
+    "langchain.com",
+    "resources.anthropic.com",
+    "kimi-k2.org"
   ],
   "_credibility_tier_1_doc": "Primary / authoritative sources. Vendor official docs, peer-reviewed papers, standards bodies, .edu/.gov, official vendor GitHub + HuggingFace orgs (path-prefix match), peer-reviewed conference proceedings (PMLR / NeurIPS / ACL / IEEE Xplore). Seed list extends on user confirmation at /wiki-corroborate decision gate when an unclassified domain returns a high-quality hit. github.com/<vendor> and huggingface.co/<vendor> are kept symmetric — model weights distribution carries the same authority as code distribution. Bare github.com / huggingface.co (in tier-3) is the fallback for unaffiliated user repos / community blog posts.",
   "credibility_tier_2": [
@@ -83,7 +91,8 @@
     "karpathy.github.io",
     "karpathy.ai",
     "fly.io",
-    "linkedin.com/in/"
+    "linkedin.com/in/",
+    "huggingface.co/blog"
   ],
   "_credibility_tier_2_doc": "Established secondary sources with editorial standards. Named publications, established trade press, known-authority personal sites, LinkedIn profile pages (in/ path-prefix only — distinct from posts/pulse). Seed list extends on user confirmation.",
   "credibility_tier_3": [
@@ -91,7 +100,7 @@
     "substack.com",
     "dev.to",
     "hashnode.com",
-    "huggingface.co/blog",
+    "forum.cursor.com",
     "github.com",
     "gist.github.com"
   ],
