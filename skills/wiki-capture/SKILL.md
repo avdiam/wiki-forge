@@ -140,13 +140,18 @@ rules); decisions about what to keep happen here, not later.
 
 ### 5. Write to `vault/`
 
-Filename: `vault/<YYYY-MM-DD>-<slug>.md`
+Filename: `vault/<dest-dir>/<YYYY-MM-DD>-<slug>.md` (or `vault/<YYYY-MM-DD>-<slug>.md` at root for ad-hoc captures).
 
+- **Destination directory** — pick the folder that matches the source type. The vault is organized by source kind, not by topic; ingest discipline handles topic taxonomy on the wiki side. Current conventions:
+  - **`Web Articles/`** — URL captures of blog posts, news articles, Medium pieces, tutorials, vendor docs pages. Symmetric with the clipper's destination (clipper writes here too), so dedup-by-URL works across both onramps.
+  - **`Research Papers/`** — arxiv PDFs, conference proceedings, peer-reviewed papers. Convention to formalize on first paper capture; create the dir then if it doesn't exist. The two-step arxiv recipe (clipper-rules Step 7) lands here, not in `Web Articles/`.
+  - **Root `vault/`** — pasted text, conversation references, file-path captures, anything without a clean source-type bucket. Acceptable as a catch-all; don't agonize. The URL-index scan picks up root-level files alongside subdir files.
+  - **Future dirs** — if a new source type recurs (transcripts, gists, notes), promote it to its own folder when the third instance arrives. Don't pre-create empty dirs.
 - **Date**: today's ISO date (the **capture date** — when this file lands in `vault/`). NOT the source's publication date, even if a publication date is plausibly inferable. Capture date is always knowable; publication date often isn't (gists, undated posts, preprint-vs-final, post-publication edits). The wiki schema records publication date separately as an optional `published:` field on the source-summary page if it's reliably knowable.
   - **Manual-drop carve-out:** if the user drops a file into `vault/` with an existing `YYYY-MM-DD-<slug>.md` filename (because the source they pulled it from was auto-named with publication date), do **not** rename to today's date. The capture-date convention applies *when this skill names the file*; manual drops are kept as-is unless the user explicitly requests renaming. This avoids "fixing" filenames that aren't broken and preserves the rare case where the user genuinely wants publication-date filing. (Filename hygiene — apostrophes, spaces, em-dashes — is a separate concern handled at the ingestor gate, not here.)
 - **Slug**: kebab-case, 3–5 words from the title.
 
-Example: `vault/2026-04-15-karpathy-llm-wiki.md`
+Example: `vault/Web Articles/2026-04-15-karpathy-llm-wiki.md`
 
 Prepend frontmatter:
 
@@ -198,10 +203,21 @@ the user.
 ### 5b. Append to the vault URL index (best-effort)
 
 After the vault write succeeds, append the new file's URL entry to the
-precomputed dedup index used by the clipper:
+precomputed dedup index used by the clipper. **Pass the vault-relative
+path you just wrote, verbatim** — the `--append` argument matches the
+file's location, so a `Web Articles/` capture passes `Web Articles/<name>`,
+a `Research Papers/` capture passes `Research Papers/<name>`, a root
+capture passes just `<name>`:
 
 ```bash
+# Web article capture
 python wiki/.scripts/regen_vault_index.py --vault vault --append "Web Articles/<filename>"
+
+# Paper capture
+python wiki/.scripts/regen_vault_index.py --vault vault --append "Research Papers/<filename>"
+
+# Root capture (pasted text, conversation ref, etc.)
+python wiki/.scripts/regen_vault_index.py --vault vault --append "<filename>"
 ```
 
 Skip-if-URL-present semantics — duplicate URLs are no-op'd silently. This

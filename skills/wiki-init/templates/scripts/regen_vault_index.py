@@ -68,12 +68,25 @@ def _entry_from_skipped(md: Path, vault_root: Path) -> dict | None:
 
 
 def scan_vault(vault_root: Path) -> list[dict]:
-    """Walk Web Articles/ + .skipped/, extract one entry per file with a url:."""
+    """Walk every saved content location + .skipped/, one entry per file with a url:.
+
+    Saved scope mirrors triage_backlog.py — every non-`.`/`_` subdir of vault
+    (Web Articles/, future Research Papers/, etc.) — plus root-level *.md for
+    ad-hoc captures. .`/`_`-prefixed dirs (mailbox, indexes, obsidian
+    internals) are excluded. `.skipped/` is the lone exception: explicitly
+    walked as the rejected-URL stub dir, with its own entry shape.
+    """
     entries: list[dict] = []
 
-    articles_dir = vault_root / "Web Articles"
-    if articles_dir.is_dir():
-        for md in sorted(articles_dir.glob("*.md")):
+    for md in sorted(vault_root.glob("*.md")):
+        entry = _entry_from_saved(md, vault_root)
+        if entry is not None:
+            entries.append(entry)
+
+    for child in sorted(vault_root.iterdir()):
+        if child.name.startswith((".", "_")) or not child.is_dir():
+            continue
+        for md in sorted(child.glob("*.md")):
             entry = _entry_from_saved(md, vault_root)
             if entry is not None:
                 entries.append(entry)
