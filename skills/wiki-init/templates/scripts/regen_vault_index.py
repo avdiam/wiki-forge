@@ -33,7 +33,10 @@ from frontmatter import parse_frontmatter
 
 
 INDEX_REL_PATH = "_indexes/url-index.json"
-GENERATOR_LABEL = "wiki/.scripts/regen_vault_index.py"
+
+_SCRIPT_PATH = Path(__file__).resolve()
+_WIKI_ROOT = _SCRIPT_PATH.parent.parent
+GENERATOR_LABEL = f"{_WIKI_ROOT.name}/{_SCRIPT_PATH.relative_to(_WIKI_ROOT).as_posix()}"
 
 
 def _entry_from_saved(md: Path, vault_root: Path) -> dict | None:
@@ -96,7 +99,7 @@ def _build_index(entries: list[dict]) -> dict:
 
 def _write_atomic(index_path: Path, data: dict) -> None:
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = index_path.with_suffix(index_path.suffix + ".tmp")
+    tmp = index_path.with_name(index_path.name + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     tmp.replace(index_path)
 
