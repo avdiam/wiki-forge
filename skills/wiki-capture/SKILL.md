@@ -195,6 +195,22 @@ omit `source_tags:` (the field is optional) and set `tag_source: clippings-marke
 Then the cleaned markdown body. Write the file and confirm the path to
 the user.
 
+### 5b. Append to the vault URL index (best-effort)
+
+After the vault write succeeds, append the new file's URL entry to the
+precomputed dedup index used by the clipper:
+
+```bash
+python wiki/.scripts/regen_vault_index.py --vault vault --append "Web Articles/<filename>"
+```
+
+Skip-if-URL-present semantics — duplicate URLs are no-op'd silently. This
+is an optimization, not a correctness gate: if the script errors (index
+missing, frontmatter empty, race with another writer), log the stderr line
+and continue. The wiki-side full regen at the next `/wiki-triage` will
+reseat the index regardless. Do not block the handoff to `/wiki-ingest`
+on this step.
+
 ### 6. Hand off to `/wiki-ingest`
 
 Tell the user:

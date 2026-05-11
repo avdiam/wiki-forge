@@ -194,13 +194,30 @@ Triaged in session <N> (<date>) via /wiki-triage.
 Pre-screened by wiki/.scripts/triage_backlog.py + wiki/.scripts/pre_screen.py.
 ```
 
-### 7. Report
+### 7. Regenerate the vault URL index
+
+Triage has just walked `vault/Web Articles/` + `vault/.skipped/` (and may
+have just written new skip stubs in step 5) — exactly the moment the
+clipper-side URL dedup index can be authoritatively refreshed:
+
+```bash
+python <wiki>/.scripts/regen_vault_index.py --vault <vault>
+```
+
+This overwrites `vault/_indexes/url-index.json` from a full vault scan,
+correcting any drift accumulated since the last regen (incremental appends
+from clipper PUTs and `/wiki-capture` are best-effort and may miss entries
+across REST race windows). Single pass — the vault walk has already
+happened in step 1. Commit the index alongside the triage file.
+
+### 8. Report
 
 Summarize to the user:
 - Files skipped (count + reasons)
 - Batches created (count + sizes + labels)
 - Maybes deferred (count)
 - Triage file written at `dev/ingest-triage-<date>.md`
+- URL index regenerated (`vault/_indexes/url-index.json`, N entries)
 - Suggested next step: "Pick up Batch 1 with `/wiki-ingest` — one article at a time."
 
 ## Rules
