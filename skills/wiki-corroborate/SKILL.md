@@ -208,6 +208,81 @@ frontmatter, append `(already in wiki — this is the source we're trying
 to corroborate)` to the title line. Cross-check by reading the flag's
 page frontmatter once at loop entry.
 
+#### 4.5b — Coverage gate (v1.3)
+
+After emitting the per-flag block in step 4.5 but BEFORE writing the
+telemetry row in step 4.6, evaluate classifier coverage on the filtered
+candidate set:
+
+```python
+total = len(filtered_candidates)  # post-step-4.4 list
+unclassified = sum(1 for c in filtered_candidates if c["tier"] == "unclassified")
+unclassified_ratio = unclassified / total if total else 0
+```
+
+If `unclassified_ratio > 0.60`, surface to the user:
+
+```text
+⚠ Classifier coverage gap: <unclassified> of <total> candidates are
+unclassified.
+Propose tiers for the unclassified set now? Y/N
+```
+
+**Threshold rationale (tuned 2026-05-12 from 29-row dataset; see session
+55 narrative in `dev/sessions.md`).** The largest natural gap in observed
+per-row `unclassified_ratio` lies between 0.50 and 0.62 (gap = 0.12; all
+other adjacent-value gaps ≤ 0.10). A threshold of `> 0.60` sits robustly
+inside that gap — fires on the silting tail (17/29 rows in tuning data,
+including the 2026-05-08 batch with 0.597 aggregate silting rate) without
+firing on clean rows where vendor docs were already classified (≤ 0.50,
+11/29 rows). The threshold is the strict-greater form so a `0.60` row
+doesn't trip the gate; the gap above 0.60 ensures the next data point is
+already 0.62+.
+
+**On `Y` — enter batch cascade-update flow.** For each unclassified
+domain in the filtered set:
+
+1. Show the domain (with path prefix preserved per step 4.3 — e.g.,
+   `github.com/anthropic`, `linkedin.com/in/<user>`).
+2. Prompt: `tier? (1 / 2 / 3 / denylist / skip)`.
+3. Collect the user's choice verbatim; never assume.
+
+After all domains have been classified, write the accepted entries to
+`wiki/.scripts/url_classifier_lists.json` in one atomic edit (tier_1 /
+tier_2 / tier_3 entries go into the corresponding seed list; `denylist`
+entries go into the denylist; `skip` entries are NOT persisted — they
+re-surface on the next `/wiki-corroborate` invocation that retrieves
+them). Commit with message:
+
+```text
+telemetry: extend url_classifier_lists.json — <N> domains from <page_slug> coverage gate
+```
+
+Then proceed to step 4.6.
+
+**On `N`** — proceed directly to step 4.6. The per-line
+`[unclassified — propose tier?]` annotations from step 4.5 still appear
+inline (the gate is **additive**, not a replacement); the user can
+classify ad-hoc on the next operation. The gate's job is to surface the
+option in batch — silence on `N` is a valid choice.
+
+**On silence or ambiguous reply** — treat as `N` (proceed to 4.6). Do
+not re-ask; the gate is a soft prompt, not a hard stop. The user can
+re-run `/wiki-corroborate <slug>` for another chance, and the per-line
+annotations remain as a fallback in the meantime.
+
+**Skip when `total == 0`** — WebSearch failed or every candidate was
+dropped by step 4.4's filter. The gate's coverage math is undefined for
+an empty filtered set; jump directly to step 4.6 and write the row with
+the v1.2 fields as today.
+
+**Telemetry note (forward-insurance).** The current row schema (v1.2)
+does not record gate fire / decision. Consider adding
+`coverage_gate: {fired: <bool>, decision: "Y" | "N" | null}` as a v1.3
+row-schema extension so future analysis can measure cascade-update
+effectiveness. Filed as Phase C exit follow-on; not blocking for the
+gate ship.
+
 #### 4.6 — Append a telemetry row
 
 ```bash
