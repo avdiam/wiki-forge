@@ -216,6 +216,7 @@ python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> \
   --callout-text "<callout, JSON-quoted if needed>" \
   --candidates-returned <N filtered candidates> \
   --candidates-by-tier '{"tier_1":N,"tier_2":N,"tier_3":N,"unclassified":N}' \
+  --candidate-urls '[{"url":"<url>","tier":"<tier>"}, ...]' \
   --include-tier-3-flag <true|false> \
   --user-action deferred
 ```
@@ -224,6 +225,20 @@ python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> \
 (to `captured`) and the ingestor (sets `flag_cleared_at_ingest` on Y). Pass
 `--candidates-returned` as the count of items shown to the user (post-filter),
 not the raw WebSearch count.
+
+**`--candidate-urls`** takes the same post-filter `[{url, tier}, ...]` list
+produced in step 4.3 (after the step 4.4 filter — i.e. denylist dropped,
+`tier_3` dropped unless `--include-tier-3` was passed). The script extracts
+each URL's host (with the first path segment preserved when present, so
+`github.com/anthropic` and `linkedin.com/in/<user>` retain their
+tier-distinguishing prefix) and stores them as
+`candidate_domains: [{domain, tier}, ...]` on the row. Pass `'[]'` when
+WebSearch failed or every candidate was dropped — the column distinguishes
+"saw zero" (empty list) from "field absent on pre-v1.2 rows" (null). The
+field's purpose is **seed-list backfill**: analysis of unclassified
+domains across many rows surfaces real-world host patterns the
+`url_classifier_lists.json` seeds miss, so the user can extend the lists
+at decision-gate time per the cascade-update rule.
 
 ### 5. Footer
 

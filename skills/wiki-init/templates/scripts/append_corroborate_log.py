@@ -24,10 +24,14 @@ Usage:
         --user-action captured \\
         --captured-to-vault "vault/Web Articles/2026-05-15-..."
 
-    # Backfill at ingest — flag cleared, set the timestamp on the most recent
-    # row matching --page-slug AND user_action=captured.
+    # Backfill at ingest — verify-clearing decision on the most recent row
+    # matching --page-slug. Decision is one of Y|P|N. On Y, stamps
+    # flag_cleared_at_ingest with the current timestamp; on P/N leaves it
+    # null. flag_decision_at_ingest is always set so N/P decisions are
+    # audit-visible too. Matches deferred rows as well as captured rows so
+    # parallel-path captures (e.g., /wiki-triage) close the loop.
     python append_corroborate_log.py --wiki <wiki-root> --backfill-ingest \\
-        --page-slug claude-managed-agents
+        --page-slug claude-managed-agents --decision Y
 """
 from __future__ import annotations
 
@@ -36,6 +40,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -45,6 +50,7 @@ if hasattr(sys.stdout, "reconfigure"):
 VALID_USER_ACTIONS = {"captured", "skipped", "deferred"}
 VALID_PAGE_BUCKETS = {"A", "B", "C", "D"}
 VALID_PAGE_TYPES = {"concept", "entity", "comparison", "synthesis"}
+VALID_DECISIONS = {"Y", "P", "N"}
 
 
 def optional_int(raw: str) -> int | None:
@@ -85,6 +91,57 @@ def candidates_dict(raw: str) -> dict:
     return parsed
 
 
+def _domain_from_url(url: str) -> str:
+    """Extract host + first path segment from a URL, lowercased; strip 'www.'
+    for normalization. The first segment is preserved (when present) because
+    tier classification uses path-prefix patterns for vendor-org cases like
+    github.com/anthropic and linkedin.com/in/<user>. urlsplit handles missing
+    schemes by parsing the whole string as path — fall back accordingly so
+    unparsable inputs still log SOMETHING auditable rather than empty."""
+    parts = urlsplit(url.strip())
+    if parts.netloc:
+        host = parts.netloc.lower().strip()
+        path = parts.path or ""
+    else:
+        # No scheme: urlsplit dumps everything into .path
+        raw = parts.path or ""
+        segs = raw.lstrip("/").split("/", 1)
+        host = segs[0].lower().strip()
+        path = "/" + segs[1] if len(segs) > 1 else ""
+    if host.startswith("www."):
+        host = host[4:]
+    # Append first non-empty path segment when present
+    first = path.lstrip("/").split("/", 1)[0]
+    if first:
+        return f"{host}/{first}"
+    return host
+
+
+def candidate_urls(raw: str) -> list[dict] | None:
+    """Parse --candidate-urls as a JSON array of {url, tier} records. Each
+    record's url is reduced to its host (via _domain_from_url) before the
+    row is written; tier is preserved verbatim. Returns a list of
+    {domain, tier} records ready for the row, or None when the arg was
+    omitted (distinguishes pre-fix rows from rows that genuinely saw zero
+    candidates — those pass --candidate-urls '[]')."""
+    if raw is None:
+        return None
+    if raw == "":
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise argparse.ArgumentTypeError(f"--candidate-urls must be JSON: {e}")
+    if not isinstance(parsed, list):
+        raise argparse.ArgumentTypeError("--candidate-urls must be a JSON array")
+    out = []
+    for item in parsed:
+        if not isinstance(item, dict) or "url" not in item or "tier" not in item:
+            raise argparse.ArgumentTypeError(f"each --candidate-urls record needs url+tier: {item!r}")
+        out.append({"domain": _domain_from_url(item["url"]), "tier": item["tier"]})
+    return out
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Append/backfill rows in .meta/corroborate_log.jsonl")
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
@@ -92,7 +149,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     mode.add_argument("--backfill", action="store_true",
                       help="Mutate the most recent row matching --page-slug (and user_action=deferred unless --user-picked given) — sets user_picked / user_action / captured_to_vault.")
     mode.add_argument("--backfill-ingest", action="store_true",
-                      help="Set flag_cleared_at_ingest=now on the most recent row matching --page-slug AND user_action=captured (ingestor's verify-clearing gate Y branch).")
+                      help="Stamp the verify-clearing decision on the most recent row matching --page-slug. Requires --decision Y|P|N. On Y sets flag_cleared_at_ingest=now; on P/N leaves it null. Always sets flag_decision_at_ingest. Matches any user_action so parallel-path captures (e.g., /wiki-triage) close the loop.")
+    p.add_argument("--decision", choices=sorted(VALID_DECISIONS), default=None,
+                   help="Verify-clearing decision for --backfill-ingest. Y=clear; P=partial-narrow; N=retain.")
     # Initial-write fields
     p.add_argument("--page-slug", required=True)
     p.add_argument("--page-type", choices=sorted(VALID_PAGE_TYPES), default=None)
@@ -100,6 +159,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--callout-text", default=None)
     p.add_argument("--candidates-returned", type=optional_int, default=None)
     p.add_argument("--candidates-by-tier", type=candidates_dict, default={})
+    p.add_argument("--candidate-urls", type=candidate_urls, default=None,
+                   help="JSON array of {url, tier} records (one per filtered candidate). Hosts are extracted and stored as candidate_domains: [{domain, tier}, ...]. Pass '[]' for genuinely-zero-candidate runs; omit entirely on backfill operations.")
     p.add_argument("--include-tier-3-flag", type=optional_bool, default=False)
     # Action fields
     p.add_argument("--user-picked", type=optional_str, default=None,
@@ -123,11 +184,13 @@ def build_row(args: argparse.Namespace) -> dict:
         "callout_text": args.callout_text,
         "candidates_returned": args.candidates_returned,
         "candidates_by_tier": args.candidates_by_tier,
+        "candidate_domains": args.candidate_urls,
         "include_tier_3_flag": args.include_tier_3_flag,
         "user_picked": args.user_picked,
         "user_action": args.user_action,
         "captured_to_vault": args.captured_to_vault,
         "flag_cleared_at_ingest": None,
+        "flag_decision_at_ingest": None,
         "total_tokens": args.total_tokens,
         "tool_uses": args.tool_uses,
         "duration_ms": args.duration_ms,
@@ -163,14 +226,21 @@ def _backfill_capture(rows: list[dict], args: argparse.Namespace) -> int:
 
 
 def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
-    """Set flag_cleared_at_ingest=now on the most recent row matching
-    page_slug AND user_action='captured'. Returns row index."""
+    """Stamp the verify-clearing decision on the most recent row matching
+    page_slug. flag_decision_at_ingest is always set (Y/P/N);
+    flag_cleared_at_ingest is set only on Y. Matches any user_action so
+    parallel-path captures (e.g., the user picked the source via
+    /wiki-triage instead of /wiki-corroborate -> /wiki-capture) still
+    close the corroborate-log loop. Returns row index."""
     for i in range(len(rows) - 1, -1, -1):
         r = rows[i]
-        if r.get("page_slug") == args.page_slug and r.get("user_action") == "captured":
-            r["flag_cleared_at_ingest"] = datetime.now().isoformat(timespec="seconds")
+        if r.get("page_slug") == args.page_slug:
+            now_iso = datetime.now().isoformat(timespec="seconds")
+            r["flag_decision_at_ingest"] = args.decision
+            if args.decision == "Y":
+                r["flag_cleared_at_ingest"] = now_iso
             return i
-    raise SystemExit(f"error: no captured row for page_slug={args.page_slug!r} to flag_cleared")
+    raise SystemExit(f"error: no row for page_slug={args.page_slug!r} to backfill")
 
 
 def main(argv: list[str]) -> int:
@@ -195,9 +265,12 @@ def main(argv: list[str]) -> int:
             _write_rows(log_path, rows)
             print(f"backfilled row {idx} for page_slug={args.page_slug} (action={args.user_action})")
         else:
+            if args.decision is None:
+                print("error: --backfill-ingest requires --decision Y|P|N", file=sys.stderr)
+                return 2
             idx = _backfill_ingest(rows, args)
             _write_rows(log_path, rows)
-            print(f"backfilled row {idx} flag_cleared_at_ingest for page_slug={args.page_slug}")
+            print(f"backfilled row {idx} decision={args.decision} for page_slug={args.page_slug}")
         return 0
 
     # Initial write — require the schema-shape fields

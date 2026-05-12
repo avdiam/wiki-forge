@@ -834,11 +834,19 @@ flag. The two backfills make the row a one-stop record of "flag → search
   "callout_text": "the 100KB persistent-memory cap and...",
   "candidates_returned": 5,
   "candidates_by_tier": {"tier_1": 2, "tier_2": 2, "tier_3": 1},
+  "candidate_domains": [
+    {"domain": "docs.anthropic.com/claude", "tier": "tier_1"},
+    {"domain": "github.com/anthropic", "tier": "tier_1"},
+    {"domain": "theverge.com/2026", "tier": "tier_2"},
+    {"domain": "bloomberg.com/news", "tier": "tier_2"},
+    {"domain": "medium.com/@joeNjenga", "tier": "tier_3"}
+  ],
   "include_tier_3_flag": false,
   "user_picked": "https://docs.anthropic.com/...",
   "user_action": "captured",
   "captured_to_vault": "vault/Web Articles/2026-05-15-...",
   "flag_cleared_at_ingest": "2026-05-15T14:55:11",
+  "flag_decision_at_ingest": "Y",
   "total_tokens": null,
   "tool_uses": null,
   "duration_ms": null
@@ -858,12 +866,39 @@ on the picked URL — backfilled by the skill or by `/wiki-capture`), or
 future interactive flow). `user_picked` and `captured_to_vault` are
 populated only in the `captured` state.
 
-`flag_cleared_at_ingest` is backfilled by the wiki-ingestor when the
-takeaway-approval gate's verify-clearing surface fires Y (clear flag);
-matches by `page_slug` + most-recent `user_action: captured`. Same
-shape as the `commit_hash` repair pattern in
-`vault/.wiki-identity.md` § Telemetry repair. Stays `null` on N
-(retain) and P (partial-narrow) decisions.
+`candidate_domains` (added v1.2) — list of `{domain, tier}` records, one
+per filtered candidate the skill surfaced (post-filter, i.e. denylist
+dropped and `tier_3` dropped unless `--include-tier-3` was passed).
+Domains are extracted from URLs with host + first path segment
+preserved when present (e.g., `github.com/anthropic`,
+`linkedin.com/in/<user>`) so path-prefix tier patterns stay
+distinguishable in analysis. Empty list `[]` means WebSearch failed or
+every candidate was dropped; `null` means the row predates the field
+(pre-v1.2 rows). Purpose: **seed-list backfill** — grouping
+`unclassified` domains across many rows surfaces real-world host
+patterns the `url_classifier_lists.json` seeds miss, so the cascade-
+update rule can extend the lists at decision-gate time with data, not
+speculation. Privacy posture: domain only; URL path tail / query
+strings / fragments are dropped — no per-candidate forensic detail
+beyond the path-prefix needed for tier matching.
+
+`flag_decision_at_ingest` is backfilled by the wiki-ingestor on every
+verify-clearing decision (Y, P, AND N) at the takeaway-approval gate —
+captures the user's choice so per-decision telemetry analysis is
+possible. Values: `"Y"` (clear), `"P"` (partial-narrow), `"N"`
+(retain), or `null` (decision hasn't fired yet, or no corroborate
+row exists for the touched page). Matches by `page_slug` + most-recent
+row regardless of `user_action` state — parallel-path captures (e.g.,
+the source surfaced via `/wiki-triage` instead of
+`/wiki-corroborate` → `/wiki-capture`) still close the loop.
+
+`flag_cleared_at_ingest` is the dependent stamp: set to the ISO
+timestamp only on Y (full clear); left `null` on P / N / no-decision.
+Invariant: `flag_cleared_at_ingest != null ⟺ flag_decision_at_ingest == "Y"`.
+The two fields are intentionally paired — the timestamp answers "when
+did the flag clear?" and the decision field answers "what did the user
+decide on each touch?" Same shape as the `commit_hash` repair pattern
+in `vault/.wiki-identity.md` § Telemetry repair.
 
 Cost fields stay `null` in v1 — `/wiki-corroborate` is main-session
 only (no subagent dispatched), and per the session 42 finding

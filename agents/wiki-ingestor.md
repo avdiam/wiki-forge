@@ -212,11 +212,11 @@ gap it fills); leave **`## Pages updated`** empty until step 3e.
 
   **Typed-edge obligation (active).** Whenever you write a `> [!WARNING] Contradiction Detected:` callout — whether plan-listed or late-found — also populate the `contradicts:` frontmatter on the touched page with quoted-flow wikilinks to the contradicting page(s). Add the inverse edge to each referenced page's `contradicts:` field so the relationship is symmetric (the `check_asymmetric_contradictions` lint flags one-way edges). Canonical YAML: `contradicts: ["[[other-slug]]"]`. Same pattern when surfacing supersession (entity X replaces entity Y): write `supersedes: ["[[Y]]"]` on X and `superseded_by: ["[[X]]"]` on Y, with `status: deprecated` on Y. The `check_invalid_typed_links` lint flags wikilinks in these fields that don't resolve. Per-ingest cost is near-zero — the wikilinks are already in the callout you're writing.
 - **Claim-tag markers (concept / entity / comparison / synthesis pages only).** Apply `*[INFERRED]*` after claims you synthesized across sources or inferred from one. Apply `*[AMBIGUOUS]*` after a specific contested or single-source claim where `verify: true` would be too coarse (the rest of the page is solid; one claim is the issue). Untagged claims are implicitly EXTRACTED — do not mark verbatim or near-verbatim source content. Skip on source pages entirely. The `excessive_ambiguous` lint flags pages with more than 3 `*[AMBIGUOUS]*` markers. Per wiki/CLAUDE.md "claim-tag inline markers" rule.
-- **`verify: true` re-evaluation (closes the loop with `/wiki-corroborate`).** Inspect the dispatch prompt's `Verify-clearing decisions:` block for a line matching this page's slug. Apply the user's choice as part of the EDIT body:
-  - **Y (Clear).** Remove the `verify: true` line from the page's frontmatter; delete the inline `⚠ needs verification:` callout from the body (or its `> [!WARNING] needs verification:` blockquote variant — match either shape). Bump `confidence:` one tier (e.g., 0.7 → 0.8), capped at 1.0. **Track this slug in working state** for the post-commit telemetry backfill (fires in step 5 after commit lands — defers the stamp past the late-contradiction rollback boundary so a halt-and-rollback doesn't leave a phantom `flag_cleared_at_ingest` against changes that never reached HEAD).
+- **`verify: true` re-evaluation (closes the loop with `/wiki-corroborate`).** Inspect the dispatch prompt's `Verify-clearing decisions:` block for a line matching this page's slug. Apply the user's choice as part of the EDIT body, AND **track every slug+decision in working state** (Y, P, AND N) for the post-commit telemetry backfill in step 5 — every decision is audit-visible, not just Y. The backfill defers past the late-contradiction rollback boundary so a halt-and-rollback doesn't leave a phantom stamp against changes that never reached HEAD.
+  - **Y (Clear).** Remove the `verify: true` line from the page's frontmatter; delete the inline `⚠ needs verification:` callout from the body (or its `> [!WARNING] needs verification:` blockquote variant — match either shape). Bump `confidence:` one tier (e.g., 0.7 → 0.8), capped at 1.0.
   - **N (Retain).** Leave `verify: true` and the inline callout intact. New source still gets added to `sources:` and the `### From <source>` evidence subsection lands as usual; the flagged claim is just not yet considered corroborated.
   - **P (Partial: "<new text>").** Keep `verify: true`; rewrite the inline callout to use the user-supplied narrower text. The new callout body replaces everything after `⚠ needs verification:` (or the `> [!WARNING]` blockquote variant) up to the first blank line / next-block marker.
-  - **Page not listed in the decisions block.** Treat as N (no decision = no change). Do not auto-clear under any circumstance.
+  - **Page not listed in the decisions block.** Treat as N (no decision = no change). Do not auto-clear under any circumstance. **Do not** include unlisted slugs in the telemetry backfill — only slugs with explicit Y/P/N decisions get logged.
 
   Skip this bullet entirely when the dispatch prompt's `Verify-clearing decisions:` is `none` — most ingests don't touch flagged pages.
 
@@ -326,23 +326,29 @@ python <wiki>/.scripts/append_log.py ingest \
 ```
 
 **Post-commit verify-clearing telemetry backfill.** For each slug tracked
-during step 3b's Y branch (verify-clearing decision), stamp `flag_cleared_at_ingest`
-on the most-recent matching `corroborate_log.jsonl` row:
+during step 3b's verify-clearing decision (Y, P, AND N — every decision is
+audit-visible), stamp the decision on the most-recent matching
+`corroborate_log.jsonl` row:
 
 ```bash
 python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> --backfill-ingest \
-  --page-slug <slug>
+  --page-slug <slug> --decision <Y|P|N>
 ```
 
-The script targets the most recent row matching `page_slug` AND
-`user_action: captured` and stamps the timestamp. Same shape as the
-`commit_hash` repair pattern in `vault/.wiki-identity.md` § Telemetry
-repair. If no matching row exists (e.g., the user captured the source
-manually without going through `/wiki-corroborate`), the script returns
-non-zero — note in the report and continue. Telemetry is observational,
-not a contract; firing post-commit avoids a phantom stamp if a late
-contradiction rolled back the writes. Skip entirely when no Y decisions
-fired in this ingest.
+The script targets the most recent row matching `page_slug` regardless of
+`user_action` state — parallel-path captures (e.g., the user picked the
+source via `/wiki-triage` instead of `/wiki-corroborate` → `/wiki-capture`)
+still close the loop. The script always sets `flag_decision_at_ingest`;
+on Y it additionally stamps `flag_cleared_at_ingest` with the current
+timestamp. P and N leave `flag_cleared_at_ingest` null but the decision
+field captures the action so per-decision telemetry analysis is possible.
+Same shape as the `commit_hash` repair pattern in `vault/.wiki-identity.md`
+§ Telemetry repair. If no matching row exists (e.g., the user never ran
+`/wiki-corroborate` on this slug — the source surfaced via the normal
+ingest queue), the script returns non-zero — note in the report and
+continue. Telemetry is observational, not a contract; firing post-commit
+avoids a phantom stamp if a late contradiction rolled back the writes.
+Skip entirely when no verify-clearing decisions fired in this ingest.
 
 ### 6. Mechanical lint
 
