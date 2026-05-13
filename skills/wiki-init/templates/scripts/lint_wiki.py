@@ -464,7 +464,7 @@ def check_single_page_categories(pages: dict) -> list[dict]:
 # Authoritative category list — loaded at runtime from wiki/CATEGORIES.md.
 # Single source of truth as of the 2026-05-13 schema decomposition; the
 # previous hardcoded frozenset was a manual-sync contract with drift risk
-# (see dev/wiki-agents.md-refactor.md § Finding 1).
+# (see dev/archive/2026-05-13-wiki-agents.md-refactor.md § Finding 1).
 def load_authoritative_categories(wiki_root: Path) -> frozenset[str]:
     """Parse category slugs from wiki/CATEGORIES.md's enumerated list.
 
@@ -477,7 +477,7 @@ def load_authoritative_categories(wiki_root: Path) -> frozenset[str]:
     if not categories_path.is_file():
         print(
             f"error: {categories_path} missing — required since the "
-            f"2026-05-13 schema decomposition. See dev/wiki-agents.md-refactor.md.",
+            f"2026-05-13 schema decomposition. See dev/archive/2026-05-13-wiki-agents.md-refactor.md.",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -706,7 +706,7 @@ def check_unresolved_link_hubs(pages: dict, threshold: int = UNRESOLVED_HUB_THRE
     target resolves iff `<slug>.md` exists in any of the five page-type dirs.
 
     Reuses the same regex shape as `list_unresolved_hubs.py` — duplicated
-    intentionally for v1 per dev/wiki-stub-design.md. Refactor when a third
+    intentionally for v1 per dev/archive/2026-05-13-wiki-stub-design.md. Refactor when a third
     caller appears.
     """
     inbound: dict[str, int] = {}
@@ -744,7 +744,7 @@ def check_drifted_stubs(pages: dict) -> list[dict]:
     marker fires and `verify: true` is absent from frontmatter, the page has
     drifted off the codified stub contract — surface for backfill.
 
-    Codified by dev/wiki-stub-design.md (2026-05-13). Predicate is verbatim
+    Codified by dev/archive/2026-05-13-wiki-stub-design.md. Predicate is verbatim
     string match against the four contracts in wiki/AGENTS.md § Stub callout
     templates. The codex shape-drift bug the lint exists to catch is closed
     inline (entities/codex.md gains the verbatim callout + verify:true), so

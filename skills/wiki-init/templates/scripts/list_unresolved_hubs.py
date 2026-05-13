@@ -10,7 +10,7 @@ Drives the `/wiki-stub` skill's hub-pattern path. Two modes:
     python list_unresolved_hubs.py <wiki> --list [--threshold N]
 
 V1 ships with its own grep-based count rather than extending graph_analyzer.py.
-Refactor trigger documented in dev/wiki-stub-design.md: if a third caller of
+Refactor trigger documented in dev/archive/2026-05-13-wiki-stub-design.md: if a third caller of
 per-slug inbound counts appears (e.g., v1.1 graduation hook, retrieval phase 4),
 promote the count into graph_analyzer.py and update both callers.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke tests for `load_authoritative_categories` — the parser that reads
 `wiki/CATEGORIES.md` at runtime (introduced by the 2026-05-13 schema
-decomposition; see `dev/wiki-agents.md-refactor.md` § Finding 1).
+decomposition; see `dev/archive/2026-05-13-wiki-agents.md-refactor.md` § Finding 1).
 
 The parser is intentionally naive — it looks for the exact H2 header
 `## Authoritative category list` and the `` - `<slug>` — <description> ``
