@@ -66,7 +66,10 @@ if hasattr(sys.stdout, "reconfigure"):
 LINT_OVERDUE_THRESHOLD = 10
 OVERVIEW_FRESH_THRESHOLD = 10  # < 10 ⇒ "fresh"; ≥ 10 surfaces the soft-refresh offer
 
-OVERVIEW_MARKER_RE = re.compile(r"_Mechanical refresh at ingest #(\d+)", re.IGNORECASE)
+OVERVIEW_MARKER_RE = re.compile(
+    r"(?:Mechanical refresh|Last full rewrite) at ingest #(\d+)",
+    re.IGNORECASE,
+)
 INGEST_LINE_RE = re.compile(r"^## \[.*?\] ingest \|", re.MULTILINE)
 LINT_LINE_RE = re.compile(r"^## \[.*?\] lint ", re.MULTILINE)
 
@@ -110,9 +113,9 @@ def compute_overview_state(
     if overview_path.is_file():
         try:
             text = overview_path.read_text(encoding="utf-8", errors="ignore")
-            m = OVERVIEW_MARKER_RE.search(text)
-            if m:
-                marker_ingest = int(m.group(1))
+            matches = OVERVIEW_MARKER_RE.findall(text)
+            if matches:
+                marker_ingest = max(int(n) for n in matches)
         except OSError:
             pass
 

@@ -51,6 +51,8 @@ Mode-specific additions:
 
 **`mode: full-start`** —
 - `Trigger: <"user-invoked" | summary of structural triggers from check_overview_triggers.py>`
+- `Current ingest count: <N>` (lifetime ingest count at dispatch time; goes into the intro-phrase anchor below)
+- `Today's date: <YYYY-MM-DD>` (rewrite date; pairs with the ingest count in the intro-phrase anchor)
 
 **`mode: full-resume`** —
 - `Checkpoint file: .claude/tmp/wiki-curator-checkpoint.json`
@@ -251,6 +253,16 @@ and dispatch you again with `mode: full-resume`.
 - Honor the HARD pull-quote preservation rule. If the current overview has
   N pull-quotes and your proposed overview drops M, you must have M
   written justifications.
+- **Intro-phrase anchor (HARD).** The `proposed_overview` you stash in the
+  checkpoint MUST contain the literal phrase `Last full rewrite at ingest
+  #<N> (<YYYY-MM-DD>)` somewhere in its intro paragraph, substituting the
+  `Current ingest count` and `Today's date` from the dispatch prompt. This
+  phrase is the machine-readable anchor that `wiki/.scripts/drill_state.py`
+  keys on to compute the welcome report's `Overview:` freshness field —
+  without it, every session start after a Mode B rewrite falsely reports
+  the overview as stale by the full lifetime ingest count. Phrasing of the
+  surrounding intro is yours to shape; the literal `Last full rewrite at
+  ingest #N (YYYY-MM-DD)` substring is the contract.
 
 ---
 

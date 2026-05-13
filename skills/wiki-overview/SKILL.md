@@ -177,6 +177,21 @@ in graph stats since the previous refresh.
 If invoked because of `check_overview_triggers.py`, capture the trigger
 reasons string. Otherwise it's `"user-invoked"`.
 
+Capture two values to pass to the curator so the intro-phrase anchor
+(see `.claude/agents/wiki-curator.md` § "Mode B — Pass 1 rules") can be
+written with real numbers:
+
+```bash
+ingest_n=$(grep -c "^## \[.*\] ingest " wiki/log.md)
+today=$(date +%Y-%m-%d)
+```
+
+`ingest_n` is the lifetime ingest count; `today` is the rewrite date.
+Both go into the literal phrase `Last full rewrite at ingest #<N>
+(<YYYY-MM-DD>)` the curator embeds in the rewritten intro paragraph —
+that phrase is what `wiki/.scripts/drill_state.py` parses to compute the
+welcome report's `Overview:` freshness field after Mode B runs.
+
 Use the Agent tool:
 
 - **subagent_type:** `"wiki-curator"`
@@ -191,6 +206,8 @@ Glob for '**/agents/wiki-curator.md' and read it in full before starting.
 Mode: full-start
 Wiki root: <absolute path to wiki/>
 Trigger: <reasons string OR "user-invoked">
+Current ingest count: <ingest_n>
+Today's date: <today>
 
 Run the Pass 1 contract: read the wider horizon, build the proposed
 successor overview, write the section-by-section diff, write the
@@ -199,6 +216,10 @@ with the diff as `display`.
 
 Honor the HARD pull-quote preservation rule. Every dropped quote needs
 a written justification.
+
+Honor the HARD intro-phrase anchor: the proposed_overview's intro
+paragraph must contain the literal phrase `Last full rewrite at ingest
+#<Current ingest count> (<Today's date>)`. See your Pass 1 rules.
 ```
 
 ### 3B. Pause point — show diff to user verbatim
