@@ -15,7 +15,7 @@ Called from two paths:
 `--counts` is a JSON object mapping each lint_wiki.py check name to the number
 of pages it flagged. Pass `{}` when the lint came up completely clean.
 
-Schema documented in wiki/CLAUDE.md under "Telemetry".
+Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
 
 Usage:
     python append_lint_log.py --wiki <wiki-root> \

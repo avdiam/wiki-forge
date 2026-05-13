@@ -18,7 +18,7 @@ distinguishes the row's origin:
     Shape A (topic resolves to an existing slug → graph_query.neighbors_within)
     or `"hybrid"` for Shape B (fuzzy fallback → hybrid_search.search).
 
-Schema documented in wiki/CLAUDE.md under "Telemetry".
+Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
 
 Usage:
     # /wiki-query Path A

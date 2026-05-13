@@ -12,7 +12,7 @@ counts (per the HITL contract in vault/.wiki-identity.md — "each Pass
 emits its own <usage>. Aggregate total_tokens / tool_uses / duration_ms
 across passes"). `commit_hash` is from the Mode B Pass-2 commit only.
 
-Schema documented in wiki/CLAUDE.md under "Telemetry".
+Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
 
 Usage:
     python append_overview_log.py --wiki <wiki-root> \\

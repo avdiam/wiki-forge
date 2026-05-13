@@ -13,7 +13,7 @@ Severity levels:
     inside a fenced code block. Soft warning only.
 
 Pattern set is opt-in expandable via `<wiki>/.meta/secret-patterns.json`
-(same shape as `lint-config.json`); see wiki/CLAUDE.md § Lint configuration.
+(same shape as `lint-config.json`); see wiki/SPECIFICATION.md § "Secret-pattern config".
 
 Usage:
     python check_secrets.py <path-to-source-file> [--wiki <wiki-root>]

@@ -3,7 +3,7 @@
 
 Called by wiki/.scripts/check_source_freshness.py for each source-page
 slug it polls. Schema-symmetric with the other .meta/*_log.jsonl
-appenders. Schema documented in wiki/CLAUDE.md under "Telemetry".
+appenders. Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
 
 Each row records one HTTP poll attempt:
 

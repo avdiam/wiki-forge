@@ -6,7 +6,7 @@ Cost fields (total_tokens, tool_uses) are parsed by the skill from the
 <usage> block surfaced by the Agent tool on subagent completion; pass
 empty string or "null" when they aren't available.
 
-Schema documented in wiki/CLAUDE.md under "Telemetry".
+Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
 
 Usage:
     python append_ingest_log.py --wiki <wiki-root> \

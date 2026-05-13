@@ -5,7 +5,7 @@ Called by `/wiki-corroborate` (one row per flag searched, not per skill
 invocation) and back-filled by the wiki-ingestor (sets `flag_cleared_at_ingest`
 on Y at the verify-clearing takeaway gate).
 
-Schema documented in wiki/CLAUDE.md under "Telemetry".
+Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
 
 Usage:
     # Initial write — one row per flag searched (user_action defaults to deferred).

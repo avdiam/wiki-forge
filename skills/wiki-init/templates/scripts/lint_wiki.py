@@ -254,7 +254,7 @@ def check_excessive_ambiguous(pages: dict, threshold: int = 3) -> list[str]:
 
     Concept / entity / comparison / synthesis pages only — source pages
     are exempt by convention (source fidelity carried by source_type).
-    Per wiki/CLAUDE.md "claim-tag inline markers" rule.
+    Per wiki/AGENTS.md "claim-tag inline markers" rule.
     """
     flagged = []
     for info in pages.values():
@@ -434,7 +434,7 @@ def check_overview_staleness(wiki_root: Path) -> dict | None:
 
 
 def check_single_page_categories(pages: dict) -> list[dict]:
-    """Flag categories with exactly one page — per wiki/CLAUDE.md 'never create a category with a single page'."""
+    """Flag categories with exactly one page — per wiki/CATEGORIES.md 'never create a category with a single page'."""
     from collections import defaultdict
     buckets: dict[tuple[str, str], list[str]] = defaultdict(list)
     for info in pages.values():
@@ -496,7 +496,7 @@ def load_authoritative_categories(wiki_root: Path) -> frozenset[str]:
 def check_single_source_unverified(pages: dict) -> list[dict]:
     """Flag concept/entity/comparison/synthesis pages with one source, confidence > 0.6, and no verify flag.
 
-    Per wiki/CLAUDE.md "Single-source standalone pages" rule: a new page with
+    Per wiki/AGENTS.md "Single-source standalone pages" rule: a new page with
     exactly one source must satisfy one of (confidence ≤ 0.6, verify: true,
     explicit user pre-approval at the takeaway gate). The first two are
     detectable in frontmatter; the third is undetectable from the page alone,
@@ -782,7 +782,7 @@ def render_human(report: dict) -> str:
 
     if report.get("unknown_category"):
         lines.append("")
-        lines.append("Unknown categories (not in the authoritative list \u2014 see wiki/CLAUDE.md):")
+        lines.append("Unknown categories (not in the authoritative list \u2014 see wiki/CATEGORIES.md):")
         for item in report["unknown_category"][:20]:
             lines.append(f"  {item['page']}: {item['category']}")
 
