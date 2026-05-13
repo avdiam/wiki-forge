@@ -19,7 +19,6 @@ Checks:
     - long_summary            summary: fields >30 words or multi-sentence
     - stale_source            source pages whose captured: is older than 180 days
     - drifted_sources         source pages flagged source_drifted:true by check_source_freshness.py
-    - schema_sync             wiki/CLAUDE.md ≡ wiki/AGENTS.md (byte-identical)
     - asymmetric_contradictions  A contradicts B but B doesn't list A
     - invalid_typed_links     wikilinks in contradicts:/supersedes:/superseded_by: that don't resolve
     - artifact_presence       opted-in pages lacking any structural artifact (code/table/procedure/quote/deflist)
@@ -31,7 +30,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -454,8 +452,8 @@ def check_single_page_categories(pages: dict) -> list[dict]:
 
 
 # Authoritative category list — must match the "### Authoritative category list"
-# section of wiki/CLAUDE.md (and wiki/AGENTS.md, which schema_sync keeps byte-
-# identical). Adding a new category requires editing both schema files and
+# section of wiki/AGENTS.md (the source-of-truth schema file; wiki/CLAUDE.md is
+# a pointer to it). Adding a new category requires editing AGENTS.md and
 # bumping the schema version.
 AUTHORITATIVE_CATEGORIES = frozenset({
     "coding-agents",
@@ -571,38 +569,6 @@ def check_long_summary(pages: dict) -> list[dict]:
                 "page": info["path"],
                 "reason": ", ".join(reasons),
                 "word_count": word_count,
-            })
-    return issues
-
-
-def check_schema_sync(wiki_root: Path) -> list[dict]:
-    """Check that wiki/CLAUDE.md and wiki/AGENTS.md stay byte-identical.
-
-    The two files carry the same schema but serve different tools — CLAUDE.md
-    is read by Claude Code; AGENTS.md is read by Codex CLI, Cursor, Antigravity,
-    OpenCode, Gemini CLI. They're documented as "identical content, keep in
-    sync" (see each file's Multi-tool compatibility section). Silent drift
-    produces divergent behavior across tools — e.g., a frontmatter rule added
-    to CLAUDE.md but missed on AGENTS.md means Cursor ingests land on the old
-    schema while Claude Code lands on the new. This check catches drift at the
-    moment it's introduced.
-    """
-    issues: list[dict] = []
-    claude_md = wiki_root / "CLAUDE.md"
-    agents_md = wiki_root / "AGENTS.md"
-    if not claude_md.is_file():
-        issues.append({"file": "CLAUDE.md", "issue": "missing"})
-    if not agents_md.is_file():
-        issues.append({"file": "AGENTS.md", "issue": "missing"})
-    if claude_md.is_file() and agents_md.is_file():
-        claude_hash = hashlib.sha256(claude_md.read_bytes()).hexdigest()[:16]
-        agents_hash = hashlib.sha256(agents_md.read_bytes()).hexdigest()[:16]
-        if claude_hash != agents_hash:
-            issues.append({
-                "file": "CLAUDE.md vs AGENTS.md",
-                "issue": "content drift",
-                "claude_md_hash": claude_hash,
-                "agents_md_hash": agents_hash,
             })
     return issues
 
@@ -727,7 +693,6 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "single_source_unverified": check_single_source_unverified(pages),
         "long_summary": check_long_summary(pages),
         "stale_source": check_stale_source(pages),
-        "schema_sync": check_schema_sync(wiki_root),
         "asymmetric_contradictions": check_asymmetric_contradictions(pages),
         "invalid_typed_links": check_invalid_typed_links(pages),
         "artifact_presence": check_artifact_presence(pages, config),
@@ -756,7 +721,6 @@ def render_human(report: dict) -> str:
         f"Single-source unverified: {len(report.get('single_source_unverified', []))}",
         f"Long summaries:       {len(report['long_summary'])}",
         f"Stale sources:        {len(report['stale_source'])}",
-        f"Schema sync:          {len(report['schema_sync'])}",
         f"Asymmetric contradicts: {len(report['asymmetric_contradictions'])}",
         f"Invalid typed links:  {len(report['invalid_typed_links'])}",
         f"Artifact presence:    {len(report['artifact_presence'])}",
@@ -815,18 +779,6 @@ def render_human(report: dict) -> str:
         lines.append("Stale source pages (captured > 180 days ago or missing):")
         for item in report["stale_source"][:20]:
             lines.append(f"  {item['page']}: {item['reason']}")
-
-    if report.get("schema_sync"):
-        lines.append("")
-        lines.append("Schema sync (CLAUDE.md ≡ AGENTS.md):")
-        for item in report["schema_sync"]:
-            if item["issue"] == "missing":
-                lines.append(f"  {item['file']}: missing from wiki/")
-            elif item["issue"] == "content drift":
-                lines.append(
-                    f"  {item['file']}: content differs "
-                    f"(CLAUDE.md={item['claude_md_hash']}, AGENTS.md={item['agents_md_hash']})"
-                )
 
     if report.get("asymmetric_contradictions"):
         lines.append("")
