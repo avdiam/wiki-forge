@@ -527,6 +527,17 @@ cache_read_input_tokens, output_tokens, tool_uses, duration_ms}`, run
 `<field>:\s*(\d+)` against the `<usage>...</usage>` content and capture
 when present.
 
+> **Known regex quirk** (documented + accepted). The `input_tokens:\s*(\d+)`
+> pattern matches as a substring inside `cache_creation_input_tokens` /
+> `cache_read_input_tokens`. Has not bitten production because the Agent
+> tool today emits only `total_tokens` / `tool_uses` / `duration_ms`. If
+> the harness ever starts emitting `cache_*_input_tokens` without also
+> emitting `input_tokens`, the regex will return the longer field's value
+> as if it were `input_tokens`. Fix when it bites: anchor with negative
+> lookbehind — `(?<![a-z_])input_tokens:\s*(\d+)`. The contract + quirk are
+> pinned by `wiki/.scripts/test_usage_parsing.py` (six cases, stdlib
+> unittest); update spec and test together.
+
 If the entire block is missing or all field regexes fail, pass empty
 strings for the cost fields and use the main-session wall-clock from
 step 12 as the `--duration-ms` fallback. Telemetry is observational, not
