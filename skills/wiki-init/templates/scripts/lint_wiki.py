@@ -22,6 +22,8 @@ Checks:
     - asymmetric_contradictions  A contradicts B but B doesn't list A
     - invalid_typed_links     wikilinks in contradicts:/supersedes:/superseded_by: that don't resolve
     - artifact_presence       opted-in pages lacking any structural artifact (code/table/procedure/quote/deflist)
+    - unresolved_link_hubs    slugs with >=10 incoming wikilinks but no page (stub candidates)
+    - drifted_stubs           pages with stub-prose markers but no verify:true (shape drift)
 
 Usage:
     python lint_wiki.py <wiki-root> [--json]
@@ -94,11 +96,19 @@ def check_broken_links(pages: dict) -> list[dict]:
     return broken
 
 
+SOURCELESS_STUB_ORIGINS = {"hub", "planned"}
+
+
 def check_missing_frontmatter(pages: dict) -> list[dict]:
     issues: list[dict] = []
     for slug, info in pages.items():
         fm = info["frontmatter"]
         missing = [f for f in REQUIRED_FIELDS if not fm.get(f) and fm.get(f) != 0]
+        # Carve-out: hub and planned stubs are defined by `sources: []`. The
+        # `stub_origin:` field + `verify: true` carry the metadata that would
+        # normally come from a source — don't double-flag those.
+        if "sources" in missing and fm.get("stub_origin") in SOURCELESS_STUB_ORIGINS:
+            missing = [f for f in missing if f != "sources"]
         if missing:
             issues.append({"page": info["path"], "missing": missing})
     return issues
@@ -684,6 +694,77 @@ def check_artifact_presence(pages: dict, config: dict) -> list[dict]:
     return issues
 
 
+UNRESOLVED_HUB_THRESHOLD = 10
+
+
+def check_unresolved_link_hubs(pages: dict, threshold: int = UNRESOLVED_HUB_THRESHOLD) -> list[dict]:
+    """Slugs with >=threshold incoming [[wikilinks]] that don't resolve to a page.
+
+    Soft-warning queue surfacing stub candidates for `/wiki-stub <slug>` (hub
+    pattern). Counts self-references and aliased links the same as the body
+    wikilink regex used elsewhere. Resolution check matches `check_broken_links`:
+    target resolves iff `<slug>.md` exists in any of the five page-type dirs.
+
+    Reuses the same regex shape as `list_unresolved_hubs.py` — duplicated
+    intentionally for v1 per dev/wiki-stub-design.md. Refactor when a third
+    caller appears.
+    """
+    inbound: dict[str, int] = {}
+    page_slugs = set(pages.keys())
+    for slug, info in pages.items():
+        for target in find_wikilinks(info["body"]):
+            target = target.strip()
+            if not target or target == slug:
+                continue
+            inbound[target] = inbound.get(target, 0) + 1
+    issues: list[dict] = []
+    for target, count in inbound.items():
+        if target in page_slugs:
+            continue
+        if count < threshold:
+            continue
+        issues.append({"slug": target, "inbound": count})
+    issues.sort(key=lambda r: (-r["inbound"], r["slug"]))
+    return issues
+
+
+STUB_PROSE_MARKERS = [
+    ("hub-section", "## Why this stub exists rather than silent absorption"),
+    ("hub-callout", "⚠ needs verification — stub:"),  # ⚠ needs verification — stub:
+    ("single-source-callout", "⚠ needs verification: single-source entity stub"),
+    ("planned-callout", "⚠ planned research target"),
+]
+
+
+def check_drifted_stubs(pages: dict) -> list[dict]:
+    """Pages whose body matches a stub-prose marker but lack `verify: true`.
+
+    Forward shape-drift detector for the four verbatim stub markers (three
+    callouts + the hub `## Why this stub exists` section heading). When any
+    marker fires and `verify: true` is absent from frontmatter, the page has
+    drifted off the codified stub contract — surface for backfill.
+
+    Codified by dev/wiki-stub-design.md (2026-05-13). Predicate is verbatim
+    string match against the four contracts in wiki/AGENTS.md § Stub callout
+    templates. The codex shape-drift bug the lint exists to catch is closed
+    inline (entities/codex.md gains the verbatim callout + verify:true), so
+    expected hit count post-fix is 0; check is a forward sentinel for future
+    drift.
+    """
+    issues: list[dict] = []
+    for slug, info in pages.items():
+        fm = info["frontmatter"]
+        verify = fm.get("verify", False)
+        if str(verify).lower() == "true":
+            continue
+        body = info["body"]
+        for marker_id, marker in STUB_PROSE_MARKERS:
+            if marker in body:
+                issues.append({"page": info["path"], "marker": marker_id})
+                break  # one hit per page is enough
+    return issues
+
+
 def _find_vault_dir(wiki_root: Path) -> Path:
     """Find the vault/ directory (sibling to wiki/)."""
     return wiki_root.parent / "vault"
@@ -720,6 +801,8 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "asymmetric_contradictions": check_asymmetric_contradictions(pages),
         "invalid_typed_links": check_invalid_typed_links(pages),
         "artifact_presence": check_artifact_presence(pages, config),
+        "unresolved_link_hubs": check_unresolved_link_hubs(pages),
+        "drifted_stubs": check_drifted_stubs(pages),
     }
 
 
@@ -748,6 +831,8 @@ def render_human(report: dict) -> str:
         f"Asymmetric contradicts: {len(report['asymmetric_contradictions'])}",
         f"Invalid typed links:  {len(report['invalid_typed_links'])}",
         f"Artifact presence:    {len(report['artifact_presence'])}",
+        f"Unresolved link hubs: {len(report.get('unresolved_link_hubs', []))}",
+        f"Drifted stubs:        {len(report.get('drifted_stubs', []))}",
     ]
     drift = report["index_drift"]
     if drift.get("missing_index"):
@@ -821,6 +906,18 @@ def render_human(report: dict) -> str:
         lines.append("Pages without structural artifacts (in opted-in categories):")
         for item in report["artifact_presence"][:20]:
             lines.append(f"  {item['page']} ({item['category']})")
+
+    if report.get("unresolved_link_hubs"):
+        lines.append("")
+        lines.append(f"Unresolved link hubs (slugs with >={UNRESOLVED_HUB_THRESHOLD} inbound wikilinks, no page — stub candidates for /wiki-stub):")
+        for item in report["unresolved_link_hubs"][:20]:
+            lines.append(f"  [[{item['slug']}]] ({item['inbound']} inbound)")
+
+    if report.get("drifted_stubs"):
+        lines.append("")
+        lines.append("Drifted stubs (stub-prose markers without verify:true — backfill needed):")
+        for item in report["drifted_stubs"][:20]:
+            lines.append(f"  {item['page']} (matched: {item['marker']})")
 
     return "\n".join(lines)
 

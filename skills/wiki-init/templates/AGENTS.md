@@ -176,6 +176,27 @@ stale: false
   lint check surfaces single-source pages with `confidence > 0.6` and no
   `verify: true` as a soft-warning review queue — see "Creating new pages
   vs editing existing" below for the full rule.
+- **stub_origin** — *Optional, any page type.* Forward-only marker set by
+  `/wiki-stub` indicating the page was created as a low-confidence
+  placeholder. Three values:
+  - `hub` — created via `/wiki-stub <slug>` to anchor N≥10 incoming
+    wikilinks pending a dedicated source. `sources: []` is permitted on
+    creation (zero sources is the defining property).
+  - `single-source` — created via the `/wiki-ingest` takeaway gate's
+    single-source CREATE path (or `/wiki-stub <slug> --pattern
+    single-source --source <vault-path>`); exactly one source at creation.
+  - `planned` — created via `/wiki-stub <slug> --pattern planned --reason
+    "..."` as a user-declared research target with zero sources at
+    creation. `sources: []` is permitted.
+
+  All three pattern values pair with `verify: true` and one of the three
+  verbatim stub callouts (see § Templates → Stub callout templates).
+  `check_drifted_stubs` lint surfaces shape-drifted pages — body matches
+  a stub callout but `verify: true` is absent. `check_unresolved_link_hubs`
+  surfaces slugs with ≥10 unresolved inbound wikilinks (the stub-candidate
+  queue for the `hub` pattern). Pages predating this rule (May 2026) are
+  not retroactively backfilled — the field is forward-only and absence on
+  legacy stubs is not a lint event.
 - **claim-tag inline markers** — *Optional, body-only, applies to concept /
   entity / comparison / synthesis pages.* Italicized markers that follow a
   claim to declare its evidentiary kind. Two values:
@@ -348,6 +369,34 @@ The `single_source_unverified` lint check surfaces violations as a
 soft-warning review queue. Existing pages predating this rule are part of
 that queue and can be cleaned up incrementally — the rule is not
 retroactive-blocking.
+
+### Stub pages (codified via `/wiki-stub`)
+
+Three structurally distinct stub-creation patterns exist; all three live
+under one skill and one frontmatter marker (`stub_origin:`):
+
+- **`hub`** — A slug accumulates ≥10 incoming wikilinks across ingests
+  without ever getting a dedicated source. The graph forms a phantom hub.
+  Invoke `/wiki-stub <slug>` to anchor the hub with an honest low-confidence
+  placeholder. `confidence: 0.4`, `sources: []`, `verify: true`,
+  `stub_origin: hub` — plus the verbatim hub callout and a `## Why this
+  stub exists rather than silent absorption` section.
+- **`single-source`** — A source treats an entity in substance, but only
+  that one source has. Standalone-with-`verify: true` per the rule above.
+  Created in-band during `/wiki-ingest`'s takeaway gate, or out-of-band
+  via `/wiki-stub <slug> --pattern single-source --source <vault-path>`.
+  `confidence: 0.5`, `verify: true`, `stub_origin: single-source` — plus
+  the verbatim single-source callout.
+- **`planned`** — User pre-emptively declares a slug as a research target
+  with no inbound graph pressure and no captured source. Invoke
+  `/wiki-stub <slug> --pattern planned --reason "<one-liner>"`.
+  `confidence: 0.3`, `sources: []`, `verify: true`, `stub_origin: planned`
+  — plus the verbatim planned callout.
+
+The skill, the three callout contracts, and the lint checks that catch
+shape drift are documented at `.claude/skills/wiki-stub/SKILL.md`. Use
+`/wiki-stub --list` to display candidate slugs surfaced by
+`check_unresolved_link_hubs`.
 
 **Expect ingest to edit many pages and create few.** Karpathy's own wikis
 touch 10–15 existing pages per new source. If your ingest creates 10 pages
@@ -580,6 +629,53 @@ stale: false
 ## Open questions
 - <Unresolved aspects>
 ```
+
+### Stub callout templates
+
+Pages created via `/wiki-stub` carry one of three verbatim callouts at the
+top of the body (immediately after the H1). The exact phrasing is a HARD
+contract — `check_drifted_stubs` and search/retrieval both depend on the
+verbatim string matching. The skill writes these; the templates below are
+the canonical reference.
+
+**Hub stub (`stub_origin: hub`)** — body lines 1-2 after the H1:
+
+```markdown
+# <Entity Name>
+
+> ⚠ needs verification — stub: anchoring <N> incoming wikilinks pending a dedicated source.
+```
+
+Plus a `## Why this stub exists rather than silent absorption` section
+near the end of the body (verbatim template body; interpolate `<N>` and
+`<Entity Name>`):
+
+```markdown
+## Why this stub exists rather than silent absorption
+
+Our schema's >3-sentence substantial-coverage threshold would normally argue for folding incidental mentions into parent pages. That rule breaks down when cumulative incoming wikilinks make the entity a *discovered graph hub* — <N> pointers at a nonexistent page is stronger signal than any single source alone. The stub with `verify: true` + `confidence: 0.4` + this explicit callout is the honest middle: an anchor for the graph, not a factual claim about <Entity Name>.
+```
+
+**Single-source stub (`stub_origin: single-source`)** — body lines 1-2 after the H1:
+
+```markdown
+# <Entity Name>
+
+⚠ needs verification: single-source entity stub. <one-sentence gap descriptor — what's missing beyond the cited source>.
+```
+
+No closing section required — single-source stubs are typically short.
+
+**Planned stub (`stub_origin: planned`)** — body lines 1-2 after the H1:
+
+```markdown
+# <Entity Name>
+
+⚠ planned research target — no sources captured yet. Reason: <user-supplied one-liner>.
+```
+
+No closing section required — the page is a research placeholder, body
+fleshes out when the first source lands.
 
 ### Comparison page template
 

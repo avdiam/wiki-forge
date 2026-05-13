@@ -15,7 +15,7 @@ Usage:
                              [--contradictions N] [--commit <hash>]
                              [--note "..."] --wiki <wiki-root>
 
-Operations: ingest | capture | query-filed | lint | init | note
+Operations: ingest | capture | query-filed | lint | init | note | stub
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-VALID_OPS = {"ingest", "capture", "query-filed", "lint", "init", "note"}
+VALID_OPS = {"ingest", "capture", "query-filed", "lint", "init", "note", "stub"}
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
