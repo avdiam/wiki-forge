@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Archive aged terminal-status mailbox messages.
 
-Mtime-based archival: enumerates `*.md` at the top level of the mailbox
-directory (skips README.md and any subdirectory, including `.archive/`),
-parses `status:` from frontmatter, and moves messages matching the
-retention rules into `<mailbox>/.archive/YYYY-MM/`.
+Frontmatter-`date:`-based archival: enumerates `*.md` at the top level of
+the mailbox directory (skips README.md and any subdirectory, including
+`.archive/`), parses `status:` and `date:` from frontmatter, and moves
+messages matching the retention rules into `<mailbox>/.archive/YYYY-MM/`.
 
 Retention rules (must match vault/.clipper-rules.md § Step 5):
   - status: closed       and age >= 7 days  → archive
@@ -12,9 +12,17 @@ Retention rules (must match vault/.clipper-rules.md § Step 5):
   - status: replied      and age >= 14 days → archive
   - status: open                            → never archive
 
-Mtime is the trigger because the recipient's status-flip already updates
-it as a side effect — no protocol change needed. Filenames retained so
-cross-references from still-open threads remain resolvable via path nav.
+The age signal is the frontmatter `date:` field (mandatory on every
+mailbox message per _mailbox/README.md) rather than filesystem mtime.
+Rationale: the clipper side runs the symmetric procedure in JavaScript
+via the Obsidian REST API, and that API does NOT expose `Last-Modified`
+through CORS-allowed headers — so the clipper uses frontmatter `date:`
+as the signal. We match that here so both sides agree on what "age"
+means. The frontmatter date is also stable across git pulls and file
+touches, which filesystem mtime is not. If `date:` is missing or
+unparseable, we fall back to filesystem mtime defensively. Filenames
+retained so cross-references from still-open threads remain resolvable
+via path nav.
 
 Used by the wake-up drill (vault/.wiki-identity.md drill step 1) after
 the mailbox sweep. The clipper side runs the symmetric procedure in
@@ -50,6 +58,7 @@ RETENTION_DAYS = {
     "replied": 14,
 }
 STATUS_RE = re.compile(r"^status:\s*(\S+)", re.MULTILINE)
+DATE_RE = re.compile(r"^date:\s*(\d{4}-\d{2}-\d{2})", re.MULTILINE)
 
 
 def parse_status(text: str) -> str | None:
@@ -59,6 +68,20 @@ def parse_status(text: str) -> str | None:
         return None
     m = STATUS_RE.search(parts[0])
     return m.group(1) if m else None
+
+
+def parse_date_epoch(text: str) -> float | None:
+    """Pull the `date: YYYY-MM-DD` value and return its epoch seconds, or None."""
+    parts = text.split("\n---", 2)
+    if len(parts) < 2:
+        return None
+    m = DATE_RE.search(parts[0])
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1), "%Y-%m-%d").timestamp()
+    except ValueError:
+        return None
 
 
 def main(argv: list[str]) -> int:
@@ -94,7 +117,12 @@ def main(argv: list[str]) -> int:
         if status not in RETENTION_DAYS:
             continue
 
-        age_days = (now - msg.stat().st_mtime) / SECONDS_PER_DAY
+        # Primary age signal: frontmatter `date:`. Falls back to filesystem
+        # mtime when missing or unparseable. See module docstring for why.
+        date_epoch = parse_date_epoch(text)
+        if date_epoch is None:
+            date_epoch = msg.stat().st_mtime
+        age_days = (now - date_epoch) / SECONDS_PER_DAY
         if age_days < RETENTION_DAYS[status]:
             continue
 

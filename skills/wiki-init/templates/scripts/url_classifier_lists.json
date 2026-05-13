@@ -61,14 +61,19 @@
     "papers.nips.cc",
     "aclanthology.org",
     "ieeexplore.ieee.org",
-    "cursor.com/docs",
+    "cursor.com",
     "claude.com",
     "platform.claude.com",
     "docs.langchain.com",
     "reference.langchain.com",
     "langchain.com",
     "resources.anthropic.com",
-    "kimi-k2.org"
+    "kimi-k2.org",
+    "moonshot.ai",
+    "docs.api.nvidia.com",
+    "build.nvidia.com",
+    "coderabbit.ai",
+    "greptile.com"
   ],
   "_credibility_tier_1_doc": "Primary / authoritative sources. Vendor official docs, peer-reviewed papers, standards bodies, .edu/.gov, official vendor GitHub + HuggingFace orgs (path-prefix match), peer-reviewed conference proceedings (PMLR / NeurIPS / ACL / IEEE Xplore). Seed list extends on user confirmation at /wiki-corroborate decision gate when an unclassified domain returns a high-quality hit. github.com/<vendor> and huggingface.co/<vendor> are kept symmetric — model weights distribution carries the same authority as code distribution. Bare github.com / huggingface.co (in tier-3) is the fallback for unaffiliated user repos / community blog posts.",
   "credibility_tier_2": [
@@ -102,7 +107,15 @@
     "hashnode.com",
     "forum.cursor.com",
     "github.com",
-    "gist.github.com"
+    "gist.github.com",
+    "verdent.ai",
+    "avenchat.com",
+    "kimi-ai.chat",
+    "puter.com",
+    "releasebot.io",
+    "digitalapplied.com",
+    "codersera.com",
+    "developertoolkit.ai"
   ],
   "_credibility_tier_3_doc": "Community / personal blogs. Useful but not authoritative. Bare github.com / gist.github.com here is the fallback for non-vendor repos (tier-1 path-prefix vendor entries match first). The --include-tier-3 flag on /wiki-corroborate surfaces these alongside tier-1+tier-2; the default cut excludes them.",
   "credibility_denylist": [

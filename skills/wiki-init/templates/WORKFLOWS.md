@@ -20,7 +20,7 @@ This file provides cross-LLM operational parity. If your platform (Gemini, Curso
 7. **Commit:** If git is available, commit all changes with a descriptive message (e.g., `git add wiki/ && git commit -m "ingest: <Source_Title>"`). This creates an audit trail and enables easy rollback with `git revert`.
 
 ### 2. Query the Wiki
-1. **Check wiki size:** Count the total lines in `wiki/indexes/` sub-indices. If the combined index is short (roughly under 200 entries), read the sub-indices directly and skip to step 3.
+1. **Check wiki size:** Count the total lines in `wiki/indexes/` sub-indices. If the combined index is short (roughly under ~90 entries, ~6000 tokens), read the sub-indices directly and skip to step 3.
 2. **Search (large wikis only):** Run `python wiki/.scripts/hybrid_search.py wiki/ "<query>"` to find relevant pages.
 3. **Read and synthesize:** Read the returned pages (or index entries for small wikis). Synthesize a comprehensively accurate answer, citing wiki pages using `[[wikilink]]` format.
 4. **Offer to save:** Ask the user if the result warrants saving as a permanent synthesis page in `wiki/syntheses/`.
