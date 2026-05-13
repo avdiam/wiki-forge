@@ -1,3 +1,9 @@
+---
+schema_version: 2
+not_a_source: true
+last_updated: 2026-05-13
+---
+
 # Wiki — Categories (authoritative taxonomy)
 
 > **This file is the authoritative source for the wiki's category taxonomy.** As of the 2026-05-13 schema decomposition, `lint_wiki.py` parses this file at runtime (see `load_authoritative_categories` in `.scripts/lint_wiki.py`) — the in-script `AUTHORITATIVE_CATEGORIES` constant is gone. To add a new category, edit this file + bump the schema version in [`AGENTS.md`](AGENTS.md) + add a [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) entry. See "Adding a new category" below.

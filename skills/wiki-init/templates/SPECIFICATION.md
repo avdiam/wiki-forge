@@ -1,3 +1,9 @@
+---
+schema_version: 2
+not_a_source: true
+last_updated: 2026-05-13
+---
+
 # Wiki — Script-API Specification
 
 > **This file is the script-API reference for `wiki/.scripts/`.** Not auto-loaded; not read by any agent at runtime. The relevant scripts encode these contracts more precisely (argparse, docstrings, `--help`). Preserved during the 2026-05-13 schema decomposition as a conservative safety net for ~330 lines of script-behavior documentation that had no agent / skill / script runtime consumer. **Marked for review in 3–6 months — if no one consults it, delete outright.** See [`../dev/wiki-agents.md-refactor.md`](../dev/wiki-agents.md-refactor.md) for the decomposition decision and [`../dev/tech-debt.md`](../dev/tech-debt.md) for the review-trigger entry.
