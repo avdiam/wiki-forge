@@ -451,25 +451,46 @@ def check_single_page_categories(pages: dict) -> list[dict]:
     return issues
 
 
-# Authoritative category list — must match the "### Authoritative category list"
-# section of wiki/AGENTS.md (the source-of-truth schema file; wiki/CLAUDE.md is
-# a pointer to it). Adding a new category requires editing AGENTS.md and
-# bumping the schema version.
-AUTHORITATIVE_CATEGORIES = frozenset({
-    "coding-agents",
-    "agentic-sdks",
-    "tool-use-and-skills",
-    "ai-practitioners",
-    "llm-architectures",
-    "personal-knowledge-management",
-    "ai-product-strategy",
-    "ai-infrastructure",
-    "ai-research-frontiers",
-    "ai-labs",
-    "training-and-fine-tuning",
-    "prompt-engineering",
-    "languages-and-frameworks",
-})
+# Authoritative category list — loaded at runtime from wiki/CATEGORIES.md.
+# Single source of truth as of the 2026-05-13 schema decomposition; the
+# previous hardcoded frozenset was a manual-sync contract with drift risk
+# (see dev/wiki-agents.md-refactor.md § Finding 1).
+def load_authoritative_categories(wiki_root: Path) -> frozenset[str]:
+    """Parse category slugs from wiki/CATEGORIES.md's enumerated list.
+
+    Looks for the H2 header `## Authoritative category list` and extracts
+    each bullet's slug — the text between the first backtick pair on lines
+    matching `- `<slug>` — <description>`. The list terminates at the next
+    `#`-prefixed header.
+    """
+    categories_path = wiki_root / "CATEGORIES.md"
+    if not categories_path.is_file():
+        print(
+            f"error: {categories_path} missing — required since the "
+            f"2026-05-13 schema decomposition. See dev/wiki-agents.md-refactor.md.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    text = categories_path.read_text(encoding="utf-8")
+    in_list = False
+    cats: set[str] = set()
+    for line in text.splitlines():
+        if line.startswith("## Authoritative category list"):
+            in_list = True
+            continue
+        if in_list and line.startswith("#"):
+            break
+        if in_list and line.lstrip().startswith("- `"):
+            try:
+                slug = line.split("`", 2)[1]
+                if slug:
+                    cats.add(slug)
+            except IndexError:
+                continue
+    if not cats:
+        print(f"error: no categories parsed from {categories_path}", file=sys.stderr)
+        sys.exit(2)
+    return frozenset(cats)
 
 
 def check_single_source_unverified(pages: dict) -> list[dict]:
@@ -514,23 +535,26 @@ def check_single_source_unverified(pages: dict) -> list[dict]:
     return issues
 
 
-def check_unknown_category(pages: dict) -> list[dict]:
+def check_unknown_category(wiki_root: Path, pages: dict) -> list[dict]:
     """Flag pages whose `category:` is not in the authoritative list.
 
-    Per wiki/CLAUDE.md (schema v2+), categories are an enumerated taxonomy.
-    Pages with an unknown category are a hard error — the agent cannot
-    silently introduce new categories. Adding to the list requires a schema
-    bump (edit CLAUDE.md + AGENTS.md + SCHEMA_CHANGELOG.md).
+    Per wiki/CATEGORIES.md (single source of truth since the 2026-05-13
+    schema decomposition), categories are an enumerated taxonomy. Pages
+    with an unknown category are a hard error — the agent cannot silently
+    introduce new categories. Adding to the list requires editing
+    CATEGORIES.md + bumping the schema version banner in AGENTS.md +
+    appending a SCHEMA_CHANGELOG.md entry.
 
     Pages missing a `category:` field are caught by `check_missing_frontmatter`
     and not double-flagged here.
     """
+    authoritative = load_authoritative_categories(wiki_root)
     issues: list[dict] = []
     for info in pages.values():
         category = info["frontmatter"].get("category")
         if category is None or not str(category).strip():
             continue  # missing-frontmatter check owns this
-        if category not in AUTHORITATIVE_CATEGORIES:
+        if category not in authoritative:
             issues.append({"page": info["path"], "category": category})
     return issues
 
@@ -689,7 +713,7 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "drifted_sources": check_drifted_sources(pages),
         "overview_staleness": check_overview_staleness(wiki_root),
         "single_page_categories": check_single_page_categories(pages),
-        "unknown_category": check_unknown_category(pages),
+        "unknown_category": check_unknown_category(wiki_root, pages),
         "single_source_unverified": check_single_source_unverified(pages),
         "long_summary": check_long_summary(pages),
         "stale_source": check_stale_source(pages),

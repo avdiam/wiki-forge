@@ -1,6 +1,6 @@
 ---
 name: wiki-init
-description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs CLAUDE.md (the schema) with custom domain categories, copies helper scripts to wiki/.scripts/, seeds indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
+description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs the schema files (CLAUDE.md, AGENTS.md, README.md, CATEGORIES.md, SPECIFICATION.md) with custom domain categories injected into CATEGORIES.md, copies helper scripts to wiki/.scripts/, seeds indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
 argument-hint: "[--dual-claude]"
 disable-model-invocation: true
 ---
@@ -141,32 +141,44 @@ git config user.email
 
 ### 3. Install the Schema and Workflows
 
+The schema lives across five files since the 2026-05-13 decomposition. Four are verbatim copies (no per-install customization); one is customized at install time.
+
+**Verbatim files (use `cp`):**
+
+- `templates/CLAUDE.md` → `wiki/CLAUDE.md` (1-line `@-include` pointer to AGENTS.md; Claude Code's auto-load anchor)
+- `templates/AGENTS.md` → `wiki/AGENTS.md` (operational rules, frontmatter schema, page templates)
+- `templates/README.md` → `wiki/README.md` (human orientation, architecture, directory layout)
+- `templates/SPECIFICATION.md` → `wiki/SPECIFICATION.md` (script-API reference — telemetry JSONL schemas, sidecar configs; not auto-loaded)
+- `templates/WORKFLOWS.md` → `wiki/WORKFLOWS.md` (manual-execution playbook for non-Claude-Code AI platforms)
+
+Use a single Bash `cp` for all five — faster and quieter than Read+Write per file:
+
+```bash
+TEMPLATES=<path-to-templates>
+cp $TEMPLATES/CLAUDE.md $TEMPLATES/AGENTS.md $TEMPLATES/README.md $TEMPLATES/SPECIFICATION.md $TEMPLATES/WORKFLOWS.md wiki/
+```
+
+**Customized file (use Read+Write):** `templates/CATEGORIES.md` → `wiki/CATEGORIES.md`. This is the only schema file customized per install.
+
 - Ask the user: *"What kind of knowledge base are you building? (e.g., AI Research, Cooking, Law, RPG Campaign)"*
 - If they haven't provided this context, **wait for their answer**.
-- Based on their intended topic, generate a set of 5-7 logical "seed
-  categories" (kebab-case).
-- **Find the schema template:** Run Glob for `**/wiki-init/templates/CLAUDE.md`
-  to locate the template file. Read it in full.
-- Using a find-and-replace, overwrite the default AI-centric "Seed
-  categories" section with your newly generated custom categories.
-- Write this customized schema to `wiki/CLAUDE.md`. The schema is
-  loaded natively by Claude Code when working in `wiki/`.
-- Also write the same content to `wiki/AGENTS.md` to ensure multi-tool awareness.
-- **Find the workflows template:** Run Glob for `**/wiki-init/templates/WORKFLOWS.md` to locate it, then copy it verbatim to `wiki/WORKFLOWS.md` via Bash:
+- Based on their intended topic, generate a set of 5-7 logical seed categories — kebab-case slugs plus one-line descriptions, matching the bullet shape in the template.
+- **Find the template:** Run Glob for `**/wiki-init/templates/CATEGORIES.md` to locate it. Read it in full.
+- Using a find-and-replace, overwrite the default AI-centric authoritative category list (the bullets between the `## Authoritative category list` header and the next `##` header) with your newly generated custom categories. **Preserve the parser-compatible format exactly:** `` - `<slug>` — <description> ``. `lint_wiki.py`'s `load_authoritative_categories` parses this section at runtime — any deviation from the heading or bullet shape breaks category enforcement.
+- Write the customized content to `wiki/CATEGORIES.md`.
 
-  ```bash
-  cp <path-to-templates>/WORKFLOWS.md wiki/WORKFLOWS.md
-  ```
+**IDE pointer files:**
 
-  This file is a verbatim copy (no customization), so a single `cp` is faster and quieter than Read+Write. It provides universal LLM operational guidance.
 - Add a prompt:
   > "Generate IDE pointer files (`.cursorrules`, `.windsurfrules`) in the project root? These help tools like Cursor and Windsurf discover the wiki schema automatically."
 - Only generate if the user says yes. These files should contain exactly:
 
   ```markdown
   # Wiki Forge
-  See `wiki/AGENTS.md` for full schema and structural rules.
-  See `wiki/WORKFLOWS.md` for step-by-step operational instructions.
+  See `wiki/AGENTS.md` for operational rules and page templates.
+  See `wiki/CATEGORIES.md` for the authoritative category taxonomy.
+  See `wiki/README.md` for human orientation and architecture.
+  See `wiki/WORKFLOWS.md` for step-by-step manual operations.
   Helper scripts are in `wiki/.scripts/` — run them via terminal.
   ```
 
@@ -202,10 +214,7 @@ The scripts installed:
 The core scripts are pure stdlib Python 3. `hybrid_search.py` gracefully
 degrades to BM25-only if ONNX dependencies are not installed.
 
-**Reserve Read+Write for files that get customized at install** — currently
-`CLAUDE.md` (seed categories find-and-replace) and `AGENTS.md` (mirror of
-the customized CLAUDE.md). Verbatim files (every Python script,
-`WORKFLOWS.md`) go through `cp`.
+**Reserve Read+Write for files that get customized at install** — currently just `CATEGORIES.md` (seed-category find-and-replace, per Step 3). Verbatim files — `CLAUDE.md`, `AGENTS.md`, `README.md`, `SPECIFICATION.md`, `WORKFLOWS.md`, every Python script — go through `cp`.
 
 ### 5. Optional: Semantic search setup
 
@@ -320,7 +329,7 @@ Tell the user:
   "For very large wikis (2000+ pages), you can also install `zvec` for
   fast approximate nearest-neighbor search: `pip install zvec`"
 - Suggest: "Drop a source into `vault/` and run `/wiki-capture` or `/wiki-ingest`"
-- Mention: "Edit `wiki/CLAUDE.md` to adjust the seed categories for your domain"
+- Mention: "Edit `wiki/CATEGORIES.md` to adjust the seed categories for your domain — `lint_wiki.py` reads it at runtime, so changes take effect immediately"
 - Advise: "Start with 5–10 high-quality sources to let the wiki establish
   its taxonomy before scaling up. Batch-dumping hundreds of files on day one
   produces shallow, poorly cross-referenced pages. Let the knowledge compound."
@@ -355,7 +364,7 @@ Tell the user:
 ## Rules
 
 - Never overwrite an existing `wiki/` without explicit user confirmation
-- Always install CLAUDE.md — it IS the schema, not optional
+- Always install the schema files — `CLAUDE.md` + `AGENTS.md` + `README.md` + `CATEGORIES.md` + `SPECIFICATION.md` collectively ARE the schema; none optional
 - Always install the helper scripts — the subagents depend on them
 - All navigation files (master index, sub-indices, log, overview) must exist
-- The seed categories should match the user's domain — don't force AI defaults
+- The seed categories in `CATEGORIES.md` should match the user's domain — don't force AI defaults
