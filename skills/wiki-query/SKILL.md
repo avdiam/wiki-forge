@@ -168,7 +168,7 @@ If the librarian was dispatched, relay the filing question and decision.
 ### 6. Log query telemetry (before relay)
 
 Write one row to `wiki/.meta/query_log.jsonl`. Schema documented in
-[`wiki/CLAUDE.md`](../../../wiki/CLAUDE.md) under "Telemetry". Field values
+[`wiki/SPECIFICATION.md`](../../../wiki/SPECIFICATION.md) § "Telemetry". Field values
 depend on which path handled the query:
 
 **Path A (inline — small wiki):**

@@ -47,7 +47,7 @@ From `/wiki-summarize`:
 
 ### 1. Prepare
 
-- Read `<wiki>/CLAUDE.md` to refresh on schema.
+- Read `<wiki>/AGENTS.md` to refresh on schema (`<wiki>/CLAUDE.md` is a 1-line `@-include` pointer to AGENTS.md — read AGENTS.md directly).
 
 ### 2. Read the pages
 
@@ -166,7 +166,7 @@ so good answers compound.
 If the user says yes:
 
 1. Create `syntheses/<slug>.md` using the synthesis template from
-   CLAUDE.md. Fill `summary:` with a one-sentence hook.
+   AGENTS.md. Fill `summary:` with a one-sentence hook.
 2. Run `python <wiki>/.scripts/update_index.py <wiki>` to add it to the index.
 3. If the wiki is a git repo, commit:
    ```bash
@@ -202,7 +202,7 @@ slugs.
 If the user says yes (**create or overwrite** — re-run convention is overwrite):
 
 1. Write `syntheses/<slug>-coverage.md` using the synthesis template from
-   CLAUDE.md, extended with the coverage-report fields:
+   AGENTS.md, extended with the coverage-report fields:
    ```yaml
    ---
    title: "<topic> — coverage report"
@@ -255,8 +255,8 @@ otherwise the bare `<slug>.md` shape.
 
 **Parser contract — do not reformat.** The dispatching skill (`/wiki-query`
 or `/wiki-summarize`) parses these two footer lines to write a telemetry
-row to `.meta/query_log.jsonl` (schema in [`wiki/CLAUDE.md`](../../wiki/CLAUDE.md)
-under "Telemetry"). Specifically:
+row to `.meta/query_log.jsonl` (schema in [`wiki/SPECIFICATION.md`](../../wiki/SPECIFICATION.md)
+§ "Telemetry"). Specifically:
 
 - `pages_consulted` — extracted via regex `\[\[([^\]]+)\]\]` over the
   `Pages consulted:` line.

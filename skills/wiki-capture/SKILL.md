@@ -36,7 +36,7 @@ takeaway pass.)
 - Look for `wiki/CLAUDE.md` in the current directory or upward.
 - If no wiki found: tell the user and suggest `/wiki-init`.
 
-(No need to read `wiki/CLAUDE.md` here — the schema governs what `wiki/`
+(No need to read `wiki/AGENTS.md` here — the schema governs what `wiki/`
 looks like, and capture doesn't write into `wiki/`. The ingest skill and
 the agent both read it later in their own contexts.)
 
@@ -135,7 +135,7 @@ Independent of which metadata path fired, fetch the rendered body via WebFetch a
 - Preserve source URLs in links.
 - Research papers: preserve section structure (abstract, intro, methods, etc.).
 
-The vault file is immutable once written (per `wiki/CLAUDE.md` core
+The vault file is immutable once written (per `wiki/AGENTS.md` core
 rules); decisions about what to keep happen here, not later.
 
 ### 5. Write to `vault/`

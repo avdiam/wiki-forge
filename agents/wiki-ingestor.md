@@ -49,9 +49,11 @@ the source.
 
 ### 1. Read the schema
 
-Read `<wiki>/CLAUDE.md` in full. The schema governs how you write — field
+Read `<wiki>/AGENTS.md` in full. The schema governs how you write — field
 meanings, page templates, frontmatter rules, the contradiction-callout
 syntax, and the "prefer edits over creates" discipline. Honor it exactly.
+(`<wiki>/CLAUDE.md` is just a 1-line `@-include` pointer to AGENTS.md;
+read AGENTS.md directly to get the actual schema content.)
 
 ### 2. Read the raw source and extract write-side specifications
 
@@ -94,7 +96,7 @@ file; carry them into step 3):
   the source body verbatim, halt before any writes and return a HALT
   report (the plan was approved on bad evidence; refusing the write is the
   only safe option). Concepts, comparisons, and syntheses do NOT require
-  this — only `entities/`. Per wiki/CLAUDE.md "Verbatim citation for new
+  this — only `entities/`. Per wiki/AGENTS.md "Verbatim citation for new
   entity pages" rule.
 - **Numerical anchors to preserve.** Specific numbers + their full context
   (benchmarks, percentages, parameter counts, dates, prices). Record the
@@ -125,7 +127,7 @@ file; carry them into step 3):
   `broken` are the avoid-wikilinking list.** When attributing or
   referencing any name on this list during step 3, **use plain text —
   never `[[name]]` syntax.** Promote to a real stub only when the
-  substantial-coverage threshold from `wiki/CLAUDE.md` is met for that
+  substantial-coverage threshold from `wiki/AGENTS.md` is met for that
   entity itself; otherwise the reference stays plain. The `--planned`
   flag tells the script which slugs WILL exist after this ingest's writes
   — those are valid wikilink targets even though their `.md` files don't
@@ -173,7 +175,7 @@ In this order:
 
 #### 3a. Source summary page — `sources/<suggested_slug>.md`
 
-Use the source-summary template from `wiki/CLAUDE.md`. Frontmatter required:
+Use the source-summary template from `wiki/AGENTS.md`. Frontmatter required:
 
 - `source_type:` — copy from the raw vault file's frontmatter (`source_type:` written by `/wiki-capture` or the clipper). Values: `article | paper | gist | blog | docs | transcript | notes | other`.
 - `captured:` — copy from the raw vault file's frontmatter (`captured:` from `/wiki-capture`, or `clipped:` from the clipper — accept either, write `captured:` on the source page). Fall back to the filename's `YYYY-MM-DD` prefix if neither field exists.
@@ -211,7 +213,7 @@ gap it fills); leave **`## Pages updated`** empty until step 3e.
   NEVER silently overwrite. The plan already vetted these contradictions — apply them, don't re-evaluate.
 
   **Typed-edge obligation (active).** Whenever you write a `> [!WARNING] Contradiction Detected:` callout — whether plan-listed or late-found — also populate the `contradicts:` frontmatter on the touched page with quoted-flow wikilinks to the contradicting page(s). Add the inverse edge to each referenced page's `contradicts:` field so the relationship is symmetric (the `check_asymmetric_contradictions` lint flags one-way edges). Canonical YAML: `contradicts: ["[[other-slug]]"]`. Same pattern when surfacing supersession (entity X replaces entity Y): write `supersedes: ["[[Y]]"]` on X and `superseded_by: ["[[X]]"]` on Y, with `status: deprecated` on Y. The `check_invalid_typed_links` lint flags wikilinks in these fields that don't resolve. Per-ingest cost is near-zero — the wikilinks are already in the callout you're writing.
-- **Claim-tag markers (concept / entity / comparison / synthesis pages only).** Apply `*[INFERRED]*` after claims you synthesized across sources or inferred from one. Apply `*[AMBIGUOUS]*` after a specific contested or single-source claim where `verify: true` would be too coarse (the rest of the page is solid; one claim is the issue). Untagged claims are implicitly EXTRACTED — do not mark verbatim or near-verbatim source content. Skip on source pages entirely. The `excessive_ambiguous` lint flags pages with more than 3 `*[AMBIGUOUS]*` markers. Per wiki/CLAUDE.md "claim-tag inline markers" rule.
+- **Claim-tag markers (concept / entity / comparison / synthesis pages only).** Apply `*[INFERRED]*` after claims you synthesized across sources or inferred from one. Apply `*[AMBIGUOUS]*` after a specific contested or single-source claim where `verify: true` would be too coarse (the rest of the page is solid; one claim is the issue). Untagged claims are implicitly EXTRACTED — do not mark verbatim or near-verbatim source content. Skip on source pages entirely. The `excessive_ambiguous` lint flags pages with more than 3 `*[AMBIGUOUS]*` markers. Per wiki/AGENTS.md "claim-tag inline markers" rule.
 - **`verify: true` re-evaluation (closes the loop with `/wiki-corroborate`).** Inspect the dispatch prompt's `Verify-clearing decisions:` block for a line matching this page's slug. Apply the user's choice as part of the EDIT body, AND **track every slug+decision in working state** (Y, P, AND N) for the post-commit telemetry backfill in step 5 — every decision is audit-visible, not just Y. The backfill defers past the late-contradiction rollback boundary so a halt-and-rollback doesn't leave a phantom stamp against changes that never reached HEAD.
   - **Y (Clear).** Remove the `verify: true` line from the page's frontmatter; delete the inline `⚠ needs verification:` callout from the body (or its `> [!WARNING] needs verification:` blockquote variant — match either shape). Bump `confidence:` one tier (e.g., 0.7 → 0.8), capped at 1.0.
   - **N (Retain).** Leave `verify: true` and the inline callout intact. New source still gets added to `sources:` and the `### From <source>` evidence subsection lands as usual; the flagged claim is just not yet considered corroborated.
@@ -222,12 +224,12 @@ gap it fills); leave **`## Pages updated`** empty until step 3e.
 
 #### 3c. CREATE lines — for each `CREATE <path>` in the plan
 
-Use the right template (concept | entity | comparison) from `wiki/CLAUDE.md`. Required frontmatter quality:
+Use the right template (concept | entity | comparison) from `wiki/AGENTS.md`. Required frontmatter quality:
 
 - **`aliases:`** — include the acronym, alternate names, and kebab-case variants. If the source calls it "RAG" and the title is "Retrieval-Augmented Generation", aliases must include `rag`.
 - **`tags:`** — 3–8 conceptual keywords spanning conceptual domain (e.g., `performance`, `cost-optimization`), related techniques, and use-case keywords (`production`, `prototyping`, `evaluation`).
 - **Entity pages — `status:` field.** Required. Default `active` when unclear; don't manufacture signal from weak evidence.
-- **Entity pages — verbatim citation in body.** Required for `type: entity` only. Place at least one block-quote line in the page body containing the verbatim phrase from the source that names this entity, with wikilink attribution to the source page. Format: `> "<exact phrase from source containing the entity name>" — [[source-id]]`. Typical home: just below the `# <Entity Name>` heading, or inside `## What it is` as the opening line. The quote must come from the verbatim-quotes list in step 2b (which the SKILL already collected at the takeaway gate). If the list has no quote covering this entity, the plan was approved on bad evidence — halt and return a HALT report rather than writing the page. Per wiki/CLAUDE.md "Verbatim citation for new entity pages" rule.
+- **Entity pages — verbatim citation in body.** Required for `type: entity` only. Place at least one block-quote line in the page body containing the verbatim phrase from the source that names this entity, with wikilink attribution to the source page. Format: `> "<exact phrase from source containing the entity name>" — [[source-id]]`. Typical home: just below the `# <Entity Name>` heading, or inside `## What it is` as the opening line. The quote must come from the verbatim-quotes list in step 2b (which the SKILL already collected at the takeaway gate). If the list has no quote covering this entity, the plan was approved on bad evidence — halt and return a HALT report rather than writing the page. Per wiki/AGENTS.md "Verbatim citation for new entity pages" rule.
 - **`verify:` flag.** If the page asserts a claim you couldn't corroborate (single source, plausible but not confirmed, contested within the article itself), set `verify: true` AND add an inline `⚠ needs verification: <why>` callout at the claim. **For the single-claim case** where most of the page is well-sourced and only one assertion is uncertain, prefer the `*[AMBIGUOUS]*` claim-tag marker (see step 3b) — finer-grained than the page-level flag.
 - **`confidence:`** — below 0.5 must be flagged inline with `⚠ low confidence: <why>`.
 
@@ -242,7 +244,7 @@ shares a decision space with a sibling page (two agent frameworks competing
 for the same use case, two vector DBs, two retrieval strategies). If a
 natural counterpart exists and there isn't yet a comparison page, CREATE
 one using the comparison template — even if the source didn't explicitly
-contrast them. This is the loosened rule from `wiki/CLAUDE.md`. The plan
+contrast them. This is the loosened rule from `wiki/AGENTS.md`. The plan
 may have already prescribed this; if so, you've already created it in 3c.
 
 #### 3e. Fill `## Pages updated`

@@ -341,7 +341,7 @@ substitute for the clipper-side discipline that keeps secrets out of the
 vault in the first place.
 
 Sidecar config: `wiki/.meta/secret-patterns.json` (optional) extends the
-built-in pattern set; documented in `wiki/CLAUDE.md` § Lint configuration.
+built-in pattern set; documented in `wiki/SPECIFICATION.md` § "Secret-pattern config".
 
 ### 11. Present takeaways and WAIT for free-form approval
 
@@ -368,7 +368,7 @@ Present in the main chat in this exact format:
 > `— single source; recommend verify: true` so the user can decide at the
 > gate whether to (a) approve standalone with `verify: true`, (b) approve
 > standalone as canonical (no verify), or (c) fold into an existing page
-> instead. Per wiki/CLAUDE.md "Single-source standalone pages" rule.
+> instead. Per wiki/AGENTS.md "Single-source standalone pages" rule.
 > Example: `CREATE concepts/agent-studio.md — Google's low-code agent
 > authoring environment; single source; recommend verify: true`.
 
@@ -381,7 +381,7 @@ Present in the main chat in this exact format:
 > name, **do not list the CREATE** — fold the reference into an existing
 > page or omit it entirely. Concepts, comparisons, and syntheses are
 > exempt (verbatim quotes encouraged but not required, since they
-> aggregate across sources). Per wiki/CLAUDE.md "Verbatim citation for
+> aggregate across sources). Per wiki/AGENTS.md "Verbatim citation for
 > new entity pages" rule.
 >
 > Example takeaway-block snippet:
@@ -510,7 +510,7 @@ Notes on the prompt shape:
 ### 13. Log ingest telemetry
 
 Parse two blocks from the Agent tool's return and write one row to
-`<wiki>/.meta/ingest_log.jsonl`. Schema in `wiki/CLAUDE.md` § "Telemetry".
+`<wiki>/.meta/ingest_log.jsonl`. Schema in `wiki/SPECIFICATION.md` § "Telemetry".
 
 **Block A — `<usage>` metadata** the Agent tool appends after the report:
 
@@ -603,6 +603,6 @@ paradigm-shifting material that warrants discussion.
 The skill owns the entire pre-write pipeline because:
 
 1. **Free-form approval needs main-thread conversational input.** The user replies with prose ("skip the LangChain section, emphasize the cost angle"); structured tools like `AskUserQuestion` would force discrete choices and lose expressiveness.
-2. **Discovery and analysis benefit from main-context state.** `wiki/CLAUDE.md` is auto-loaded in the main session; the user's prior conversation is in scope; spawning a subagent for the cheap pre-flight is overkill.
+2. **Discovery and analysis benefit from main-context state.** `wiki/AGENTS.md` is auto-loaded into the main session (via `wiki/CLAUDE.md`'s `@-include`); the user's prior conversation is in scope; spawning a subagent for the cheap pre-flight is overkill.
 3. **The agent stays a pure executor.** Single source of truth per concern: discovery + analysis + probe = SKILL; writes + commit + log + lint = agent. No overlap, no redundancy.
 4. **Capture chains here.** `/wiki-capture` is a thin onramp — it lands the file in vault/ and hands the path to this skill. The agent is never invoked directly.
