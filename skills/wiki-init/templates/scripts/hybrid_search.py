@@ -678,16 +678,33 @@ def search(
 
     sorted_docs = sorted(dampened_scores.items(), key=lambda x: x[1], reverse=True)
 
-    # Compute normalization:
+    # Compute normalization. The "perfect-match" cap depends on which ranker
+    # combination is in play (see branches below), but in all cases the cap
+    # is the raw-RRF ceiling for a doc that's rank-0 across the active
+    # rankers. Hub dampening pushes every doc's score down by
+    # 1/(1 + alpha*links), so a cap that ignores dampening yields normalized
+    # scores that underread the actual match quality — the rank-0 doc, by
+    # construction the best possible match for *this* query, would never
+    # reach 1.0 if it happened to be a hub. Fix: scale the cap by the
+    # rank-0 doc's dampening factor, so "1.0 = the rank-0 doc's quality
+    # interpreted as raw_rrf / raw_rrf_max." Preserves the SKILL.md text
+    # ("a score of 0.3 means the best result is only 30% as relevant as a
+    # perfect match") as a literal claim rather than an approximate one.
     bm25_top_raw = sorted_docs[0][1] if sorted_docs and sorted_docs[0][1] > 0 else 0.0
+    rank0_doc_id = sorted_docs[0][0] if sorted_docs else None
+    rank0_links = (
+        inbound_links.get(metadata[rank0_doc_id]["slug"], 0)
+        if rank0_doc_id is not None else 0
+    )
+    rank0_dampening = 1.0 + alpha * rank0_links  # same alpha as line 671
     if has_dense:
         # Hybrid (Phase 1 + Phase 2): a doc that's rank-0 in both BM25
         # and dense for ALL N variations sums to 4.0/(k+1). The /N in the
         # RRF formula keeps this cap stable regardless of N.
-        theoretical_max = 4.0 / (60 + 1)
+        theoretical_max = 4.0 / (60 + 1) / rank0_dampening
     elif n_variations > 1:
         # BM25-only multi-query: cap is 3.0/(k+1) (BM25 multiplier alone).
-        theoretical_max = 3.0 / (60 + 1)
+        theoretical_max = 3.0 / (60 + 1) / rank0_dampening
     else:
         # BM25-only single-query (Phase 1 contract): IDF-sum normalization.
         theoretical_max = sum(
@@ -695,6 +712,7 @@ def search(
         )
         if theoretical_max <= 0:
             theoretical_max = 1.0
+        theoretical_max = theoretical_max / rank0_dampening
 
     t_total = time.perf_counter() - t_start
 
