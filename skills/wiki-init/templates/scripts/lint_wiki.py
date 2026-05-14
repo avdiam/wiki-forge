@@ -19,6 +19,7 @@ Checks:
     - long_summary            summary: fields >30 words or multi-sentence
     - stale_source            source pages whose captured: is older than 180 days
     - drifted_sources         source pages flagged source_drifted:true by check_source_freshness.py
+    - duplicate_sources       two or more source pages sharing the same source_hash
     - asymmetric_contradictions  A contradicts B but B doesn't list A
     - invalid_typed_links     wikilinks in contradicts:/supersedes:/superseded_by: that don't resolve
     - artifact_presence       opted-in pages lacking any structural artifact (code/table/procedure/quote/deflist)
@@ -293,6 +294,36 @@ def check_drifted_sources(pages: dict) -> list[str]:
         if info["type"] == "sources"
         and info["frontmatter"].get("source_drifted") is True
     )
+
+
+def check_duplicate_sources(pages: dict) -> list[dict]:
+    """Source pages sharing a `source_hash:`.
+
+    Content-hash dedup phase 3 (phases 1-2 wired the hash into ingest +
+    pre-write probe session 12, 2026-04-20). Groups `sources/*.md` pages by
+    `source_hash:` frontmatter and surfaces any group with more than one
+    page — pre-mechanism duplicates that slipped through before the
+    `/wiki-ingest` step-3 probe was wired up. Robust to filename / URL /
+    date-slug variations that slug-based and URL-based dedup miss.
+
+    Pages without `source_hash:` are skipped (legacy or non-source pages).
+    Emitted shape: `{"hash": "<16hex>", "pages": ["sources/a.md", ...]}`,
+    sorted by group size descending then by hash for stable output.
+    """
+    groups: dict[str, list[str]] = {}
+    for info in pages.values():
+        if info["type"] != "sources":
+            continue
+        h = info["frontmatter"].get("source_hash")
+        if not h:
+            continue
+        groups.setdefault(str(h), []).append(info["path"])
+    issues: list[dict] = []
+    for h, paths in groups.items():
+        if len(paths) > 1:
+            issues.append({"hash": h, "pages": sorted(paths)})
+    issues.sort(key=lambda r: (-len(r["pages"]), r["hash"]))
+    return issues
 
 
 STALE_SOURCE_DAYS = 180
@@ -792,6 +823,7 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "needs_verification": check_needs_verification(pages),
         "excessive_ambiguous": check_excessive_ambiguous(pages),
         "drifted_sources": check_drifted_sources(pages),
+        "duplicate_sources": check_duplicate_sources(pages),
         "overview_staleness": check_overview_staleness(wiki_root),
         "single_page_categories": check_single_page_categories(pages),
         "unknown_category": check_unknown_category(wiki_root, pages),
@@ -823,6 +855,7 @@ def render_human(report: dict) -> str:
         f"Needs verification:   {len(report['needs_verification'])}",
         f"Excessive AMBIGUOUS:  {len(report['excessive_ambiguous'])}",
         f"Drifted sources:      {len(report['drifted_sources'])}",
+        f"Duplicate sources:    {len(report.get('duplicate_sources', []))}",
         f"Single-page cats:     {len(report['single_page_categories'])}",
         f"Unknown categories:   {len(report['unknown_category'])}",
         f"Single-source unverified: {len(report.get('single_source_unverified', []))}",
@@ -918,6 +951,12 @@ def render_human(report: dict) -> str:
         lines.append("Drifted stubs (stub-prose markers without verify:true — backfill needed):")
         for item in report["drifted_stubs"][:20]:
             lines.append(f"  {item['page']} (matched: {item['marker']})")
+
+    if report.get("duplicate_sources"):
+        lines.append("")
+        lines.append("Duplicate sources (same source_hash across multiple source pages):")
+        for item in report["duplicate_sources"][:20]:
+            lines.append(f"  hash {item['hash']}: {', '.join(item['pages'])}")
 
     return "\n".join(lines)
 
