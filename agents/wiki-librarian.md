@@ -159,13 +159,13 @@ After presenting the answer, ask:
 
 ```text
 Would you like me to file this answer as a synthesis page at
-syntheses/<slug>.md? Synthesis pages are picked up by lint and query,
+pages/syntheses/<slug>.md? Synthesis pages are picked up by lint and query,
 so good answers compound.
 ```
 
 If the user says yes:
 
-1. Create `syntheses/<slug>.md` using the synthesis template from
+1. Create `pages/syntheses/<slug>.md` using the synthesis template from
    AGENTS.md. Fill `summary:` with a one-sentence hook.
 2. Run `python <wiki>/.scripts/update_index.py <wiki>` to add it to the index.
 3. If the wiki is a git repo, commit:
@@ -176,7 +176,7 @@ If the user says yes:
    ```bash
    python <wiki>/.scripts/append_log.py query-filed \
      --title "<question>" \
-     --created "syntheses/<slug>" \
+     --created "pages/syntheses/<slug>" \
      --commit "<short-hash>" \
      --wiki <wiki>
    ```
@@ -189,7 +189,7 @@ After presenting the survey, ask:
 
 ```text
 Would you like me to file this coverage report as
-syntheses/<slug>-coverage.md? Coverage reports surface what the wiki
+pages/syntheses/<slug>-coverage.md? Coverage reports surface what the wiki
 knows about a topic; re-running /wiki-summarize <topic> later will
 overwrite this page with the updated audit.
 ```
@@ -201,7 +201,7 @@ slugs.
 
 If the user says yes (**create or overwrite** — re-run convention is overwrite):
 
-1. Write `syntheses/<slug>-coverage.md` using the synthesis template from
+1. Write `pages/syntheses/<slug>-coverage.md` using the synthesis template from
    AGENTS.md, extended with the coverage-report fields:
    ```yaml
    ---
@@ -234,7 +234,7 @@ If the user says yes (**create or overwrite** — re-run convention is overwrite
    ```bash
    python <wiki>/.scripts/append_log.py query-filed \
      --title "<topic> — coverage report" \
-     --created "syntheses/<slug>-coverage" \
+     --created "pages/syntheses/<slug>-coverage" \
      --commit "<short-hash>" \
      --wiki <wiki>
    ```
@@ -247,10 +247,10 @@ Return the answer or survey itself, followed by a brief footer:
 
 ```text
 Pages consulted: [[page-1]], [[page-2]], [[page-3]]
-Filed as: syntheses/<slug>.md   (or: Not filed)
+Filed as: pages/syntheses/<slug>.md   (or: Not filed)
 ```
 
-In survey mode, `Filed as:` is `syntheses/<slug>-coverage.md` (or `Not filed`);
+In survey mode, `Filed as:` is `pages/syntheses/<slug>-coverage.md` (or `Not filed`);
 otherwise the bare `<slug>.md` shape.
 
 **Parser contract — do not reformat.** The dispatching skill (`/wiki-query`
@@ -271,7 +271,7 @@ the answer body.
 
 - Never modify `vault/` or any existing wiki page. You only create synthesis
   pages, and only on user approval. **Exception:** survey-mode filing
-  overwrites `syntheses/<slug>-coverage.md` if a prior coverage report on the
+  overwrites `pages/syntheses/<slug>-coverage.md` if a prior coverage report on the
   same anchor exists — this is the documented re-run convention, not a
   general modify-existing-pages license.
 - **Don't file trivial answers (prose Q-A mode).** Only offer to file

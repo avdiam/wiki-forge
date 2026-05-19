@@ -67,9 +67,21 @@ Run the mechanical refresh script. This is fast (~1s), deterministic, and
 the only file it touches is `wiki/overview.md` (Stats section + the
 mechanical-refresh marker line).
 
+If `/tmp/wiki-graph.json` exists (the wake-up drill stashes it on every
+session start, and `/wiki-lint` re-stashes it during Pass A), pass it
+through to skip an inline graph rebuild — same pattern as drill step 6's
+reuse of step 5's snapshot:
+
 ```bash
-python wiki/.scripts/update_overview_mechanical.py wiki
+if [ -f /tmp/wiki-graph.json ]; then
+    python wiki/.scripts/update_overview_mechanical.py wiki --graph-json /tmp/wiki-graph.json
+else
+    python wiki/.scripts/update_overview_mechanical.py wiki
+fi
 ```
+
+The `--graph-json` arm falls back to a fresh inline build if the stash is
+unreadable, so this is safe to use opportunistically.
 
 If the script reports "overview.md unchanged", the wiki state is
 identical to the last refresh. Skip the curator dispatch and exit.
@@ -161,6 +173,26 @@ python wiki/.scripts/append_overview_log.py --wiki wiki \
 
 If the appender exits non-zero, mention briefly and move on. Telemetry
 failure does NOT roll back the operation.
+
+**Fold telemetry into the soft-refresh commit (when step 5A produced one).**
+The two appenders above run AFTER step 5A's commit (they need the commit
+hash and the curator's `<usage>` block) — left as-is, the `log.md` and
+`overview_log.jsonl` rows stay dirty until a later session backfills
+them. Amend the soft-refresh commit to fold them in:
+
+```bash
+if ! git diff --quiet wiki/log.md wiki/.meta/overview_log.jsonl; then
+    git add wiki/log.md wiki/.meta/overview_log.jsonl
+    git commit --amend --no-edit
+fi
+```
+
+The diff-quiet gate is defensive — no-op when an appender failed, when
+step 5A skipped its commit because the overview diff was empty, or when
+nothing actually changed. HEAD at this point is the soft-refresh commit
+from step 5A. Same pattern as `/wiki-ingest` step 13's telemetry fold —
+see that SKILL for the wider rationale. Personal-repo amend policy
+applies (see [`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
 
 ### 7A. Relay
 
@@ -332,6 +364,23 @@ python wiki/.scripts/append_overview_log.py --wiki wiki \
 `<N>` is the ingest count snapshot at Pass-1 dispatch (use
 `grep -c "^## \[.*\] ingest" wiki/log.md` if you didn't capture it
 upstream).
+
+**Fold telemetry into the full-rewrite commit (when step 5B produced one).**
+Same shape as Mode A's fold — the appenders run after step 5B's commit,
+so the `log.md` and `overview_log.jsonl` rows stay dirty until amended:
+
+```bash
+if ! git diff --quiet wiki/log.md wiki/.meta/overview_log.jsonl; then
+    git add wiki/log.md wiki/.meta/overview_log.jsonl
+    git commit --amend --no-edit
+fi
+```
+
+The diff-quiet gate covers the cancelled-status path (no step 5B commit
+to amend, no telemetry rows appended → nothing in the diff) and the
+appender-failed path. HEAD at this point is the full-rewrite commit
+from step 5B when status is `applied`. Personal-repo amend policy
+applies (see [`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
 
 ### 7B. Relay
 

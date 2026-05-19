@@ -395,7 +395,7 @@ def load_pages(wiki_root: Path) -> tuple[list[str], list[dict]]:
 
     found_any = False
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if type_dir.is_dir():
             found_any = True
 
@@ -403,7 +403,7 @@ def load_pages(wiki_root: Path) -> tuple[list[str], list[dict]]:
         return [], []
 
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md_file in sorted(type_dir.glob("*.md")):
@@ -532,8 +532,8 @@ def check_threshold(wiki_root: Path) -> tuple[str, int, int]:
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Fallback: scan index files in indexes/ directory
-    indexes_dir = wiki_root / "indexes"
+    # Fallback: scan index files in pages/indexes/ directory
+    indexes_dir = wiki_root / "pages" / "indexes"
     total_words = 0
     if indexes_dir.is_dir():
         for idx_file in indexes_dir.glob("index*.md"):

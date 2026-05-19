@@ -42,16 +42,17 @@ wiki/
 ├── .meta/              # Sidecar data (index stats, embedding cache, telemetry logs)
 ├── .scripts/           # Helper scripts (update_index, lint, search, etc.)
 │   └── models/         # ONNX model for semantic search (optional)
-├── indexes/
-│   ├── index.md        # Master index — TOC pointing to sub-indices
-│   ├── index-sources.md
-│   ├── index-concepts.md
-│   ├── index-entities.md
-│   ├── index-comparisons.md
-│   └── index-syntheses.md
-├── sources/            # One summary per vault file
-├── concepts/           # Ideas, patterns, methods, theories
-├── entities/           # People, tools, services, orgs, models, products
-├── comparisons/        # Competing approaches side-by-side
-└── syntheses/          # Query answers worth preserving
+└── pages/              # Knowledge content (separated from project/schema files above)
+    ├── indexes/
+    │   ├── index.md        # Master index — TOC pointing to sub-indices
+    │   ├── index-sources.md
+    │   ├── index-concepts.md
+    │   ├── index-entities.md
+    │   ├── index-comparisons.md
+    │   └── index-syntheses.md
+    ├── sources/            # One summary per vault file
+    ├── concepts/           # Ideas, patterns, methods, theories
+    ├── entities/           # People, tools, services, orgs, models, products
+    ├── comparisons/        # Competing approaches side-by-side
+    └── syntheses/          # Query answers worth preserving
 ```

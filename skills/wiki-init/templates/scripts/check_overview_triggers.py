@@ -74,7 +74,7 @@ def load_graph(wiki_root: Path, graph_json_arg: str | None = None) -> dict:
 def collect_categories(wiki_root: Path) -> set[str]:
     cats: set[str] = set()
     for t in PAGE_TYPES:
-        d = wiki_root / t
+        d = wiki_root / "pages" / t
         if not d.is_dir():
             continue
         for md in d.glob("*.md"):

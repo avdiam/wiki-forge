@@ -1,21 +1,21 @@
 # LLM Wiki Schema
 
-> **Schema version:** 2 — see [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) for change history. Bump on breaking changes (new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** since the list is now enumerated and lint-enforced). Non-breaking changes (template tweaks, rule clarifications, prose edits) don't bump. `CLAUDE.md` is the Claude Code auto-load anchor and `@-includes` this file; [`CATEGORIES.md`](CATEGORIES.md) and [`SPECIFICATION.md`](SPECIFICATION.md) are sibling schema files (see [`README.md`](README.md) for the full layout).
+> **Schema version:** 3 — see [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) for change history. Bump on breaking changes (new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** since the list is now enumerated and lint-enforced). Non-breaking changes (template tweaks, rule clarifications, prose edits) don't bump. `CLAUDE.md` is the Claude Code auto-load anchor and `@-includes` this file; [`CATEGORIES.md`](CATEGORIES.md) and [`SPECIFICATION.md`](SPECIFICATION.md) are sibling schema files (see [`README.md`](README.md) for the full layout).
 
 This file is the operational schema for the wiki in this directory. It is auto-loaded into the agent's context (via `CLAUDE.md`'s `@AGENTS.md` include) and is referenced by the `wiki-*` skills. Follow the rules and templates here exactly.
 
-Content lives in `sources/`, `concepts/`, `entities/`, `comparisons/`, `syntheses/`. For the full directory tree, the three-layer architecture, and notes on running this wiki with non-Claude-Code AI platforms, see [`README.md`](README.md).
+Content lives in `pages/sources/`, `pages/concepts/`, `pages/entities/`, `pages/comparisons/`, `pages/syntheses/`. For the full directory tree, the three-layer architecture, and notes on running this wiki with non-Claude-Code AI platforms, see [`README.md`](README.md).
 
 ## Page types
 
-### Source summary (`sources/`)
+### Source summary (`pages/sources/`)
 
 One per vault file. Captures what the source says, without cross-source synthesis.
 
 - Filename: same slug as the vault file
-- Example: `sources/2026-04-15-karpathy-llm-wiki.md`
+- Example: `pages/sources/2026-04-15-karpathy-llm-wiki.md`
 
-### Concept (`concepts/`)
+### Concept (`pages/concepts/`)
 
 An idea, pattern, method, or theory. Accumulates evidence from multiple sources
 over time. This is where most retrieval happens.
@@ -23,7 +23,7 @@ over time. This is where most retrieval happens.
 - Filename: kebab-case of the concept name
 - Examples: `rag.md`, `llm-wiki-pattern.md`, `prompt-caching.md`
 
-### Entity (`entities/`)
+### Entity (`pages/entities/`)
 
 A specific named thing: a person, tool, service, organization, product, or
 model family.
@@ -31,7 +31,7 @@ model family.
 - Filename: kebab-case
 - Examples: `claude-code.md`, `andrej-karpathy.md`, `langchain.md`, `claude-4-6.md`
 
-### Comparison (`comparisons/`)
+### Comparison (`pages/comparisons/`)
 
 Two competing approaches side-by-side. **Create whenever two entities or
 concepts occupy the same decision space, even if no single source contrasts
@@ -50,7 +50,7 @@ surfaces competing claims.
 - Filename: `a-vs-b.md`
 - Example: `rag-vs-llm-wiki.md`
 
-### Synthesis (`syntheses/`)
+### Synthesis (`pages/syntheses/`)
 
 Created from a query result worth preserving. Output of "save this answer as
 a wiki page" during `/wiki-query`.
@@ -113,13 +113,13 @@ stale: false
 - **last_updated** — ISO date of last edit.
 - **stale** — `true` when the page is known to be outdated but not yet rewritten.
   The lint operation uses this.
-- **source_type** — *Required on `sources/` pages; not used elsewhere.* The
+- **source_type** — *Required on `pages/sources/` pages; not used elsewhere.* The
   raw-material category — one of `article`, `paper`, `gist`, `blog`, `docs`,
   `transcript`, `notes`, `other`. Copied verbatim from the raw vault file's
   frontmatter (which the `wiki-capture` skill writes on capture). Helps
   calibrate trust — a claim from a peer-reviewed paper carries different
   weight than the same claim from a blog post, even at identical confidence.
-- **captured** — *Required on `sources/` pages; not used elsewhere.* ISO date
+- **captured** — *Required on `pages/sources/` pages; not used elsewhere.* ISO date
   the raw source material was pulled into `vault/`. Copied from the raw vault
   file's frontmatter (`captured:` written by `/wiki-capture`, or `clipped:`
   written by the clipper — ingestor accepts either and writes `captured:` on
@@ -128,7 +128,7 @@ stale: false
   older than 180 days surface as a review queue, signaling upstream content
   may have drifted since the original capture (see [[llm-wiki-failure-modes]]
   #8 on dynamic-data mismatch).
-- **published** — *Optional on `sources/` pages; not used elsewhere.* ISO date
+- **published** — *Optional on `pages/sources/` pages; not used elsewhere.* ISO date
   the underlying content was originally published in the world. Distinct from
   `captured:` (when the raw source landed in `vault/`) — the two are
   deliberately separate. Capture date is always knowable; publication date
@@ -141,16 +141,16 @@ stale: false
   `published:` is purely informational. Invariant: when both are present,
   `published:` should be ≤ `captured:` (a future lint may surface
   violations).
-- **source_hash** — *Required on `sources/` pages; not used elsewhere.* First
+- **source_hash** — *Required on `pages/sources/` pages; not used elsewhere.* First
   16 hex characters of the raw vault file's SHA-256 (`sha256_short` from
   `ingest_source.py`'s JSON brief). 64 bits is far past birthday-bound
   collision risk for any personal knowledge base — the short form is both
   inspectable in frontmatter and sufficient for dedup. Drives content-based
-  dedup: before every ingest, the `/wiki-ingest` skill greps `sources/*.md`
+  dedup: before every ingest, the `/wiki-ingest` skill greps `pages/sources/*.md`
   frontmatter for a matching `source_hash:` and prompts the user on match.
   Robust to filename / URL / date-slug variations that slug-based and
   URL-based dedup miss.
-- **status** — *Optional on `entities/` pages; not used elsewhere.* Tool /
+- **status** — *Optional on `pages/entities/` pages; not used elsewhere.* Tool /
   framework / model / product lifecycle state:
   - `active` — in use, maintained, worth recommending (default when absent)
   - `experimental` — early/beta; shape likely to change
@@ -298,8 +298,8 @@ A page's `category:` frontmatter must be one of the values in that list; lint re
 When processing a source, for each concept/entity you identify:
 
 1. **Run a fast context query** for existing matches. Use `grep -ril` across
-   `sources/`, `concepts/`, `entities/`, `comparisons/`, `syntheses/` for fast verification. Do not load the full index.
-2. **Glob `<type>/`** (e.g., `concepts/`) to catch anything grep might have missed.
+   `pages/sources/`, `pages/concepts/`, `pages/entities/`, `pages/comparisons/`, `pages/syntheses/` for fast verification. Do not load the full index.
+2. **Glob `<type>/`** (e.g., `pages/concepts/`) to catch anything grep might have missed.
 3. **If a page exists → EDIT IT.**
    - Append new evidence under `## Evidence` with a `### From <source title>` subsection
    - Add the new source to the `sources:` list in frontmatter
@@ -358,7 +358,7 @@ When a new concept/entity/comparison page would have exactly one source
   enters the review queue and lint surfaces it for corroboration, **OR**
 - **Explicit user approval at the `/wiki-ingest` takeaway gate.** The
   takeaway block's `### Proposed operations` must annotate single-source
-  CREATE entries (e.g., `CREATE concepts/foo.md — single source; recommend
+  CREATE entries (e.g., `CREATE pages/concepts/foo.md — single source; recommend
   verify: true`) and the user's approval reply ("yes promote — this is
   canonical / single-source ok") clears the requirement.
 
@@ -407,9 +407,9 @@ and edits 0, you probably missed connections — re-check via grep tools.
 Use Obsidian-style `[[wikilinks]]` for every internal reference. Targets
 resolve by slug, not full path:
 
-- `[[rag]]` → `concepts/rag.md`
-- `[[andrej-karpathy]]` → `entities/karpathy.md`
-- `[[rag-vs-llm-wiki]]` → `comparisons/rag-vs-llm-wiki.md`
+- `[[rag]]` → `pages/concepts/rag.md`
+- `[[andrej-karpathy]]` → `pages/entities/karpathy.md`
+- `[[rag-vs-llm-wiki]]` → `pages/comparisons/rag-vs-llm-wiki.md`
 
 Broken wikilinks (pointing to non-existent pages) are flagged by `wiki-lint`
 post-write. The wiki-ingestor agent also validates wikilinks **pre-write**
@@ -431,10 +431,10 @@ see [[2026-04-28-second-brain-obsidian-claude-code-evgeni-rusev]].)
 
 ## Special files
 
-### `indexes/index.md` (master index)
+### `pages/indexes/index.md` (master index)
 
 The navigation spine. Acts as a master directory pointing to sub-indices
-for each type (`indexes/index-concepts.md`, `indexes/index-entities.md`, etc.).
+for each type (`pages/indexes/index-concepts.md`, `pages/indexes/index-entities.md`, etc.).
 
 Within each sub-index, organized by category, every page appears as one line
 with its aliases, tags, and metadata — all visible to both the LLM and search:
@@ -455,10 +455,10 @@ Append-only. Each operation adds an entry:
 
 ```markdown
 ## [2026-04-15 14:30] ingest | Karpathy LLM Wiki gist
-- Created: sources/2026-04-15-karpathy-llm-wiki.md
-- Created: concepts/llm-wiki-pattern.md
-- Updated: concepts/rag.md (added contradiction section)
-- Updated: entities/karpathy.md (source added, confidence 0.8→0.9)
+- Created: pages/sources/2026-04-15-karpathy-llm-wiki.md
+- Created: pages/concepts/llm-wiki-pattern.md
+- Updated: pages/concepts/rag.md (added contradiction section)
+- Updated: pages/entities/karpathy.md (source added, confidence 0.8→0.9)
 - Commit: a1b2c3d
 ```
 
@@ -760,7 +760,7 @@ in addition to the standard frontmatter:
   `null` on Shape B (fuzzy retrieval, no anchor).
 
 Re-run convention is **overwrite** — `/wiki-summarize <topic>` files at
-`syntheses/<slug>-coverage.md` and a second invocation on the same topic
+`pages/syntheses/<slug>-coverage.md` and a second invocation on the same topic
 overwrites the body and advances `last_updated`. Old versions live in
 `git log`. Body shape is the five-section survey: Themes / Agreements /
 Disagreements / Coverage gaps / Structural footprint.

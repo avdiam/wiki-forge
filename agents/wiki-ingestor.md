@@ -70,6 +70,32 @@ summary page (`existing_summary` path) instead of creating a new source
 page. Treat this as the only deviation from a fresh ingest; the rest of
 step 3 still applies.
 
+**Drift-triggered re-ingest** — a specific shape of `merge_mode`. Check
+the existing source page's frontmatter: if `source_drifted: true` is
+present (set by `check_source_freshness.py` when upstream content shifted
+from the recorded baseline; cleared by clipper-side re-capture per Step 9
+of `vault/.clipper-rules.md`), this re-ingest is the closing leg of a
+drift cycle and needs three extras on top of the normal merge:
+
+- Title the new section `## Re-ingest <date> — drift re-capture` (not
+  just `## Re-ingest <date>`) so the audit trail makes the trigger
+  visible to anyone reading the source page later.
+- Clear the `source_drifted: true` field from the source page's
+  frontmatter, AND remove the `> [!WARNING] Source drift detected`
+  callout from the body if present. The drift has been addressed by
+  this re-ingest — leaving the flag stale would re-fire `check_drifted_sources`
+  lint on every subsequent pass.
+- Update `source_hash:` on the source page to the new `sha256_short`
+  from the brief. The hash field carries the content-identity of the
+  most recently ingested version, not the original capture; the merge
+  append handles the version history in the body.
+
+A manual re-ingest of the same source (re-running `/wiki-ingest` on an
+unchanged-or-edited vault file without a drift cycle in between) follows
+the plain `## Re-ingest <date>` convention — no drift suffix, no
+frontmatter cleanup required beyond the normal `last_updated:` bump and
+`source_hash:` refresh.
+
 #### 2b. Extract write-side specifications
 
 Before starting writes, produce a structured extraction from the source
@@ -83,11 +109,11 @@ file; carry them into step 3):
 - **Verbatim quotes to preserve.** 3–5 lines that should land word-for-word
   somewhere in the writes — mission-statement-grade framings, novel
   definitions, decision rules, the source's load-bearing claims. For each,
-  note its target home (e.g., *"to `concepts/agent-harness.md` § Why it
-  matters"* or *"as epigraph on `entities/deepseek-v4.md`"*). Short, dense
+  note its target home (e.g., *"to `pages/concepts/agent-harness.md` § Why it
+  matters"* or *"as epigraph on `pages/entities/deepseek-v4.md`"*). Short, dense
   sources may yield fewer; record what you have, don't pad.
 
-  **Mandatory coverage for new entities.** For every `CREATE entities/<slug>.md`
+  **Mandatory coverage for new entities.** For every `CREATE pages/entities/<slug>.md`
   line in the approved plan, this list MUST include at least one verbatim
   quote from the source that contains the entity name verbatim. The
   approved plan should already carry these quotes from the SKILL's step 11
@@ -96,7 +122,7 @@ file; carry them into step 3):
   the source body verbatim, halt before any writes and return a HALT
   report (the plan was approved on bad evidence; refusing the write is the
   only safe option). Concepts, comparisons, and syntheses do NOT require
-  this — only `entities/`. Per wiki/AGENTS.md "Verbatim citation for new
+  this — only `pages/entities/`. Per wiki/AGENTS.md "Verbatim citation for new
   entity pages" rule.
 - **Numerical anchors to preserve.** Specific numbers + their full context
   (benchmarks, percentages, parameter counts, dates, prices). Record the
@@ -173,7 +199,7 @@ or simplified; the avoid-wikilinking list doesn't get overridden because
 
 In this order:
 
-#### 3a. Source summary page — `sources/<suggested_slug>.md`
+#### 3a. Source summary page — `pages/sources/<suggested_slug>.md`
 
 Use the source-summary template from `wiki/AGENTS.md`. Frontmatter required:
 
@@ -295,7 +321,7 @@ Two thresholds:
 python <wiki>/.scripts/update_index.py <wiki>
 ```
 
-This rebuilds the split index files in `indexes/` deterministically from
+This rebuilds the split index files in `pages/indexes/` deterministically from
 page frontmatter. Do not hand-edit any index file.
 
 ### 5. Commit and log
@@ -397,12 +423,12 @@ Return:
 Ingest complete: <source title>
 
 Created:
-- sources/<slug>.md
-- concepts/<slug>.md
+- pages/sources/<slug>.md
+- pages/concepts/<slug>.md
 
 Updated:
-- concepts/<slug>.md
-- entities/<slug>.md
+- pages/concepts/<slug>.md
+- pages/entities/<slug>.md
 
 Contradictions recorded: <total>  (plan: <N>, late-found: <M>)
 New categories: <names or none>

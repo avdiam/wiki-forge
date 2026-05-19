@@ -138,7 +138,7 @@ If genuinely ambiguous, default to operational and offer dev mode in the welcome
 1. Run the normal wake-up drill steps 1–6 (mailbox, git, clipper-rules, memory, graph, drill state).
 2. **Project tree** — cheap structural map of what exists, so on-demand reads know where to look. Customize the prune list to skip your wiki's content directories so dev sessions don't drown in markdown filenames:
    ```bash
-   find . -type d \( -name node_modules -o -name .git -o -name __pycache__ -o -name .venv -o -name "Web Articles" -o -name ".obsidian" -o -name ".archive" -o -path "./wiki/concepts" -o -path "./wiki/entities" -o -path "./wiki/sources" -o -path "./wiki/comparisons" -o -path "./wiki/syntheses" -o -path "./wiki/indexes" \) -prune -o -print 2>/dev/null
+   find . -type d \( -name node_modules -o -name .git -o -name __pycache__ -o -name .venv -o -name "Web Articles" -o -name ".obsidian" -o -name ".archive" -o -path "./wiki/pages" \) -prune -o -print 2>/dev/null
    ```
 3. **Read these — and only these:**
    - [`dev/tech-debt.md`](../dev/tech-debt.md) — the forward-work queue. **Don't read it whole.** Two-step pattern: (a) Grep the file for `^## ` and `^- \*\*` headers to enumerate sections + entry titles + triggers; (b) targeted Read of the Immediate section in full plus only those Conditional / Design entries whose triggers are met or near-met. Skip entry bodies for items gated on unmet empirical conditions.

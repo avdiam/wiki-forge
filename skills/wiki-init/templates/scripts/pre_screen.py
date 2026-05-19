@@ -31,7 +31,7 @@ from frontmatter import parse_frontmatter
 def extract_wiki_tags(wiki_root: Path) -> set[str]:
     """Extract all unique tags from wiki index files."""
     tags: set[str] = set()
-    indexes_dir = wiki_root / "indexes"
+    indexes_dir = wiki_root / "pages" / "indexes"
     if not indexes_dir.is_dir():
         return tags
     for idx_file in indexes_dir.glob("index-*.md"):
@@ -47,7 +47,7 @@ def extract_wiki_tags(wiki_root: Path) -> set[str]:
 def extract_wiki_categories(wiki_root: Path) -> set[str]:
     """Extract category headings from the concepts index."""
     cats: set[str] = set()
-    concepts_idx = wiki_root / "indexes" / "index-concepts.md"
+    concepts_idx = wiki_root / "pages" / "indexes" / "index-concepts.md"
     if concepts_idx.is_file():
         for line in concepts_idx.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.startswith("### "):

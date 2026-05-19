@@ -8,7 +8,7 @@ experiment).
 
 Resolution rule (matches lint_wiki.py's check_broken_links):
 - A target slug resolves if `<slug>.md` exists in any of the five page dirs:
-  sources/, concepts/, entities/, comparisons/, syntheses/
+  pages/sources/, pages/concepts/, pages/entities/, pages/comparisons/, pages/syntheses/
 - Aliases are NOT considered (lint doesn't either; the agent should write the
   canonical slug, not aliases)
 - The `--planned` flag accepts slugs being created in the same ingest as
@@ -74,7 +74,7 @@ def normalize_target(raw: str) -> str:
 def collect_existing_slugs(wiki_root: Path) -> set[str]:
     slugs: set[str] = set()
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md in type_dir.glob("*.md"):

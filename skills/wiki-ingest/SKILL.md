@@ -97,7 +97,7 @@ Before touching anything else, check whether another vault file produced a
 byte-identical source page:
 
 ```bash
-grep -l "^source_hash: <sha256_short>" <wiki>/sources/*.md
+grep -l "^source_hash: <sha256_short>" <wiki>/pages/sources/*.md
 ```
 
 If a match is found, present:
@@ -203,8 +203,8 @@ From the source, derive a candidate list of:
 Run the Grep tool with `output_mode: "files_with_matches"` over `wiki/`. A
 single Grep call with an alternation pattern (`pattern1|pattern2|...`)
 covers many candidates at once. The page directories you care about are
-`wiki/sources/`, `wiki/concepts/`, `wiki/entities/`, `wiki/comparisons/`,
-`wiki/syntheses/`.
+`wiki/pages/sources/`, `wiki/pages/concepts/`, `wiki/pages/entities/`, `wiki/pages/comparisons/`,
+`wiki/pages/syntheses/`.
 
 > **Glob caveat.** The Grep tool's `glob` parameter does **not** expand
 > brace alternation — `glob: "{sources,concepts,entities}/*.md"` returns
@@ -242,8 +242,8 @@ overlap (use the Read tool's `offset`/`limit` parameters). Do not read
 full pages; the goal is enough context to know what each page currently
 says about the relevant topic.
 
-> **FORBIDDEN by default:** Read() of `wiki/indexes/index-concepts.md` or
-> `wiki/indexes/index-entities.md`. At current scale these are
+> **FORBIDDEN by default:** Read() of `wiki/pages/indexes/index-concepts.md` or
+> `wiki/pages/indexes/index-entities.md`. At current scale these are
 > 25–30K tokens combined; reading them per ingest is a token-cost
 > regression. The grep+hybrid pattern above is strictly cheaper and has
 > better recall (semantic).
@@ -356,24 +356,24 @@ Present in the main chat in this exact format:
 3. <takeaway 3>
 
 ### Proposed operations
-- CREATE sources/<slug>.md — source summary
-- CREATE concepts/<slug>.md — <one-line reason>
-- EDIT entities/<existing-slug>.md — adding <what>
-- EDIT concepts/<existing-slug>.md — adding <what>
+- CREATE pages/sources/<slug>.md — source summary
+- CREATE pages/concepts/<slug>.md — <one-line reason>
+- EDIT pages/entities/<existing-slug>.md — adding <what>
+- EDIT pages/concepts/<existing-slug>.md — adding <what>
 - <etc>
 
 > **Single-source CREATE annotation.** Any non-source CREATE entry (i.e.,
-> a new concepts/, entities/, comparisons/, or syntheses/ page) where the
+> a new pages/concepts/, pages/entities/, pages/comparisons/, or pages/syntheses/ page) where the
 > source for the new page is just this single ingest must be annotated
 > `— single source; recommend verify: true` so the user can decide at the
 > gate whether to (a) approve standalone with `verify: true`, (b) approve
 > standalone as canonical (no verify), or (c) fold into an existing page
 > instead. Per wiki/AGENTS.md "Single-source standalone pages" rule.
-> Example: `CREATE concepts/agent-studio.md — Google's low-code agent
+> Example: `CREATE pages/concepts/agent-studio.md — Google's low-code agent
 > authoring environment; single source; recommend verify: true`.
 
 > **Verbatim-citation requirement for new entity pages.** Every
-> `CREATE entities/<slug>.md` line must include a block-quote line below
+> `CREATE pages/entities/<slug>.md` line must include a block-quote line below
 > it carrying the **verbatim phrase from the source** that contains the
 > entity name. This is the fabrication-prevention gate — if the user sees
 > "no verbatim phrase found in source," they know the agent is inventing
@@ -388,11 +388,11 @@ Present in the main chat in this exact format:
 >
 > ```
 > ### Proposed operations
-> - CREATE entities/agent-studio.md — Google's low-code authoring environment
+> - CREATE pages/entities/agent-studio.md — Google's low-code authoring environment
 >   > "Agent Studio is Google's low-code visual authoring environment for
 >   > AI agents on Google Cloud" — verbatim from source
 >   — single source; recommend verify: true
-> - CREATE entities/adk-cicd.md — ADK CI/CD skill
+> - CREATE pages/entities/adk-cicd.md — ADK CI/CD skill
 >   > NO VERBATIM PHRASE FOUND — fold into [[google-adk]] § Skills instead
 > ```
 
@@ -580,6 +580,25 @@ python <wiki>/.scripts/append_ingest_log.py --wiki <wiki> \
 
 If the appender exits non-zero, mention it briefly in the relay and move
 on. Do NOT retry; do NOT fail the ingest on telemetry failure.
+
+**Fold telemetry into the agent's commit (when the appender succeeded).**
+The appender writes to `wiki/.meta/ingest_log.jsonl` AFTER the agent's
+commit — left as-is, the row stays dirty until a later session backfills
+it, misattributing ingest N's telemetry to ingest N+1's commit. Amend
+the agent's commit to fold the row in:
+
+```bash
+if ! git diff --quiet wiki/.meta/ingest_log.jsonl wiki/log.md wiki/.meta/lint_log.jsonl; then
+    git add wiki/.meta/ingest_log.jsonl wiki/log.md wiki/.meta/lint_log.jsonl
+    git commit --amend --no-edit
+fi
+```
+
+The diff-quiet gate is defensive (no-op when the appender failed or when
+nothing actually changed). HEAD at this point is the agent's commit, or
+the most-recent fix-up commit when the README-ingest pattern produced one
+(per step 8 of the ingestor playbook) — both are correct amend targets.
+Personal-repo amend policy applies (see [`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
 
 ### 14. Relay the result
 

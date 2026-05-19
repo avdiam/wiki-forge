@@ -43,9 +43,9 @@ This prints `INDEX_READABLE <tokens> <pages>` or `SEARCH_NEEDED <tokens> <pages>
 
 **Handle everything inline — no subagent dispatch.**
 
-1. Read the master `indexes/index.md` to see which sub-indices exist.
+1. Read the master `pages/indexes/index.md` to see which sub-indices exist.
 2. Read the sub-indices most relevant to the question (e.g.,
-   `indexes/index-concepts.md` for a conceptual question).
+   `pages/indexes/index-concepts.md` for a conceptual question).
 3. Select 3–8 relevant pages based on title, summary, slug, tags.
 4. Read the selected pages in full.
 5. Synthesize an answer following the rules below.
@@ -123,7 +123,7 @@ Context for this run:
 
 Fallback mode: sub-index
 The hybrid search returned low-confidence results. Read the most relevant
-sub-index file(s) (e.g., indexes/index-concepts.md for conceptual questions) to
+sub-index file(s) (e.g., pages/indexes/index-concepts.md for conceptual questions) to
 find additional pages. Then read selected pages, synthesize, and offer
 to file.
 ```

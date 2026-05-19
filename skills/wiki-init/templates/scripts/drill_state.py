@@ -220,7 +220,7 @@ def compute_backlog_state(project_root: Path, pending: int) -> dict:
 def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
     project_root = wiki_root.parent
     vault_dir = project_root / "vault"
-    sources_dir = wiki_root / "sources"
+    sources_dir = wiki_root / "pages" / "sources"
 
     log_path = wiki_root / "log.md"
     log_text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""

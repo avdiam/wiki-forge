@@ -11,8 +11,8 @@ Checks:
     - missing_frontmatter     pages missing required fields
     - stale                   stale:true OR last_updated > 90 days ago
     - low_confidence          confidence < 0.5
-    - index_drift             page dirs vs indexes/index-*.md mismatch
-    - source_backlog          vault/ files with no matching sources/ page
+    - index_drift             page dirs vs pages/indexes/index-*.md mismatch
+    - source_backlog          vault/ files with no matching pages/sources/ page
     - broken_sources          sources: frontmatter entries pointing to missing vault files
     - overview_staleness      overview.md refresh marker lags log.md ingest count by >=5
     - single_page_categories  categories with exactly one page (folds should be flat)
@@ -58,7 +58,7 @@ def collect_pages(wiki_root: Path) -> dict:
     """Collect all pages from type directories directly under wiki root."""
     pages: dict = {}
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md in sorted(type_dir.glob("*.md")):
@@ -147,8 +147,8 @@ def check_low_confidence(pages: dict) -> list[dict]:
 
 
 def check_index_drift(wiki_root: Path, pages: dict) -> dict:
-    """Check for drift between page dirs and indexes/index-*.md files."""
-    indexes_dir = wiki_root / "indexes"
+    """Check for drift between page dirs and pages/indexes/index-*.md files."""
+    indexes_dir = wiki_root / "pages" / "indexes"
     index_text = ""
     found_indices = False
     if not indexes_dir.is_dir():
@@ -191,7 +191,7 @@ def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
     Recurses into subdirectories (e.g., vault/Web Articles/), and excludes any
     path whose top-level segment begins with . or _ (matches the ingest-exclusion
     rule in vault/.wiki-identity.md). A file is "handled" if it either has a
-    source page in wiki/sources/ OR a stub in vault/.skipped/ — both are
+    source page in wiki/pages/sources/ OR a stub in vault/.skipped/ — both are
     decisions recorded by the ingest flow; neither should re-surface as pending.
     """
     if not vault_dir.is_dir():
@@ -242,7 +242,7 @@ def check_broken_sources(vault_dir: Path, pages: dict) -> list[dict]:
 
 
 def check_missing_source_type(pages: dict) -> list[str]:
-    """Source pages lacking a source_type field (required for sources/ only)."""
+    """Source pages lacking a source_type field (required for pages/sources/ only)."""
     issues: list[str] = []
     for slug, info in pages.items():
         if info["type"] != "sources":
@@ -300,14 +300,14 @@ def check_duplicate_sources(pages: dict) -> list[dict]:
     """Source pages sharing a `source_hash:`.
 
     Content-hash dedup phase 3 (phases 1-2 wired the hash into ingest +
-    pre-write probe session 12, 2026-04-20). Groups `sources/*.md` pages by
+    pre-write probe session 12, 2026-04-20). Groups `pages/sources/*.md` pages by
     `source_hash:` frontmatter and surfaces any group with more than one
     page — pre-mechanism duplicates that slipped through before the
     `/wiki-ingest` step-3 probe was wired up. Robust to filename / URL /
     date-slug variations that slug-based and URL-based dedup miss.
 
     Pages without `source_hash:` are skipped (legacy or non-source pages).
-    Emitted shape: `{"hash": "<16hex>", "pages": ["sources/a.md", ...]}`,
+    Emitted shape: `{"hash": "<16hex>", "pages": ["pages/sources/a.md", ...]}`,
     sorted by group size descending then by hash for stable output.
     """
     groups: dict[str, list[str]] = {}
@@ -778,7 +778,7 @@ def check_drifted_stubs(pages: dict) -> list[dict]:
     Codified by dev/archive/2026-05-13-wiki-stub-design.md. Predicate is verbatim
     string match against the four contracts in wiki/AGENTS.md § Stub callout
     templates. The codex shape-drift bug the lint exists to catch is closed
-    inline (entities/codex.md gains the verbatim callout + verify:true), so
+    inline (pages/entities/codex.md gains the verbatim callout + verify:true), so
     expected hit count post-fix is 0; check is a forward sentinel for future
     drift.
     """

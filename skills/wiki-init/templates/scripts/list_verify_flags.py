@@ -22,7 +22,7 @@ for "oldest-flagged"). The shape:
     [
       {
         "page_slug": "kimi-k2-6",
-        "page_path": "wiki/entities/kimi-k2-6.md",
+        "page_path": "wiki/pages/entities/kimi-k2-6.md",
         "page_type": "entity",
         "page_bucket": "B",
         "callout_text": "the Muon optimizer adoption ...",
@@ -97,7 +97,7 @@ def _read_pages(wiki_root: Path) -> list[dict]:
     """Walk SCOPED_DIRS and return one dict per `verify: true` page."""
     out: list[dict] = []
     for sub in SCOPED_DIRS:
-        d = wiki_root / sub
+        d = wiki_root / "pages" / sub
         if not d.is_dir():
             continue
         for p in sorted(d.glob("*.md")):

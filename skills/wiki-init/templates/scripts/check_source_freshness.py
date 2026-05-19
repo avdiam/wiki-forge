@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Per-source URL polling — phase 2 of the source-refresh mitigation.
 
-For each source page in `wiki/sources/`, resolves the upstream URL
+For each source page in `wiki/pages/sources/`, resolves the upstream URL
 (indirectly via the page's `sources:` link → vault file's `url:`
 frontmatter), HEAD-then-GETs it, extracts stable main content, hashes,
 and compares against the slug's first-ever baseline. Drift → edit the
@@ -27,7 +27,7 @@ prints planned actions. `--slug <slug>` polls a single named slug.
 Exit codes:
     0 — all polls completed (drift may have been recorded)
     1 — at least one poll failed at the network layer
-    2 — fatal: not a wiki root, no sources/ directory, etc.
+    2 — fatal: not a wiki root, no pages/sources/ directory, etc.
 """
 
 from __future__ import annotations
@@ -195,26 +195,44 @@ def days_since(yyyymmdd: str) -> Optional[int]:
 
 
 def edit_source_page_for_drift(source_page: Path) -> bool:
-    """Add `source_drifted: true` frontmatter and inline callout. Idempotent."""
+    """Add `source_drifted: true` frontmatter and inline callout. Idempotent.
+
+    Injects the field INSIDE the existing YAML frontmatter block (before the
+    closing fence) — not as a second `---...---` block, which would leave the
+    field unreachable to YAML parsers (including `lint_wiki.py`'s
+    `check_drifted_sources`). Bug surfaced 2026-05-14 in the Phase 3
+    end-to-end synthetic drift test (session 65).
+    """
     text = source_page.read_text(encoding="utf-8")
     fm = parse_frontmatter(text)
     if fm.get("source_drifted") is True:
         return False  # already marked
+    if "source_drifted" in fm:
+        # Key present with a non-True value (e.g., `false` from a manual edit
+        # or future writer). Appending another `source_drifted: true` line
+        # would produce a duplicate-key YAML, which different parsers resolve
+        # differently. Skip; the page needs manual cleanup before re-marking.
+        print(f"warning: {source_page.name} has source_drifted={fm.get('source_drifted')!r} "
+              f"(non-True non-absent); skipping. Resolve manually before re-running.",
+              file=sys.stderr)
+        return False
     if not text.startswith("---"):
         return False
     end_marker = text.find("\n---", 3)
     if end_marker == -1:
         return False
-    fm_block = text[: end_marker + 4]
-    rest = text[end_marker + 4 :]
-    new_fm = fm_block.rstrip() + "\nsource_drifted: true\n---"
-    if "Source drift detected" not in rest:
-        callout = ("\n\n> [!WARNING] Source drift detected\n"
-                   "> Upstream content has changed since this source was captured. "
-                   "Re-capture via clipper to refresh; the ingestor will rewrite "
-                   "this page from the new vault file.\n")
-        rest = callout + rest if not rest.startswith("\n\n") else callout.lstrip("\n") + rest
-    source_page.write_text(new_fm + rest, encoding="utf-8")
+    fm_head = text[:end_marker].rstrip()  # opening --- + fields, no trailing whitespace
+    body = text[end_marker + 4:].lstrip("\n")  # post-frontmatter body, no leading blank lines
+    new_fm = fm_head + "\nsource_drifted: true\n---"
+    callout = ("> [!WARNING] Source drift detected\n"
+               "> Upstream content has changed since this source was captured. "
+               "Re-capture via clipper to refresh; the ingestor will rewrite "
+               "this page from the new vault file.\n")
+    if "Source drift detected" in body:
+        # Idempotent re-mark: callout already present, just inject the frontmatter field.
+        source_page.write_text(new_fm + "\n\n" + body, encoding="utf-8")
+    else:
+        source_page.write_text(new_fm + "\n\n" + callout + "\n" + body, encoding="utf-8")
     return True
 
 
@@ -329,7 +347,7 @@ def main(argv: list[str]) -> int:
     if not (wiki_root / "CLAUDE.md").is_file():
         print(f"error: {wiki_root} does not look like a wiki root", file=sys.stderr)
         return 2
-    sources_dir = wiki_root / "sources"
+    sources_dir = wiki_root / "pages" / "sources"
     if not sources_dir.is_dir():
         print(f"error: {sources_dir} does not exist", file=sys.stderr)
         return 2

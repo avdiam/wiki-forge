@@ -42,11 +42,67 @@ user approval.
 Return the report to the user. If the linter asked about applying fixes,
 relay the offer and the user's answer back to the subagent.
 
-### 4. Chain to /wiki-overview --soft (when due)
+### 4. Finalize telemetry
 
-After the linter returns (and after any user-approved fix application),
-check whether the overview is due for a soft refresh. The soft-refresh
-cadence is every 10 ingests, aligned with the lint cadence.
+The linter has already appended a row to `.meta/lint_log.jsonl` with the
+cost fields null as placeholders (`total_tokens`, `input_tokens`,
+`cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`,
+`tool_uses`). Parse the `<usage>` block the Agent tool surfaced on
+subagent return — extract each field independently with
+`<field>:\s*(\d+)` so format drift doesn't lose the row — then rewrite
+the last line of `.meta/lint_log.jsonl` with the captured fields
+populated. Leave every other field untouched. Missing fields stay null.
+
+If the subagent dispatched more than once in this run (fix-application
+turn), aggregate every numeric token field and `tool_uses` across all
+turns; use the final turn's wall-clock for `duration_ms` only if the
+linter's trailing footer didn't already populate it.
+
+### 5. Commit telemetry — amend the fix-commit OR create a fresh telemetry commit
+
+After step 4 the working tree has dirty entries in `wiki/log.md` (lint
+log entry appended by the agent) and `wiki/.meta/lint_log.jsonl` (Pass D
+row, now token-backfilled). The agent does NOT commit telemetry itself —
+this skill owns it.
+
+Branch on the agent's trailing footer line `Fixes committed: <hash or "none">`:
+
+(a) **Fixes committed** (hash present). HEAD is the linter's `lint: ...`
+fix-commit (per agent playbook Pass C). Fold the telemetry into it —
+same pattern as `/wiki-ingest` step 13's amend recipe:
+
+```bash
+if ! git diff --quiet wiki/log.md wiki/.meta/lint_log.jsonl; then
+    git add wiki/log.md wiki/.meta/lint_log.jsonl
+    git commit --amend --no-edit
+fi
+```
+
+(b) **No fixes** (footer reads `Fixes committed: none`). No linter commit
+exists; HEAD is some unrelated prior commit. Create a fresh telemetry
+commit so the lint pass has its own audit-trail entry:
+
+```bash
+if ! git diff --quiet wiki/log.md wiki/.meta/lint_log.jsonl; then
+    git add wiki/log.md wiki/.meta/lint_log.jsonl
+    git commit -m "lint: <verdict-summary> at ingest #<N> — <total-pages> pages"
+fi
+```
+
+Use the agent's report footer to fill `<verdict-summary>` (e.g. `"clean
+full pass"` or `"3 flags, no fixes applied"`), `<N>` (Ingests at run),
+and `<total-pages>` (Total pages).
+
+The diff-quiet gate is defensive in both branches — covers the case
+where the agent's appenders failed and produced no telemetry rows.
+Personal-repo amend policy applies for branch (a) (see
+[`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
+
+### 6. Chain to /wiki-overview --soft (when due)
+
+After the lint telemetry has its own commit (step 5), check whether the
+overview is due for a soft refresh. The soft-refresh cadence is every 10
+ingests, aligned with the lint cadence.
 
 ```bash
 # Count ingests since the last mechanical-refresh marker in overview.md
@@ -65,22 +121,6 @@ If `delta < 10`, skip the chain. The next lint run will re-evaluate.
 
 The chain always passes `--soft`; structural realignment (Mode B / full
 rewrite) is a separate user decision and never auto-fires.
-
-### 5. Finalize telemetry
-
-The linter has already appended a row to `.meta/lint_log.jsonl` with the
-cost fields null as placeholders (`total_tokens`, `input_tokens`,
-`cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`,
-`tool_uses`). Parse the `<usage>` block the Agent tool surfaced on
-subagent return — extract each field independently with
-`<field>:\s*(\d+)` so format drift doesn't lose the row — then rewrite
-the last line of `.meta/lint_log.jsonl` with the captured fields
-populated. Leave every other field untouched. Missing fields stay null.
-
-If the subagent dispatched more than once in this run (fix-application
-turn), aggregate every numeric token field and `tool_uses` across all
-turns; use the final turn's wall-clock for `duration_ms` only if the
-linter's trailing footer didn't already populate it.
 
 ## Rules
 - Dispatch via the Agent tool (model: opus); don't run the lint in the main session (it reads many files)

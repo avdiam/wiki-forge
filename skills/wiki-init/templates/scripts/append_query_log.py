@@ -24,7 +24,7 @@ Usage:
     # /wiki-query Path A
     python append_query_log.py --wiki <wiki-root> \
         --query "what is RAG" --search-mode inline \
-        --pages-consulted "concepts/rag,concepts/llm-wiki-pattern" \
+        --pages-consulted "pages/concepts/rag,pages/concepts/llm-wiki-pattern" \
         --duration-ms 8100
 
     # /wiki-graph
@@ -36,8 +36,8 @@ Usage:
     # /wiki-summarize Shape A (slug-anchored)
     python append_query_log.py --wiki <wiki-root> --query-skill summarize \
         --query "rag" --search-mode slug-anchored \
-        --pages-consulted "concepts/rag,concepts/agentic-rag,..." \
-        --filed-as "syntheses/rag-coverage" \
+        --pages-consulted "pages/concepts/rag,pages/concepts/agentic-rag,..." \
+        --filed-as "pages/syntheses/rag-coverage" \
         --total-tokens 18000 --tool-uses 14 --duration-ms 32000
 """
 

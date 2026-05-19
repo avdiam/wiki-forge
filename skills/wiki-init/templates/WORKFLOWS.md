@@ -14,16 +14,16 @@ This file provides cross-LLM operational parity. If your platform (Gemini, Curso
 1. **Pre-process:** Run `python wiki/.scripts/ingest_source.py --wiki wiki/ --source vault/<filename> --json`. Follow any structural warnings.
 2. **Context Intake:** Use your native file reading capabilities to parse the source file entirely.
 3. **Draft Updates:** Use a generic terminal search (e.g., `grep -ril "<concept>" wiki/`) to intuitively discover existing semantic pages related to the text.
-4. **Authoring:** Create or append to pages in `wiki/concepts/`, `wiki/entities/`, etc. as outlined by the schema in `AGENTS.md`. Maintain the exact frontmatter specifications. Avoid creating highly redundant pages.
+4. **Authoring:** Create or append to pages in `wiki/pages/concepts/`, `wiki/pages/entities/`, etc. as outlined by the schema in `AGENTS.md`. Maintain the exact frontmatter specifications. Avoid creating highly redundant pages.
 5. **Update State:** When finished, run `python wiki/.scripts/update_index.py wiki/` to accurately reconstruct the hierarchical sub-indices.
 6. **Log:** Keep a permanent audit trail by running `python wiki/.scripts/append_log.py ingest --title "<Source_Title>" --wiki wiki/`.
 7. **Commit:** If git is available, commit all changes with a descriptive message (e.g., `git add wiki/ && git commit -m "ingest: <Source_Title>"`). This creates an audit trail and enables easy rollback with `git revert`.
 
 ### 2. Query the Wiki
-1. **Check wiki size:** Count the total lines in `wiki/indexes/` sub-indices. If the combined index is short (roughly under ~90 entries, ~6000 tokens), read the sub-indices directly and skip to step 3.
+1. **Check wiki size:** Count the total lines in `wiki/pages/indexes/` sub-indices. If the combined index is short (roughly under ~90 entries, ~6000 tokens), read the sub-indices directly and skip to step 3.
 2. **Search (large wikis only):** Run `python wiki/.scripts/hybrid_search.py wiki/ "<query>"` to find relevant pages.
 3. **Read and synthesize:** Read the returned pages (or index entries for small wikis). Synthesize a comprehensively accurate answer, citing wiki pages using `[[wikilink]]` format.
-4. **Offer to save:** Ask the user if the result warrants saving as a permanent synthesis page in `wiki/syntheses/`.
+4. **Offer to save:** Ask the user if the result warrants saving as a permanent synthesis page in `wiki/pages/syntheses/`.
 
 ### 3. Lint the Wiki
 1. **Mechanical Check:** Run `python wiki/.scripts/lint_wiki.py wiki/ --json`.

@@ -45,20 +45,27 @@ This returns JSON with these categories:
 - `index_drift` — pages in the wiki page directories that aren't in the split index files
   (`index-*.md`), or index entries pointing at non-existent pages
 - `source_backlog` — files in `vault/` with no corresponding page in
-  `sources/`
+  `pages/sources/`
 
 Parse the JSON. Keep the result set — you'll use it in Pass B and the report.
 
-Then run the graph analyzer for structural topology:
+Then run the graph analyzer for structural topology, **stashing the
+output to `/tmp/wiki-graph.json` for downstream reuse**:
 
 ```bash
-python <wiki>/.scripts/graph_analyzer.py <wiki> --json
+python <wiki>/.scripts/graph_analyzer.py <wiki> --json | tee /tmp/wiki-graph.json
 ```
 
 This returns: total pages/edges, top hubs (outbound and inbound), orphans,
 sinks (dead-end pages with no outbound links), connected components (isolated
 clusters), and average link density. Use this to inform Pass B — particularly
 category drift and cross-referencing gaps.
+
+The stash path mirrors the wake-up-drill snapshot pattern. When `/wiki-lint`
+chains to `/wiki-overview --soft` post-Pass C, the overview's mechanical
+script picks up the stash via `--graph-json` instead of rebuilding the graph
+a second time. If the stash write fails, downstream falls back to a fresh
+inline build — no correctness impact.
 
 ### Pass B — Semantic (slow, judgment-heavy)
 
@@ -114,9 +121,9 @@ Produce a prioritized human-readable report. Format:
 - Category issues: <N>                 [semantic]
 
 ## Critical (fix soon)
-1. Broken link: [[foo]] referenced in concepts/bar.md — target missing
-2. Unacknowledged contradiction: concepts/rag.md claims X,
-   concepts/llm-wiki.md claims not-X — neither has a contradictions section
+1. Broken link: [[foo]] referenced in pages/concepts/bar.md — target missing
+2. Unacknowledged contradiction: pages/concepts/rag.md claims X,
+   pages/concepts/llm-wiki.md claims not-X — neither has a contradictions section
 3. <etc>
 
 ## Important
@@ -127,7 +134,7 @@ Produce a prioritized human-readable report. Format:
 
 ## Proposed fixes
 For each issue that has a mechanical fix, describe what would change.
-Example: "Fix broken link in concepts/bar.md by either creating
+Example: "Fix broken link in pages/concepts/bar.md by either creating
 [[foo]] or removing the wikilink."
 
 Shall I apply the mechanical fixes? (y/n)
@@ -180,8 +187,10 @@ Pass A JSON counts with your Pass B finds (`unacknowledged_contradictions`,
 will overwrite `--total-tokens` and `--tool-uses` from the `<usage>` block
 it sees after this subagent returns.
 
-The telemetry append is picked up by the next operation's commit — it
-does not need its own commit.
+The telemetry append leaves `log.md` + `lint_log.jsonl` dirty. The
+`/wiki-lint` skill commits them in step 5 (either amends your fix-commit
+when present, or creates a fresh `lint: ...` telemetry commit when no
+fix-commit exists). You do not commit telemetry yourself.
 
 ### Report back
 

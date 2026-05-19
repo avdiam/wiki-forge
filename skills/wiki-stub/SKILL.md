@@ -35,7 +35,7 @@ If none, tell the user and suggest `/wiki-init`.
 | `<slug> --pattern hub` | Same as above, explicit. |
 | `<slug> --pattern single-source --source <vault-path>` | Single-source pattern. `--source` is required. |
 | `<slug> --pattern planned --reason "<one-liner>"` | Planned pattern. `--reason` is required. |
-| `<slug> --type concept` | Override default `entities/` routing → write to `concepts/` instead. Composable with any pattern. |
+| `<slug> --type concept` | Override default `pages/entities/` routing → write to `pages/concepts/` instead. Composable with any pattern. |
 | `--list` | List candidate slugs from the unresolved-hub scan (informational; doesn't create). |
 
 Normalize `<slug>` — strip `[[...]]` brackets if present; the canonical
@@ -96,8 +96,8 @@ Wait for user reply. On "abort", stop. Otherwise parse the five fields.
 #### H3. Write the page
 
 Resolve target path:
-- Default: `wiki/entities/<slug>.md`
-- `--type concept`: `wiki/concepts/<slug>.md`
+- Default: `wiki/pages/entities/<slug>.md`
+- `--type concept`: `wiki/pages/concepts/<slug>.md`
 
 Construct frontmatter:
 
@@ -350,9 +350,9 @@ Where `<one-line-context>` is:
 - `planned`: `research target — <truncated-reason>`
 
 Example messages:
-- `stub: create entities/foo.md (hub stub, anchoring 14 incoming wikilinks)`
-- `stub: create entities/bar.md (single-source stub, from 2026-04-foo-article.md)`
-- `stub: create concepts/baz.md (planned stub, research target — comparison with adjacent technique)`
+- `stub: create pages/entities/foo.md (hub stub, anchoring 14 incoming wikilinks)`
+- `stub: create pages/entities/bar.md (single-source stub, from 2026-04-foo-article.md)`
+- `stub: create pages/concepts/baz.md (planned stub, research target — comparison with adjacent technique)`
 
 #### 4c. Append to `log.md`
 

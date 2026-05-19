@@ -12,17 +12,21 @@ deterministic, runs in milliseconds. The "Recent ingests N–M" section
 update is the LLM-bounded responsibility of wiki-curator (mode: soft) —
 this script does not touch it.
 
-Pure stdlib + invokes graph_analyzer.py via subprocess.
+Pure stdlib; in-process import of graph_analyzer.analyze (no subprocess).
+Accepts an optional --graph-json snapshot path to reuse a pre-built graph
+when chained from /wiki-lint (which has just run graph_analyzer itself).
 
 Usage:
     python update_overview_mechanical.py <wiki-root>
     python update_overview_mechanical.py <wiki-root> --dry-run
+    python update_overview_mechanical.py <wiki-root> --graph-json /tmp/wiki-graph.json
 """
 
 from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import re
 import sys
 from datetime import date
@@ -47,7 +51,7 @@ REFRESH_MARKER_RE = re.compile(
 def count_pages_by_type(wiki_root: Path) -> dict[str, int]:
     counts: dict[str, int] = {}
     for t in PAGE_TYPES:
-        d = wiki_root / t
+        d = wiki_root / "pages" / t
         counts[t] = len(list(d.glob("*.md"))) if d.is_dir() else 0
     return counts
 
@@ -79,7 +83,7 @@ def build_stats_section(graph: dict, type_counts: dict[str, int]) -> str:
             + (f" ({superseded_by} superseded_by)" if superseded_by else "")
         ),
         "",
-        "(Stats regenerated mechanically from current graph state. For exact per-type counts see `indexes/index.md`.)",
+        "(Stats regenerated mechanically from current graph state. For exact per-type counts see `pages/indexes/index.md`.)",
     ]
     return "\n".join(lines) + "\n"
 
@@ -123,7 +127,9 @@ def upsert_refresh_marker(text: str, marker: str) -> str:
     return marker + "\n\n" + text
 
 
-def refresh(wiki_root: Path, dry_run: bool = False) -> int:
+def refresh(
+    wiki_root: Path, dry_run: bool = False, graph_json: str | None = None
+) -> int:
     overview_path = wiki_root / "overview.md"
     if not overview_path.is_file():
         print(f"error: {overview_path} not found", file=sys.stderr)
@@ -131,7 +137,17 @@ def refresh(wiki_root: Path, dry_run: bool = False) -> int:
 
     original = overview_path.read_text(encoding="utf-8")
 
-    graph = analyze_graph(wiki_root, top=10)
+    if graph_json:
+        try:
+            graph = json.loads(Path(graph_json).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(
+                f"warning: --graph-json {graph_json} unreadable ({e}); falling back to inline build",
+                file=sys.stderr,
+            )
+            graph = analyze_graph(wiki_root, top=10)
+    else:
+        graph = analyze_graph(wiki_root, top=10)
     type_counts = count_pages_by_type(wiki_root)
     ingest_n = count_ingests(wiki_root)
     today = date.today().isoformat()
@@ -176,6 +192,16 @@ def main() -> int:
         action="store_true",
         help="Show what would change without writing.",
     )
+    parser.add_argument(
+        "--graph-json",
+        help=(
+            "Path to a graph_analyzer.py --json snapshot to reuse (skips the "
+            "inline analyze() rebuild). Optional; if absent or unreadable, "
+            "falls through to a fresh inline build with a warning. Used by "
+            "the /wiki-lint → /wiki-overview --soft chain to avoid a double "
+            "graph rebuild, mirroring the wake-up-drill snapshot-reuse pattern."
+        ),
+    )
     args = parser.parse_args()
 
     wiki_root = Path(args.wiki_root).resolve()
@@ -186,7 +212,7 @@ def main() -> int:
         )
         return 2
 
-    return refresh(wiki_root, dry_run=args.dry_run)
+    return refresh(wiki_root, dry_run=args.dry_run, graph_json=args.graph_json)
 
 
 if __name__ == "__main__":

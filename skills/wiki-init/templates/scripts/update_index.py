@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Regenerate wiki index files from page frontmatter.
 
-Split index architecture: produces indexes/index.md (table of contents)
-plus per-type sub-indices (indexes/index-sources.md, etc.).
+Split index architecture: produces pages/indexes/index.md (table of contents)
+plus per-type sub-indices (pages/indexes/index-sources.md, etc.).
 Also writes .meta/index_stats.json for the conditional search threshold.
 
 Deterministic output: pages are grouped by type, then by category, then
@@ -12,7 +12,7 @@ wiki produces byte-identical output (clean git diffs).
 Usage:
     python update_index.py <wiki-root>
 
-The wiki-root is the directory containing CLAUDE.md, concepts/, entities/, etc.
+The wiki-root is the directory containing CLAUDE.md, pages/concepts/, pages/entities/, etc.
 Only pure stdlib is used — no yaml library — so a minimal regex-based
 frontmatter parser lives here.
 """
@@ -42,13 +42,13 @@ TYPE_HEADINGS = {
 def collect_pages(wiki_root: Path) -> dict[str, list[dict]]:
     """Walk <type>/*.md and return parsed entries grouped by type.
 
-    Pages live directly under wiki root: concepts/, entities/, etc.
+    Pages live directly under wiki root: pages/concepts/, pages/entities/, etc.
     (no pages/ wrapper).
     """
     result: dict[str, list[dict]] = {t: [] for t in PAGE_TYPES}
 
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md_file in sorted(type_dir.glob("*.md")):
@@ -114,12 +114,12 @@ def _format_entry_line(entry: dict) -> str:
 
 
 def write_indices(wiki_root: Path, pages_by_type: dict[str, list[dict]]) -> tuple[int, int]:
-    """Write master index + per-type sub-indices into indexes/. Returns (files_written, total_pages)."""
+    """Write master index + per-type sub-indices into pages/indexes/. Returns (files_written, total_pages)."""
     total_pages = 0
     total_files = 0
     today = date.today().isoformat()
 
-    indexes_dir = wiki_root / "indexes"
+    indexes_dir = wiki_root / "pages" / "indexes"
     indexes_dir.mkdir(exist_ok=True)
 
     # Master index — table of contents pointing to sub-indices
@@ -195,8 +195,8 @@ def write_stats(wiki_root: Path, total_pages: int) -> None:
     except Exception as e:
         print(f"warning: failed to compute graph stats for index_stats.json: {e}", file=sys.stderr)
 
-    # Estimate tokens across all index files in indexes/
-    indexes_dir = wiki_root / "indexes"
+    # Estimate tokens across all index files in pages/indexes/
+    indexes_dir = wiki_root / "pages" / "indexes"
     total_words = 0
     if indexes_dir.is_dir():
         for idx_file in indexes_dir.glob("index*.md"):

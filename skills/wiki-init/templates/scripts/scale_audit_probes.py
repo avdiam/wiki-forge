@@ -76,7 +76,7 @@ def _content_pages(wiki_root: Path) -> dict[str, Path]:
     entities / comparisons / syntheses)."""
     pages: dict[str, Path] = {}
     for page_type in PAGE_TYPES:
-        page_dir = wiki_root / page_type
+        page_dir = wiki_root / "pages" / page_type
         if not page_dir.is_dir():
             continue
         for p in page_dir.glob("*.md"):

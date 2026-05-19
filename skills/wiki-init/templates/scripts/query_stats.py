@@ -62,7 +62,7 @@ def load_wiki_pages(wiki_root: Path) -> set[str]:
     """Collect page identifiers in 'type/slug' form — matches logged paths."""
     pages: set[str] = set()
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if type_dir.is_dir():
             for md in type_dir.glob("*.md"):
                 pages.add(f"{page_type}/{md.stem}")

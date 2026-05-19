@@ -30,7 +30,7 @@ from pre_screen import pre_screen
 
 def find_existing_sources(wiki_root: Path) -> set[str]:
     """Return set of source slugs already in the wiki."""
-    sources_dir = wiki_root / "sources"
+    sources_dir = wiki_root / "pages" / "sources"
     if not sources_dir.is_dir():
         return set()
     return {f.stem for f in sources_dir.glob("*.md")}

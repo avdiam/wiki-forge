@@ -95,7 +95,7 @@ this to the librarian via the prompt for the **Structural footprint** section
 (hub status: ≥50 inbound = hub).
 
 Capture stdout. The first line tells you which shape; subsequent lines are the
-**page paths** (Shape A only — relative to wiki root, e.g., `concepts/rag.md`).
+**page paths** (Shape A only — relative to wiki root, e.g., `pages/concepts/rag.md`).
 Lines starting with `# UNRESOLVED:` indicate a slug that's in the graph but has
 no corresponding `.md` file in the canonical type-dirs — surface as a warning
 in the relay (rare; signals graph drift) but proceed with the resolved pages.

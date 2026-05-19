@@ -15,8 +15,8 @@ per-slug inbound counts appears (e.g., v1.1 graduation hook, retrieval phase 4),
 promote the count into graph_analyzer.py and update both callers.
 
 Resolution rule matches check_wikilinks.py: a slug resolves if `<slug>.md`
-exists in any of the five page-type dirs (sources/, concepts/, entities/,
-comparisons/, syntheses/).
+exists in any of the five page-type dirs (pages/sources/, pages/concepts/, pages/entities/,
+pages/comparisons/, pages/syntheses/).
 
 Output is JSON.
 
@@ -49,7 +49,7 @@ TOP_REFERRERS = 5
 def collect_existing_slugs(wiki_root: Path) -> set[str]:
     slugs: set[str] = set()
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md in type_dir.glob("*.md"):
@@ -60,7 +60,7 @@ def collect_existing_slugs(wiki_root: Path) -> set[str]:
 def iter_pages(wiki_root: Path):
     """Yield (relative_path_str, body_text) for every page across the five dirs."""
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md in sorted(type_dir.glob("*.md")):

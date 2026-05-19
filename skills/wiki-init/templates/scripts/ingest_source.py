@@ -24,7 +24,7 @@ Output (JSON):
       "sha256_short": "a1b2c3d4e5f6",
       "ext": ".md",
       "preview": "First 1200 chars...",
-      "existing_summary": "sources/2026-04-15-article.md" | null,
+      "existing_summary": "pages/sources/2026-04-15-article.md" | null,
       "merge_mode": true | false,
       "suggested_slug": "2026-04-15-article"
     }
@@ -162,9 +162,9 @@ def build_brief(wiki_root: Path, source_path: Path) -> dict:
     title_guess = title or source_path.stem.replace("-", " ").replace("_", " ").title()
 
     # Check for existing summary page (→ merge mode)
-    # Sources live directly under wiki root: sources/<slug>.md
+    # Sources live directly under wiki root: pages/sources/<slug>.md
     slug = source_path.stem
-    summary_path = wiki_root / "sources" / f"{slug}.md"
+    summary_path = wiki_root / "pages" / "sources" / f"{slug}.md"
     existing = str(summary_path.relative_to(wiki_root)).replace("\\", "/") if summary_path.is_file() else None
 
     return {
@@ -214,7 +214,7 @@ def main() -> int:
         if brief["merge_mode"]:
             print(f"EXISTING PAGE:   {brief['existing_summary']} — MERGE MODE")
         else:
-            print(f"Summary page:    (will create sources/{brief['suggested_slug']}.md)")
+            print(f"Summary page:    (will create pages/sources/{brief['suggested_slug']}.md)")
         print()
         print("--- preview ---")
         print(brief["preview"])

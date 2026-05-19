@@ -12,8 +12,8 @@ Usage:
     python append_ingest_log.py --wiki <wiki-root> \
         --source-path "vault/Web Articles/2026-04-15-foo.md" \
         --source-type article --source-word-count 3136 \
-        --pages-created "sources/...,concepts/..." \
-        --pages-updated "entities/..." \
+        --pages-created "pages/sources/...,pages/concepts/..." \
+        --pages-updated "pages/entities/..." \
         --contradictions-flagged 0 \
         --total-tokens 158204 --tool-uses 47 --duration-ms 312405 \
         --commit-hash a1b2c3d

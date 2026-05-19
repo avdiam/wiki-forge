@@ -1,6 +1,6 @@
 ---
 name: wiki-init
-description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs the schema files (CLAUDE.md, AGENTS.md, README.md, CATEGORIES.md, SPECIFICATION.md) with custom domain categories injected into CATEGORIES.md, copies helper scripts to wiki/.scripts/, seeds indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
+description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs the schema files (CLAUDE.md, AGENTS.md, README.md, CATEGORIES.md, SPECIFICATION.md) with custom domain categories injected into CATEGORIES.md, copies helper scripts to wiki/.scripts/, seeds pages/indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
 argument-hint: "[--dual-claude]"
 disable-model-invocation: true
 ---
@@ -130,12 +130,12 @@ git config user.email
 
 - `wiki/`
 - `vault/`
-- `wiki/sources/`
-- `wiki/concepts/`
-- `wiki/entities/`
-- `wiki/comparisons/`
-- `wiki/syntheses/`
-- `wiki/indexes/`
+- `wiki/pages/sources/`
+- `wiki/pages/concepts/`
+- `wiki/pages/entities/`
+- `wiki/pages/comparisons/`
+- `wiki/pages/syntheses/`
+- `wiki/pages/indexes/`
 - `wiki/.scripts/`
 - `wiki/.meta/`
 
@@ -255,12 +255,12 @@ and `**/wiki-init/templates/overview.md`. Read each file.
 
 Write them to the wiki with these mappings:
 
-- `index.md` → `wiki/indexes/index.md` (master index TOC)
-- `index-sources.md` → `wiki/indexes/index-sources.md`
-- `index-concepts.md` → `wiki/indexes/index-concepts.md`
-- `index-entities.md` → `wiki/indexes/index-entities.md`
-- `index-comparisons.md` → `wiki/indexes/index-comparisons.md`
-- `index-syntheses.md` → `wiki/indexes/index-syntheses.md`
+- `index.md` → `wiki/pages/indexes/index.md` (master index TOC)
+- `index-sources.md` → `wiki/pages/indexes/index-sources.md`
+- `index-concepts.md` → `wiki/pages/indexes/index-concepts.md`
+- `index-entities.md` → `wiki/pages/indexes/index-entities.md`
+- `index-comparisons.md` → `wiki/pages/indexes/index-comparisons.md`
+- `index-syntheses.md` → `wiki/pages/indexes/index-syntheses.md`
 - `log.md` → `wiki/log.md`
 - `overview.md` → `wiki/overview.md`
 

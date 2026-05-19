@@ -17,7 +17,7 @@ more honest than silent disappearance, and `git log` preserves full history.
 
 Expect one of:
 
-- A source page path: `/wiki-retract sources/2026-04-03-foo.md`
+- A source page path: `/wiki-retract pages/sources/2026-04-03-foo.md`
 - A source slug: `/wiki-retract 2026-04-03-foo`
 - An author name: `/wiki-retract author joe-njenga` (applies to ALL sources by that author)
 - A vault file path: `/wiki-retract vault/Web Articles/2026-04-03-foo.md` (resolves to matching source page)
@@ -31,7 +31,7 @@ Before touching anything, present the blast radius:
 ```markdown
 ## Retraction plan for <source title>
 
-**Source page:** sources/<slug>.md
+**Source page:** pages/sources/<slug>.md
 **Reason:** <user-provided or ask>
 
 ### Pages that cite this source:
@@ -53,7 +53,7 @@ operation — never auto-execute.
 
 ### 3. Mark the source page
 
-Edit `wiki/sources/<slug>.md` frontmatter:
+Edit `wiki/pages/sources/<slug>.md` frontmatter:
 
 ```yaml
 retracted: true

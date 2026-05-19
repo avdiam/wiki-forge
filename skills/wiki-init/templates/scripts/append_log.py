@@ -4,8 +4,8 @@
 Each entry looks like:
 
     ## [2026-04-15 14:30] ingest | Karpathy LLM Wiki gist
-    - Created: sources/2026-04-15-karpathy-llm-wiki.md, concepts/llm-wiki-pattern.md
-    - Updated: concepts/rag.md, entities/karpathy.md
+    - Created: pages/sources/2026-04-15-karpathy-llm-wiki.md, pages/concepts/llm-wiki-pattern.md
+    - Updated: pages/concepts/rag.md, pages/entities/karpathy.md
     - Contradictions: 2
     - Commit: a1b2c3d
     - Note: optional freeform note

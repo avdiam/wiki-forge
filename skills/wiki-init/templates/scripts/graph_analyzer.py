@@ -59,7 +59,7 @@ def build_graph(
     slug_to_path: dict[str, str] = {}
 
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md in sorted(type_dir.glob("*.md")):
@@ -72,7 +72,7 @@ def build_graph(
     inbound: dict[str, set[str]] = defaultdict(set)
 
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md in sorted(type_dir.glob("*.md")):
@@ -131,7 +131,7 @@ def count_typed_edges(wiki_root: Path) -> dict[str, int]:
     """
     counts: dict[str, int] = {field: 0 for field in TYPED_EDGE_FIELDS}
     for page_type in PAGE_TYPES:
-        type_dir = wiki_root / page_type
+        type_dir = wiki_root / "pages" / page_type
         if not type_dir.is_dir():
             continue
         for md in sorted(type_dir.glob("*.md")):
