@@ -5,7 +5,73 @@ Called by `/wiki-corroborate` (one row per flag searched, not per skill
 invocation) and back-filled by the wiki-ingestor (sets `flag_cleared_at_ingest`
 on Y at the verify-clearing takeaway gate).
 
-Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
+Row schema (one row per `verify: true` flag the skill searched; mutates
+twice after creation — once at `/wiki-capture` time, once at
+`/wiki-ingest` time):
+    {
+      "timestamp": "2026-05-15T14:30:21",
+      "page_slug": "claude-managed-agents",
+      "page_type": "entity",
+      "page_bucket": "B",
+      "callout_text": "the 100KB persistent-memory cap and...",
+      "candidates_returned": 5,
+      "candidates_by_tier": {"tier_1": 2, "tier_2": 2, "tier_3": 1},
+      "candidate_domains": [
+        {"domain": "docs.anthropic.com/claude", "tier": "tier_1"},
+        ...
+      ],
+      "include_tier_3_flag": false,
+      "user_picked": "https://docs.anthropic.com/...",
+      "user_action": "captured",
+      "captured_to_vault": "vault/Web Articles/2026-05-15-...",
+      "flag_cleared_at_ingest": "2026-05-15T14:55:11",
+      "flag_decision_at_ingest": "Y",
+      "total_tokens": null, "tool_uses": null, "duration_ms": null
+    }
+
+`page_bucket` values follow the 2026-05-08 queue audit:
+  - A — entity bio thinness (`category: ai-practitioners`)
+  - B — entity with specific factual claims
+  - C — concept / comparison / synthesis
+  - D — source (out of scope for /wiki-corroborate; reserved for
+        hypothetical downstream callers)
+
+`user_action` values:
+  - `deferred`  — initial state; skill surfaced candidates, no action yet
+  - `captured`  — user ran /wiki-capture on the picked URL (backfilled)
+  - `skipped`   — user explicitly passed on this batch (reserved)
+`user_picked` and `captured_to_vault` populated only in `captured`.
+
+`candidate_domains` (v1.2) — list of `{domain, tier}` records, one per
+filtered candidate (post-filter, i.e. denylist dropped and `tier_3`
+dropped unless `--include-tier-3`). Domains are host + first path
+segment when present (`github.com/anthropic`, `linkedin.com/in/<user>`)
+so path-prefix tier patterns stay distinguishable in analysis. Empty
+list `[]` means WebSearch failed or every candidate was dropped; `null`
+means the row predates the field. Purpose: seed-list backfill —
+grouping `unclassified` domains across many rows surfaces real-world
+host patterns the `url_classifier_lists.json` seeds miss. Privacy
+posture: domain only; path tail / query / fragment dropped.
+
+`flag_decision_at_ingest` is backfilled by the wiki-ingestor on every
+verify-clearing decision at the takeaway-approval gate — captures the
+user's choice so per-decision telemetry analysis is possible:
+  - `"Y"`  — clear
+  - `"P"`  — partial-narrow
+  - `"N"`  — retain
+  - `null` — decision hasn't fired yet, or no row exists for the page
+Matches by `page_slug` + most-recent row regardless of `user_action`
+state, so parallel-path captures (e.g., via /wiki-triage) still close
+the loop.
+
+`flag_cleared_at_ingest` is the dependent stamp: set to ISO timestamp
+only on Y (full clear); left `null` on P / N / no-decision.
+Invariant: `flag_cleared_at_ingest != null` ⟺ `flag_decision_at_ingest == "Y"`.
+
+Cost fields stay `null` in v1 — `/wiki-corroborate` is main-session
+only (no subagent dispatched); per the session 42 finding,
+`total_tokens` for main-session work isn't surfaced by the harness.
+Reserved fields kept for forward symmetry with the other JSONL logs.
 
 Usage:
     # Initial write — one row per flag searched (user_action defaults to deferred).
@@ -143,7 +209,10 @@ def candidate_urls(raw: str) -> list[dict] | None:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Append/backfill rows in .meta/corroborate_log.jsonl")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--backfill", action="store_true",

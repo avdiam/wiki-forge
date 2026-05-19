@@ -255,8 +255,9 @@ otherwise the bare `<slug>.md` shape.
 
 **Parser contract — do not reformat.** The dispatching skill (`/wiki-query`
 or `/wiki-summarize`) parses these two footer lines to write a telemetry
-row to `.meta/query_log.jsonl` (schema in [`wiki/SPECIFICATION.md`](../../wiki/SPECIFICATION.md)
-§ "Telemetry"). Specifically:
+row to `.meta/query_log.jsonl` (schema in the
+[`append_query_log.py`](../../wiki/.scripts/append_query_log.py) module
+docstring; run `--help` for usage). Specifically:
 
 - `pages_consulted` — extracted via regex `\[\[([^\]]+)\]\]` over the
   `Pages consulted:` line.

@@ -341,7 +341,8 @@ substitute for the clipper-side discipline that keeps secrets out of the
 vault in the first place.
 
 Sidecar config: `wiki/.meta/secret-patterns.json` (optional) extends the
-built-in pattern set; documented in `wiki/SPECIFICATION.md` § "Secret-pattern config".
+built-in pattern set; documented in the `check_secrets.py` module
+docstring (`python wiki/.scripts/check_secrets.py --help`).
 
 ### 11. Present takeaways and WAIT for free-form approval
 
@@ -510,7 +511,8 @@ Notes on the prompt shape:
 ### 13. Log ingest telemetry
 
 Parse two blocks from the Agent tool's return and write one row to
-`<wiki>/.meta/ingest_log.jsonl`. Schema in `wiki/SPECIFICATION.md` § "Telemetry".
+`<wiki>/.meta/ingest_log.jsonl`. Schema in the `append_ingest_log.py`
+module docstring (`python wiki/.scripts/append_ingest_log.py --help`).
 
 **Block A — `<usage>` metadata** the Agent tool appends after the report:
 

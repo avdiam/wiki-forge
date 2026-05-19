@@ -1,6 +1,6 @@
 # LLM Wiki Schema
 
-> **Schema version:** 3 — see [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) for change history. Bump on breaking changes (new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** since the list is now enumerated and lint-enforced). Non-breaking changes (template tweaks, rule clarifications, prose edits) don't bump. `CLAUDE.md` is the Claude Code auto-load anchor and `@-includes` this file; [`CATEGORIES.md`](CATEGORIES.md) and [`SPECIFICATION.md`](SPECIFICATION.md) are sibling schema files (see [`README.md`](README.md) for the full layout).
+> **Schema version:** 3 — see [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) for change history. Bump on breaking changes (new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** since the list is now enumerated and lint-enforced). Non-breaking changes (template tweaks, rule clarifications, prose edits) don't bump. `CLAUDE.md` is the Claude Code auto-load anchor and `@-includes` this file; [`CATEGORIES.md`](CATEGORIES.md) is a sibling schema file (see [`README.md`](README.md) for the full layout).
 
 This file is the operational schema for the wiki in this directory. It is auto-loaded into the agent's context (via `CLAUDE.md`'s `@AGENTS.md` include) and is referenced by the `wiki-*` skills. Follow the rules and templates here exactly.
 
@@ -470,7 +470,12 @@ Mechanically refreshed every 10 ingests via `/wiki-overview --soft` (Mode A); fu
 
 ## Script-API reference
 
-Detailed schemas for telemetry JSONL logs (six append-only logs in `.meta/`), sidecar config files (`.meta/lint-config.json`, `.meta/secret-patterns.json`), and helper scripts (`hybrid_search.py`, `graph_analyzer.py`) live in [`SPECIFICATION.md`](SPECIFICATION.md). No agent reads that file at runtime — the relevant scripts encode their contracts more precisely via argparse + docstrings (run `python wiki/.scripts/<script>.py --help`).
+Each script in `.scripts/` documents its own contract via module docstring + argparse `--help`. Run `python wiki/.scripts/<script>.py --help` for usage; read the script's docstring for the schema of any sidecar config or JSONL row it owns. Specifically:
+
+- Telemetry JSONL row schemas live in their owner `append_*_log.py` (six logs: `append_ingest_log.py`, `append_query_log.py`, `append_lint_log.py`, `append_overview_log.py`, `append_freshness_log.py`, `append_corroborate_log.py`).
+- `.meta/lint-config.json` schema lives in `lint_wiki.py`.
+- `.meta/secret-patterns.json` schema lives in `check_secrets.py`.
+- `hybrid_search.py` and `graph_analyzer.py` document their modes and usage at the top of each script.
 
 ## Multi-tool compatibility
 

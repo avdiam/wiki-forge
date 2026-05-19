@@ -12,8 +12,23 @@ Severity levels:
   - low: ambiguous high-entropy string (>=40 chars, mixed case + digit)
     inside a fenced code block. Soft warning only.
 
-Pattern set is opt-in expandable via `<wiki>/.meta/secret-patterns.json`
-(same shape as `lint-config.json`); see wiki/SPECIFICATION.md § "Secret-pattern config".
+Pattern set is opt-in expandable via `<wiki>/.meta/secret-patterns.json`.
+
+  Schema:  {"<pattern_name>": "<python_regex>", ...}
+
+  Each value is compiled at scan time with `re.compile`; invalid patterns
+  are skipped with a stderr warning rather than crashing the scan. The
+  sidecar extends (does not replace) the built-ins. Override a built-in
+  by defining a same-named entry. Use cases: pinning a custom corporate
+  auth-token format, suppressing a known false-positive class via more
+  specific replacement, or adding emerging credential prefixes from new
+  SaaS integrations. Keep additions narrow — broad regexes degrade the
+  signal-to-noise of HALT severity.
+
+The scanner is the parser-side application of the [[lethal-trifecta]]
+"sanitize the untrusted-content leg" mitigation: categorically reliable
+for known patterns, no model dependency. Pure stdlib; no `--json`
+toggle (output is always JSON to stdout).
 
 Usage:
     python check_secrets.py <path-to-source-file> [--wiki <wiki-root>]
@@ -157,7 +172,10 @@ def scan(path: Path, patterns: dict[str, re.Pattern]) -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(description="Scan a source file for secret patterns.")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("source", help="Path to the source file (vault/.../*.md typically)")
     p.add_argument("--wiki", default=None, help="Wiki root (for loading sidecar patterns)")
     args = p.parse_args(argv)

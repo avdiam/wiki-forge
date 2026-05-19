@@ -15,7 +15,41 @@ Called from two paths:
 `--counts` is a JSON object mapping each lint_wiki.py check name to the number
 of pages it flagged. Pass `{}` when the lint came up completely clean.
 
-Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
+Row schema:
+    {
+      "timestamp": "2026-04-21T14:32:04",
+      "lint_type": "full",
+      "ingest_count_at_run": 27,
+      "total_pages": 93,
+      "counts": {
+        "broken_links": 0, "orphans": 2, "missing_frontmatter": 0,
+        "stale": 0, "low_confidence": 1, "index_drift": 0,
+        "source_backlog": 0, "stale_source": 0,
+        "overview_staleness": 0, "single_page_categories": 1,
+        "long_summary": 0, "needs_verification": 3,
+        "excessive_ambiguous": 0,
+        "unacknowledged_contradictions": 0, "category_issues": 0
+      },
+      "verdict": "issues",
+      "semantic_pass_ran": true,
+      "total_tokens": 48210, "input_tokens": 95,
+      "cache_creation_input_tokens": 6120, "cache_read_input_tokens": 41610,
+      "output_tokens": 385, "tool_uses": 18,
+      "duration_ms": 184500,
+      "commit_hash": "a1b2c3d"
+    }
+
+`lint_type: mechanical` rows have `semantic_pass_ran: false`, all six
+cost fields null (stdlib script, no subagent), and typically
+`commit_hash: null` (mechanical runs don't commit on their own).
+`lint_type: full` rows have `semantic_pass_ran: true` and cost fields
+populated per-field from the linter subagent's `<usage>`; missing
+sub-fields stay null. `commit_hash` is populated only if the user
+approved fixes that produced a commit. `ingest_count_at_run` is a
+monotonic snapshot — the count of ingest entries in `log.md` at the
+moment lint fired — and is the anchor for "ingests since last full
+lint" derivations (current ingest count minus max `ingest_count_at_run`
+over rows with `lint_type: full`).
 
 Usage:
     python append_lint_log.py --wiki <wiki-root> \
@@ -80,7 +114,10 @@ def parse_counts(raw: str) -> dict:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Append a row to .meta/lint_log.jsonl")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
     p.add_argument("--lint-type", required=True, help=f"One of: {', '.join(sorted(VALID_LINT_TYPES))}")
     p.add_argument("--ingest-count-at-run", type=int, required=True,

@@ -12,7 +12,33 @@ counts (per the HITL contract in vault/.wiki-identity.md — "each Pass
 emits its own <usage>. Aggregate total_tokens / tool_uses / duration_ms
 across passes"). `commit_hash` is from the Mode B Pass-2 commit only.
 
-Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
+Row schema:
+    {
+      "timestamp": "2026-05-07T14:30:21",
+      "mode": "soft",
+      "trigger": null,
+      "ingest_count_at_run": 120,
+      "status": "applied",
+      "total_tokens": 28100, "input_tokens": 60,
+      "cache_creation_input_tokens": 4200,
+      "cache_read_input_tokens": 22300,
+      "output_tokens": 540, "tool_uses": 9,
+      "duration_ms": 41200,
+      "commit_hash": "a1b2c3d"
+    }
+
+`mode: soft` rows carry `trigger: null` (cadence-driven bookkeeping
+pass, no trigger). `mode: full` rows carry the trigger reasons string
+from `check_overview_triggers.py` or the literal `"user-invoked"` when
+the user passed `--full`.
+
+`status` values:
+  - `applied`     — dispatch produced a commit
+  - `no_changes`  — Mode A's diff came up empty (skip-the-commit path)
+  - `cancelled`   — Mode B's Pass 2 returned `status: cancelled`
+                    (user rejected the rewrite at the approval gate)
+
+`commit_hash` is null on `no_changes` / `cancelled`.
 
 Usage:
     python append_overview_log.py --wiki <wiki-root> \\
@@ -56,7 +82,10 @@ def optional_str(raw: str) -> str | None:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Append a row to .meta/overview_log.jsonl")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
     p.add_argument("--mode", required=True, help=f"One of: {', '.join(sorted(VALID_MODES))}")
     p.add_argument("--trigger", type=optional_str, default=None,

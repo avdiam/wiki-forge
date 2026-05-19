@@ -10,7 +10,6 @@ This file is the human-facing orientation. The operational rules and templates t
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | Operational rules, page types, frontmatter schema, cross-reference rules, page templates. Auto-loaded into the agent's context. |
 | [`CATEGORIES.md`](CATEGORIES.md) | The authoritative category taxonomy + procedure for adding a new category. `lint_wiki.py` reads this file at runtime. |
-| [`SPECIFICATION.md`](SPECIFICATION.md) | Script-API reference — telemetry JSONL schemas, sidecar config files, helper-script contracts. Not auto-loaded; not consulted by any agent at runtime. |
 | [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) | Schema change history. |
 | [`WORKFLOWS.md`](WORKFLOWS.md) | Manual-execution playbook for AI platforms without native `/skills` support. |
 | `CLAUDE.md` | Auto-load anchor for Claude Code; `@-includes` `AGENTS.md`. |
@@ -34,7 +33,6 @@ wiki/
 ├── CLAUDE.md           # Auto-load anchor for Claude Code (@-includes AGENTS.md)
 ├── AGENTS.md           # Operational rules + page templates
 ├── CATEGORIES.md       # Authoritative category taxonomy (runtime-read by lint_wiki.py)
-├── SPECIFICATION.md    # Script-API reference (telemetry, sidecar configs)
 ├── SCHEMA_CHANGELOG.md # Schema change history
 ├── WORKFLOWS.md        # Manual-execution playbook for non-Claude-Code tools
 ├── log.md              # Append-only chronological operation log

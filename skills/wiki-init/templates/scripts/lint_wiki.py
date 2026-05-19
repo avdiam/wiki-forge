@@ -26,6 +26,24 @@ Checks:
     - unresolved_link_hubs    slugs with >=10 incoming wikilinks but no page (stub candidates)
     - drifted_stubs           pages with stub-prose markers but no verify:true (shape drift)
 
+Sidecar config (optional) — `<wiki>/.meta/lint-config.json`:
+    Gates the `artifact_presence` check. The check flags pages that lack
+    any structural artifact — fenced code blocks, GFM tables, numbered
+    procedures (>=2 entries), attributed block quotes (`> "..."`), or
+    definition lists (`**term** -- defn`, >=2 entries). Patterns are
+    domain-agnostic; what differs across wikis is which page categories
+    *should* expect them.
+
+    Schema:  {"artifact_check_categories": ["cat-a", "cat-b", ...]}
+
+    Empty or missing allowlist -> check is silent (the default for fresh
+    wikis). Source-summary pages are always excluded (raw-citation transit
+    layer, not synthesized content). Soft-warning severity; never blocking.
+    Cross-domain rationale: philosophy / history wikis legitimately have
+    pure-prose pages where requiring code/tables would be wrong. The
+    opt-in mechanism keeps the check useful for technical wikis without
+    forcing IT-flavor conventions on every domain.
+
 Usage:
     python lint_wiki.py <wiki-root> [--json]
 """
@@ -962,7 +980,10 @@ def render_human(report: dict) -> str:
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Mechanical lint for the wiki")
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("wiki_root", help="Path to the wiki root")
     parser.add_argument("--vault", default=None, help="Path to the vault/ directory (default: sibling of wiki root)")
     parser.add_argument("--json", action="store_true", help="Emit JSON (for subagent consumption)")

@@ -167,9 +167,10 @@ If the librarian was dispatched, relay the filing question and decision.
 
 ### 6. Log query telemetry (before relay)
 
-Write one row to `wiki/.meta/query_log.jsonl`. Schema documented in
-[`wiki/SPECIFICATION.md`](../../../wiki/SPECIFICATION.md) § "Telemetry". Field values
-depend on which path handled the query:
+Write one row to `wiki/.meta/query_log.jsonl`. Schema documented in the
+[`append_query_log.py`](../../../wiki/.scripts/append_query_log.py)
+module docstring (`python wiki/.scripts/append_query_log.py --help`).
+Field values depend on which path handled the query:
 
 **Path A (inline — small wiki):**
 

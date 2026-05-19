@@ -2,13 +2,50 @@
 """Append one row to wiki/.meta/source_freshness.jsonl.
 
 Called by wiki/.scripts/check_source_freshness.py for each source-page
-slug it polls. Schema-symmetric with the other .meta/*_log.jsonl
-appenders. Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
+slug it polls. Each row records one HTTP poll attempt.
 
-Each row records one HTTP poll attempt:
+Row schema:
+    {
+      "polled_at": "2026-05-07T14:35:12",
+      "slug": "2025-11-25-foo-bar",
+      "url": "https://example.com/foo",
+      "http_status": 200,
+      "content_hash": "a1b2c3d4e5f6a7b8",
+      "baseline_hash": "a1b2c3d4e5f6a7b8",
+      "drifted": false,
+      "error": null,
+      "reason": null
+    }
 
-  {slug, polled_at, url, http_status, content_hash, drifted,
-   baseline_hash, error, reason}
+`http_status` is the upstream HTTP code on a successful fetch (200,
+404, ...) OR a string sentinel for skipped / failed polls:
+  - `"skipped"` with `reason: "requires_clipper"` — paywall domain
+    (Medium and known mirrors); phase 3 wires these to clipper.
+  - `"skipped"` with `reason: "no_url"` or `"no_vault_link"` — source
+    page has no resolvable upstream URL; nothing to poll.
+  - `"error"` with `error: "timeout" | "dns" | "connection" | ...` —
+    network failure after 1 retry; row is recorded so the failure is
+    audit-visible.
+
+`content_hash` is `sha256(extracted_text)[:16]` — same 16-hex shape as
+`source_hash:` for visual parity but hashing different bytes (extracted
+main content via stdlib `html.parser`, with `<script>`, `<style>`,
+`<nav>`, `<header>`, `<footer>`, `<aside>`, `<form>`, `<noscript>`,
+`<iframe>` stripped and whitespace collapsed). Raw-HTML hashes are
+useless because most pages mutate every load (timestamps, CSRF tokens,
+ad slots, A/B variants); extraction is what makes drift detection
+signal rather than noise.
+
+`baseline_hash` is the slug's first-ever `content_hash`. First
+successful poll establishes baseline (`baseline_hash == content_hash`,
+`drifted: false`). Every subsequent poll compares against that first
+baseline; mismatch sets `drifted: true` and the polling script edits
+the source page to add `source_drifted: true` frontmatter plus an
+inline `> [!WARNING] Source drift detected` callout. The
+`check_drifted_sources` lint check surfaces those flagged pages.
+Drift-clear path: re-capture via clipper, ingestor regenerates the
+source page from the fresh vault file, drift flag and callout
+disappear naturally.
 
 Pass `""` or `"null"` for any optional field that doesn't apply.
 
@@ -58,7 +95,10 @@ def strict_bool(raw: str) -> bool:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Append a row to .meta/source_freshness.jsonl")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
     p.add_argument("--slug", required=True, help="Source page slug (filename without .md)")
     p.add_argument("--url", type=optional_str, default=None, help="URL polled (or null)")

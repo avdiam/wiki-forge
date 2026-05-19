@@ -1,6 +1,6 @@
 ---
 name: wiki-init
-description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs the schema files (CLAUDE.md, AGENTS.md, README.md, CATEGORIES.md, SPECIFICATION.md) with custom domain categories injected into CATEGORIES.md, copies helper scripts to wiki/.scripts/, seeds pages/indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
+description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs the schema files (CLAUDE.md, AGENTS.md, README.md, CATEGORIES.md) with custom domain categories injected into CATEGORIES.md, copies helper scripts to wiki/.scripts/, seeds pages/indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
 argument-hint: "[--dual-claude]"
 disable-model-invocation: true
 ---
@@ -148,14 +148,13 @@ The schema lives across five files since the 2026-05-13 decomposition. Four are 
 - `templates/CLAUDE.md` → `wiki/CLAUDE.md` (1-line `@-include` pointer to AGENTS.md; Claude Code's auto-load anchor)
 - `templates/AGENTS.md` → `wiki/AGENTS.md` (operational rules, frontmatter schema, page templates)
 - `templates/README.md` → `wiki/README.md` (human orientation, architecture, directory layout)
-- `templates/SPECIFICATION.md` → `wiki/SPECIFICATION.md` (script-API reference — telemetry JSONL schemas, sidecar configs; not auto-loaded)
 - `templates/WORKFLOWS.md` → `wiki/WORKFLOWS.md` (manual-execution playbook for non-Claude-Code AI platforms)
 
-Use a single Bash `cp` for all five — faster and quieter than Read+Write per file:
+Use a single Bash `cp` for all four — faster and quieter than Read+Write per file:
 
 ```bash
 TEMPLATES=<path-to-templates>
-cp $TEMPLATES/CLAUDE.md $TEMPLATES/AGENTS.md $TEMPLATES/README.md $TEMPLATES/SPECIFICATION.md $TEMPLATES/WORKFLOWS.md wiki/
+cp $TEMPLATES/CLAUDE.md $TEMPLATES/AGENTS.md $TEMPLATES/README.md $TEMPLATES/WORKFLOWS.md wiki/
 ```
 
 **Customized file (use Read+Write):** `templates/CATEGORIES.md` → `wiki/CATEGORIES.md`. This is the only schema file customized per install.
@@ -214,7 +213,7 @@ The scripts installed:
 The core scripts are pure stdlib Python 3. `hybrid_search.py` gracefully
 degrades to BM25-only if ONNX dependencies are not installed.
 
-**Reserve Read+Write for files that get customized at install** — currently just `CATEGORIES.md` (seed-category find-and-replace, per Step 3). Verbatim files — `CLAUDE.md`, `AGENTS.md`, `README.md`, `SPECIFICATION.md`, `WORKFLOWS.md`, every Python script — go through `cp`.
+**Reserve Read+Write for files that get customized at install** — currently just `CATEGORIES.md` (seed-category find-and-replace, per Step 3). Verbatim files — `CLAUDE.md`, `AGENTS.md`, `README.md`, `WORKFLOWS.md`, every Python script — go through `cp`.
 
 ### 5. Optional: Semantic search setup
 
@@ -364,7 +363,7 @@ Tell the user:
 ## Rules
 
 - Never overwrite an existing `wiki/` without explicit user confirmation
-- Always install the schema files — `CLAUDE.md` + `AGENTS.md` + `README.md` + `CATEGORIES.md` + `SPECIFICATION.md` collectively ARE the schema; none optional
+- Always install the schema files — `CLAUDE.md` + `AGENTS.md` + `README.md` + `CATEGORIES.md` collectively ARE the schema; none optional
 - Always install the helper scripts — the subagents depend on them
 - All navigation files (master index, sub-indices, log, overview) must exist
 - The seed categories in `CATEGORIES.md` should match the user's domain — don't force AI defaults

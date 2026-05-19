@@ -18,7 +18,45 @@ distinguishes the row's origin:
     Shape A (topic resolves to an existing slug → graph_query.neighbors_within)
     or `"hybrid"` for Shape B (fuzzy fallback → hybrid_search.search).
 
-Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
+Row schema:
+    {
+      "timestamp": "2026-04-20T14:31:12",
+      "query_skill": "query",
+      "query": "what is RAG",
+      "query_variations": ["retrieval-augmented generation", "RAG pipeline"],
+      "search_mode": "hybrid",
+      "pages_consulted": ["concepts/rag", "concepts/llm-wiki-pattern"],
+      "top_score": 0.82,
+      "filed_as": null,
+      "total_tokens": null, "input_tokens": null,
+      "cache_creation_input_tokens": null, "cache_read_input_tokens": null,
+      "output_tokens": null, "tool_uses": null,
+      "duration_ms": 8100
+    }
+
+`search_mode` values: `"inline"` (Path A), `"hybrid" | "hybrid_zvec" |
+"bm25_only"` (Path B retrieval modes from `hybrid_search.py`),
+`"slug-anchored"` (`/wiki-summarize` Shape A), or `null` (graph rows).
+
+On Path A (`search_mode: inline`) all six cost fields are `null` — no
+subagent dispatched, no `<usage>` reaches the caller; `duration_ms`
+(main-session wall-clock) is the Path-A cost proxy. On Path B every
+cost field is parsed independently from the librarian's `<usage>`;
+fields the block omits stay `null`.
+
+For `query_skill: "graph"`, `search_mode` and all six cost fields are
+`null`; `query` carries the raw subcommand + args
+(e.g., `"neighbors lethal-trifecta --depth 2"`).
+
+For `query_skill: "summarize"`, `search_mode` is `"slug-anchored"`
+(Shape A) or `"hybrid"` (Shape B). `filed_as` records the coverage
+synthesis slug if filed, else `null`. Empty Shape B results write no
+row (skill emits the dual-onramp inline without librarian dispatch).
+
+`query_variations` is the JSON array of paraphrase variations
+`/wiki-query` passed to `hybrid_search.py`'s `--queries-json` flag,
+*excluding* the canonical first query (which lives in `query`).
+`null` on Path A and on graph rows; `null` or `[]` on N=1 Path B.
 
 Usage:
     # /wiki-query Path A
@@ -101,7 +139,10 @@ def split_slugs(raw: str) -> list[str]:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Append a row to .meta/query_log.jsonl")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
     p.add_argument("--query", required=True, help="The user's raw query string")
     p.add_argument(

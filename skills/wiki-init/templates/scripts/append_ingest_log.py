@@ -2,11 +2,37 @@
 """Append one row to wiki/.meta/ingest_log.jsonl.
 
 Called by the /wiki-ingest skill after the ingestor subagent returns.
-Cost fields (total_tokens, tool_uses) are parsed by the skill from the
-<usage> block surfaced by the Agent tool on subagent completion; pass
-empty string or "null" when they aren't available.
+Cost fields are parsed by the skill from the `<usage>` block the Agent
+tool surfaces on subagent completion; pass empty string or "null" when
+they aren't available.
 
-Schema: see wiki/SPECIFICATION.md § Telemetry, or run --help.
+Row schema:
+    {
+      "timestamp": "2026-04-20T14:30:05",
+      "source_path": "vault/Web Articles/2026-04-15-foo.md",
+      "source_type": "article",
+      "source_word_count": 3136,
+      "pages_created": ["sources/2026-04-15-foo", "concepts/bar"],
+      "pages_updated": ["entities/baz"],
+      "contradictions_flagged": 0,
+      "total_tokens": 158204,
+      "input_tokens": 122,
+      "cache_creation_input_tokens": 18432,
+      "cache_read_input_tokens": 138210,
+      "output_tokens": 1440,
+      "tool_uses": 47,
+      "duration_ms": 312405,
+      "commit_hash": "a1b2c3d"
+    }
+
+The four per-field token counts (input / cache_creation_input /
+cache_read_input / output) are surfaced by the Agent tool's `<usage>`
+block when present and captured per-field — any subset may be `null`
+if the block omits a field. `cache_creation_input_tokens` is the
+load-bearing slice for measuring cache savings from auto-loaded context
+(e.g., the SessionStart hook); `cache_read_input_tokens` is the
+cache-hit volume that scales with replayed conversation context.
+`total_tokens` remains the aggregate.
 
 Usage:
     python append_ingest_log.py --wiki <wiki-root> \
@@ -49,7 +75,10 @@ def split_slugs(raw: str) -> list[str]:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Append a row to .meta/ingest_log.jsonl")
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
     p.add_argument("--source-path", required=True, help="Project-relative path to the raw source")
     p.add_argument("--source-type", required=True, help=f"One of: {', '.join(sorted(VALID_SOURCE_TYPES))}")
