@@ -25,7 +25,7 @@ Row schema:
       "query": "what is RAG",
       "query_variations": ["retrieval-augmented generation", "RAG pipeline"],
       "search_mode": "hybrid",
-      "pages_consulted": ["concepts/rag", "concepts/llm-wiki-pattern"],
+      "pages_consulted": ["rag", "llm-wiki-pattern"],
       "top_score": 0.82,
       "filed_as": null,
       "total_tokens": null, "input_tokens": null,
@@ -62,7 +62,7 @@ Usage:
     # /wiki-query Path A
     python append_query_log.py --wiki <wiki-root> \
         --query "what is RAG" --search-mode inline \
-        --pages-consulted "pages/concepts/rag,pages/concepts/llm-wiki-pattern" \
+        --pages-consulted "rag,llm-wiki-pattern" \
         --duration-ms 8100
 
     # /wiki-graph
@@ -74,8 +74,8 @@ Usage:
     # /wiki-summarize Shape A (slug-anchored)
     python append_query_log.py --wiki <wiki-root> --query-skill summarize \
         --query "rag" --search-mode slug-anchored \
-        --pages-consulted "pages/concepts/rag,pages/concepts/agentic-rag,..." \
-        --filed-as "pages/syntheses/rag-coverage" \
+        --pages-consulted "rag,agentic-rag,..." \
+        --filed-as "rag-coverage" \
         --total-tokens 18000 --tool-uses 14 --duration-ms 32000
 """
 
