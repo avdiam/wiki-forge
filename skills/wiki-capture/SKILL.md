@@ -44,7 +44,7 @@ the agent both read it later in their own contexts.)
 
 Before fetching, check if this source was already captured:
 
-- For URLs: `grep -rl "<url>" vault/` to see if the URL appears in any vault file's `source_url:` frontmatter.
+- For URLs: `grep -rl "<url>" vault/` to see if the URL appears in any vault file's `url:` frontmatter.
 - For file paths: check if a vault file with matching slug already exists.
 
 If a duplicate is found, tell the user and ask whether to re-capture or
@@ -157,7 +157,7 @@ Prepend frontmatter:
 
 ```yaml
 ---
-source_url: <url if applicable>
+url: <url if applicable>
 source_type: article | paper | gist | blog | docs | transcript | notes | other
 captured: <today's ISO date>
 title: <source title>
