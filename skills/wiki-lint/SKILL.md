@@ -42,27 +42,81 @@ user approval.
 Return the report to the user. If the linter asked about applying fixes,
 relay the offer and the user's answer back to the subagent.
 
-### 4. Finalize telemetry
+### 4. Append telemetry — log.md entry + lint_log.jsonl row
 
-The linter has already appended a row to `.meta/lint_log.jsonl` with the
-cost fields null as placeholders (`total_tokens`, `input_tokens`,
+The agent does NOT append to `log.md` or `lint_log.jsonl`. It returns the
+report with a trailing machine-parsable footer, plus the Agent tool
+appends a `<usage>` block. This skill consumes both and invokes the two
+appenders directly — same pattern as `/wiki-ingest` step 13 and
+`/wiki-overview` step 6A.2 (skill owns telemetry; agent owns the work).
+
+**Parse the agent's footer** (last block of the report):
+
+```
+Ingests at run: <N>
+Total pages: <N>
+Verdict: <clean | issues>
+Verdict-summary: <human-readable summary>
+Counts: <JSON object>
+Fixes committed: <short-hash or "none">
+```
+
+**Parse the `<usage>` block** the Agent tool appends after the report.
+Extract each field independently with `<field>:\s*(\d+)` so format drift
+doesn't lose the row — fields: `total_tokens`, `input_tokens`,
 `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`,
-`tool_uses`). Parse the `<usage>` block the Agent tool surfaced on
-subagent return — extract each field independently with
-`<field>:\s*(\d+)` so format drift doesn't lose the row — then rewrite
-the last line of `.meta/lint_log.jsonl` with the captured fields
-populated. Leave every other field untouched. Missing fields stay null.
+`tool_uses`, `duration_ms`. Missing fields → empty string when forwarded
+to `append_lint_log.py` (the script accepts `""` and stores null).
 
 If the subagent dispatched more than once in this run (fix-application
 turn), aggregate every numeric token field and `tool_uses` across all
-turns; use the final turn's wall-clock for `duration_ms` only if the
-linter's trailing footer didn't already populate it.
+turns; use the final turn's `duration_ms` if present, else sum.
+
+**Append the `log.md` entry** — always, whether fixes applied or not.
+Clean runs MUST reset the wake-up drill's cadence counter (which scans
+`log.md` for `^## \[.*?\] lint ` entries), so this call is non-negotiable.
+Treat `Fixes committed: none` as empty-string `--commit` (the script omits
+the commit line when blank):
+
+```bash
+python <wiki>/.scripts/append_log.py lint \
+  --title "<Verdict-summary from footer>" \
+  --commit "<short-hash if Fixes committed != 'none', else ''>" \
+  --wiki <wiki>
+```
+
+**Append the `lint_log.jsonl` row** — always:
+
+```bash
+python <wiki>/.scripts/append_lint_log.py \
+  --wiki <wiki> \
+  --lint-type full \
+  --ingest-count-at-run <Ingests at run from footer> \
+  --total-pages <Total pages from footer> \
+  --counts '<Counts JSON from footer>' \
+  --verdict <Verdict from footer> \
+  --semantic-pass-ran true \
+  --total-tokens <N or ""> \
+  --input-tokens <N or ""> \
+  --cache-creation-input-tokens <N or ""> \
+  --cache-read-input-tokens <N or ""> \
+  --output-tokens <N or ""> \
+  --tool-uses <N or ""> \
+  --duration-ms <N or ""> \
+  --commit-hash "<short-hash if Fixes committed != 'none', else ''>"
+```
+
+If the footer is malformed or missing required fields, stop and surface
+the parsing failure to the user — do not invoke either appender with
+placeholder values. A missed row is recoverable; a misclassified one is
+not (session 75, 2026-05-22 — a `note`-tagged line broke the lint
+counter for the wake-up drill until hand-corrected).
 
 ### 5. Commit telemetry — amend the fix-commit OR create a fresh telemetry commit
 
-After step 4 the working tree has dirty entries in `wiki/log.md` (lint
-log entry appended by the agent) and `wiki/.meta/lint_log.jsonl` (Pass D
-row, now token-backfilled). The agent does NOT commit telemetry itself —
+After step 4 the working tree has dirty entries in `wiki/log.md` (the
+`lint` entry this skill appended) and `wiki/.meta/lint_log.jsonl` (the
+row this skill appended). The agent does NOT commit telemetry itself —
 this skill owns it.
 
 Branch on the agent's trailing footer line `Fixes committed: <hash or "none">`:

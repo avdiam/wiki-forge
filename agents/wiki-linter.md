@@ -149,63 +149,37 @@ After applying fixes (if any):
 1. Re-run `update_index.py`
 2. Commit: `git add . && git commit -m "lint: <short description>"`
 
-Then — **always, whether fixes were applied or not** — append a `lint` entry to `log.md`:
-
-```bash
-python <wiki>/.scripts/append_log.py lint \
-  --title "<verdict-summary — e.g. 'clean' or '3 flags, 3 fixes'>" \
-  --commit "<short-hash if fixes committed, else empty>" \
-  --note "<optional — e.g. 'no fixes needed' on clean runs>" \
-  --wiki <wiki>
-```
-
-This call is **not** gated on fix-application. It runs on every lint invocation — clean runs must also reset the wake-up drill's cadence counter, which reads `log.md`. An empty `--commit` is accepted by `append_log.py` and omits the commit line from the entry. Session 16 (2026-04-23) caught a clean-run regression where this call lived inside the "After applying fixes" block — clean lints silently failed to reset the counter and the `⚠ LINT OVERDUE` banner stuck on until manual patching.
-
-### Pass D — Telemetry append
-
-Always — whether fixes were applied or not, and whether the user answered
-yes or no to the fix offer — append one row to `<wiki>/.meta/lint_log.jsonl`
-via `append_lint_log.py`:
-
-```bash
-python <wiki>/.scripts/append_lint_log.py \
-  --wiki <wiki> \
-  --lint-type full \
-  --ingest-count-at-run $(grep -c "^## \[.*\] ingest" <wiki>/log.md) \
-  --total-pages <N from Pass A> \
-  --counts '<JSON object of all check counts, incl. semantic>' \
-  --verdict <clean if all zero else issues> \
-  --semantic-pass-ran true \
-  --total-tokens "" --tool-uses "" \
-  --duration-ms <wall-clock ms for this whole run> \
-  --commit-hash <short-hash if fixes committed, else "">
-```
-
-`--counts` includes both mechanical and semantic categories — merge the
-Pass A JSON counts with your Pass B finds (`unacknowledged_contradictions`,
-`category_issues`, `stale_facts`, `summary_quality`). The main session
-will overwrite `--total-tokens` and `--tool-uses` from the `<usage>` block
-it sees after this subagent returns.
-
-The telemetry append leaves `log.md` + `lint_log.jsonl` dirty. The
-`/wiki-lint` skill commits them in step 5 (either amends your fix-commit
-when present, or creates a fresh `lint: ...` telemetry commit when no
-fix-commit exists). You do not commit telemetry yourself.
+**Do not append to `log.md` or `lint_log.jsonl` yourself.** Telemetry is
+owned by the dispatching `/wiki-lint` skill (SKILL.md step 4) — same shape
+as `/wiki-ingest` step 13 and `/wiki-overview` step 6A.2. Your job ends at
+the fix-commit (if any) plus the structured footer below; the skill
+consumes the footer + the `<usage>` block and invokes both appenders from
+the main session. This is non-negotiable: prior contract drift where the
+agent deferred the appenders and the skill assumed the agent had run them
+produced a misclassified `note`-tagged log line that broke the wake-up
+drill's lint counter (session 75, 2026-05-22).
 
 ### Report back
 
-Return the full report and (if run) the fix summary. Include a trailing
-machine-parsable footer the dispatching skill uses to populate `<usage>`
-fields in the lint row:
+Return the full report and (if run) the fix summary. **Always end with a
+trailing machine-parsable footer** the dispatching skill uses to construct
+the `log.md` entry + `lint_log.jsonl` row. Every field is required — the
+skill has no fallback for missing fields:
 
 ```
 ---
-Ingests at run: <N>
-Total pages: <N>
+Ingests at run: <N — grep -c "^## \[.*\] ingest" <wiki>/log.md>
+Total pages: <N from Pass A>
 Verdict: <clean | issues>
-Counts: <JSON object>
+Verdict-summary: <human-readable — e.g. "clean full pass" or "3 flags, 3 fixes applied">
+Counts: <JSON object merging Pass A mechanical counts + Pass B semantic finds (unacknowledged_contradictions, category_issues, stale_facts, summary_quality)>
 Fixes committed: <short-hash or "none">
 ```
+
+`Verdict-summary:` is what the skill passes to `append_log.py lint --title`;
+`Verdict:` is what it passes to `append_lint_log.py --verdict`. Keep them
+distinct — the summary is for humans reading `log.md`, the verdict is the
+two-value enum the JSONL row expects.
 
 ## Rules
 
