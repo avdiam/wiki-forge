@@ -151,7 +151,7 @@ def _read_pages(wiki_root: Path) -> dict[str, dict]:
 
 def _collect_pairs(pages: dict[str, dict]) -> list[dict]:
     """Walk every page; for each `contradicts:` entry build a sorted-pair
-    key; dedupe; mark asymmetric edges."""
+    key; dedupe; mark asymmetric edges via a second-pass back-edge check."""
     pair_data: dict[tuple[str, str], dict] = {}
     for slug, info in pages.items():
         targets = info["contradicts"]
@@ -165,16 +165,10 @@ def _collect_pairs(pages: dict[str, dict]) -> list[dict]:
                 # check_invalid_typed_links is the authoritative surface.
                 continue
             a, b = sorted([slug, tgt])
-            key = (a, b)
-            if key in pair_data:
-                # Symmetric back-edge — confirmed, mark not asymmetric.
-                pair_data[key]["seen_both"] = (
-                    pair_data[key]["seen_both"] or slug != pair_data[key]["first_seen_from"]
-                )
-                continue
-            pair_data[key] = {"first_seen_from": slug, "seen_both": False}
+            pair_data.setdefault((a, b), {})
 
-    # Second pass: for each pair, verify symmetry by checking back-edge.
+    # Second pass: for each pair, verify symmetry by checking the back-edge
+    # on both sides. Authoritative source for the `asymmetric:` field.
     for (a, b), state in pair_data.items():
         a_to_b = any(_slug_from_wikilink(t) == b for t in pages[a]["contradicts"])
         b_to_a = any(_slug_from_wikilink(t) == a for t in pages[b]["contradicts"])
