@@ -72,6 +72,22 @@ def load_graph(wiki_root: Path, graph_json_arg: str | None = None) -> dict:
 
 
 def collect_categories(wiki_root: Path) -> set[str]:
+    """Return the set of categories in use across the wiki.
+
+    Reads .meta/categories-index.json (written by update_index.py on every
+    wiki operation). Falls back to a direct per-file frontmatter scan with
+    a stderr warning if the cache is missing or unparseable.
+    """
+    cache = wiki_root / ".meta" / "categories-index.json"
+    if cache.is_file():
+        try:
+            payload = json.loads(cache.read_text(encoding="utf-8"))
+            cats = payload.get("categories")
+            if isinstance(cats, list):
+                return {c for c in cats if isinstance(c, str) and c.strip()}
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"warning: categories-index.json unreadable ({e}); falling back to scan", file=sys.stderr)
+
     cats: set[str] = set()
     for t in PAGE_TYPES:
         d = wiki_root / "pages" / t

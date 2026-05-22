@@ -177,6 +177,33 @@ def write_indices(wiki_root: Path, pages_by_type: dict[str, list[dict]]) -> tupl
     return total_files, total_pages
 
 
+def write_categories_index(wiki_root: Path, pages_by_type: dict[str, list[dict]]) -> None:
+    """Write .meta/categories-index.json — the cached set of categories in use.
+
+    Consumed by check_overview_triggers.py's new-category-trigger detection,
+    which previously re-scanned every page frontmatter on every invocation.
+    Cache is regenerated on every update_index.py run (i.e., every wiki
+    operation), so consumers can read it without checking mtime.
+    """
+    meta_dir = wiki_root / ".meta"
+    meta_dir.mkdir(exist_ok=True)
+    cats: set[str] = set()
+    total = 0
+    for entries in pages_by_type.values():
+        for e in entries:
+            total += 1
+            cat = e.get("category")
+            if isinstance(cat, str) and cat.strip() and cat != "uncategorized":
+                cats.add(cat.strip())
+    payload = {
+        "generated_at": date.today().isoformat(),
+        "total_pages": total,
+        "categories": sorted(cats),
+    }
+    out = meta_dir / "categories-index.json"
+    out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 def write_stats(wiki_root: Path, total_pages: int) -> None:
     """Write .meta/index_stats.json for the conditional search threshold."""
     meta_dir = wiki_root / ".meta"
@@ -229,6 +256,7 @@ def main(argv: list[str]) -> int:
 
     pages = collect_pages(wiki_root)
     files_written, total_pages = write_indices(wiki_root, pages)
+    write_categories_index(wiki_root, pages)
     write_stats(wiki_root, total_pages)
     print(f"wrote {files_written} index files ({total_pages} pages total)")
     return 0
