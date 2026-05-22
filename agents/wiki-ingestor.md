@@ -248,6 +248,17 @@ gap it fills); leave **`## Pages updated`** empty until step 3e.
 
   Skip this bullet entirely when the dispatch prompt's `Verify-clearing decisions:` is `none` — most ingests don't touch flagged pages.
 
+- **Contradiction resolution (closes the loop with `/wiki-resolve-contradictions`).** Inspect the dispatch prompt's `Contradiction-resolution decisions:` block for any line whose `<slug-a>|<slug-b>` pair_key touches this page. Apply the user's outcome as part of the EDIT body, AND **track every pair_key+outcome in working state** (a_wins, b_wins, both_stand, AND defer — every decision is audit-visible) for the post-commit telemetry backfill in step 5.
+
+  - **a_wins / b_wins.** Identify the **aggregator page** that should carry the Resolved callout: (i) if the dispatch line has an explicit `[aggregator: <slug>]` hint, use that page; (ii) otherwise, prefer the concept / entity / comparison side of the pair (source pages are not aggregators); (iii) for source↔source pairs without a hint, the aggregator is the concept/entity page already cited by both — name it in the report and ask the user to re-dispatch with an `[aggregator:]` hint rather than guessing. On the aggregator, append a `> [!NOTE] Resolved: <one-sentence claim summary> stands per [[<source-slug>]] (this ingest).` callout near the existing `## Contradictions` section (or the disputed claim's evidence subsection if no `## Contradictions` heading exists). Then remove `[[<other-slug>]]` from the winning side's `contradicts:` frontmatter list, AND remove `[[<winning-slug>]]` from the losing side's `contradicts:` frontmatter list — symmetric edge removal in one pass. If the resulting list is empty, drop the `contradicts:` field entirely (rather than leaving `contradicts: []` — keeps the lint surface clean).
+  - **both_stand.** Remove the symmetric edge from both sides' `contradicts:` lists (same drop-empty rule as above). On each side, add a `## Related` entry pointing to the other side with the annotation `(disagreement examined — both positions stand; see [[<source-slug>]])`. If `## Related` doesn't exist on a page, create it as a new top-level section near the page's end. No Resolved callout is added — NPOV's "describe, don't resolve" frame.
+  - **defer.** No edits to either side. The pair_key+outcome still gets tracked for telemetry — defer is an explicit decision, not a no-op.
+  - **Pair not listed in the decisions block.** Treat as defer (no decision = no change). Do not auto-resolve under any circumstance. **Do** include unlisted pairs touched by this ingest in the telemetry backfill with outcome=`defer` — surface the implicit defer so analysis can distinguish "user actively deferred" from "pair was never surfaced." (Caveat: if no `### Contradiction resolution` block was emitted in the takeaway, there are no implicit-defer pairs to track — skip telemetry entirely.)
+
+  `superseded_by:` is NOT used by this flow. It remains reserved for its original entity-version use case (`gpt-3 → superseded_by: [[gpt-4]]`); evidential disagreements use the callout + edge-removal mechanic above.
+
+  Skip this bullet entirely when the dispatch prompt's `Contradiction-resolution decisions:` is `none` — most ingests don't touch pages with active `contradicts:` edges.
+
 #### 3c. CREATE lines — for each `CREATE <path>` in the plan
 
 Use the right template (concept | entity | comparison) from `wiki/AGENTS.md`. Required frontmatter quality:
@@ -377,6 +388,29 @@ ingest queue), the script returns non-zero — note in the report and
 continue. Telemetry is observational, not a contract; firing post-commit
 avoids a phantom stamp if a late contradiction rolled back the writes.
 Skip entirely when no verify-clearing decisions fired in this ingest.
+
+**Post-commit contradiction-resolution telemetry backfill.** For each
+`pair_key`+`outcome` tracked during step 3b's contradiction-resolution
+decisions (a_wins, b_wins, both_stand, AND defer — every decision is
+audit-visible), stamp the outcome on the most-recent matching
+`contradiction_log.jsonl` row:
+
+```bash
+python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> --backfill-ingest \
+  --pair-key "<slug-a>|<slug-b>" --outcome <a_wins|b_wins|both_stand|defer>
+```
+
+The script targets the most recent row matching `pair_key` regardless of
+`user_action` state — manual-edit paths (no `/wiki-capture` roundtrip)
+still close the loop. The script always sets `outcome`; on
+`a_wins`/`b_wins`/`both_stand` it additionally stamps
+`resolved_at_ingest` with the current timestamp. `defer` leaves
+`resolved_at_ingest` null but the outcome field captures the action so
+per-decision telemetry analysis is possible. If no matching row exists
+(the user never ran `/wiki-resolve-contradictions` on this pair — the
+ingest happened to touch a page with an existing `contradicts:` edge),
+the script returns non-zero — note in the report and continue. Skip
+entirely when no contradiction-resolution decisions fired in this ingest.
 
 ### 6. Mechanical lint
 
