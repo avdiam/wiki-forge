@@ -18,7 +18,7 @@ skills.
 
 | Mode | Trigger | Cost | Touches |
 |---|---|---|---|
-| **`--soft`** (default) | Chained from `/wiki-lint` every 10 ingests, or user-invoked `/wiki-overview` | Mechanical (~1s) + one curator dispatch (~bounded scope) | Stats / hub list / refresh-marker (script); `## Recent ingests N–M` section (curator) |
+| **`--soft`** (default) | Chained from `/wiki-lint` every 10 ingests, or user-invoked `/wiki-overview` | Mechanical (~1s) + skeleton emit (~1s) + one curator dispatch (synthesis-only, ~30-50% cheaper than pre-session-76) | Stats / hub list / refresh-marker (`update_overview_mechanical.py`); `## Ingests N–M` skeleton (`emit_recent_ingests_skeleton.py`); synthesis tails + section title (curator) |
 | **`--full`** | Explicit `/wiki-overview --full`, OR `check_overview_triggers.py` reports `should_rewrite: true`, OR user-invoked when wiki has shifted | Two curator dispatches (Pass 1 + Pass 2) with user approval gate between | Entire `overview.md` (curator) |
 
 ## Workflow
@@ -93,8 +93,31 @@ curr_n=$(grep -oP '_Mechanical refresh at ingest #\K\d+' wiki/overview.md | head
 ```
 
 If `curr_n − prev_n < 1`, no new ingests have landed since last refresh —
-skip the curator dispatch and proceed to commit (Stats may still have
-shifted from typed-edge growth, etc.).
+skip the skeleton emit + curator dispatch and proceed to commit (Stats
+may still have shifted from typed-edge growth, etc.).
+
+### 3A.2. Emit the bullet skeleton mechanically
+
+Inject a `## Ingests N–M` section into `overview.md` with the mechanical
+components filled in (ingest number, source title, author wikilink,
+date, created/updated page lists) and `<SYNTHESIS>` + `<SECTION-TITLE>`
+placeholders left for the curator:
+
+```bash
+python wiki/.scripts/emit_recent_ingests_skeleton.py \
+  --wiki wiki --from $((prev_n + 1)) --to $curr_n
+```
+
+The script is idempotent (re-running with the same window replaces the
+prior skeleton rather than appending). It inserts just before `## Stats`
+when no prior section with the same range exists.
+
+Why this exists: prior to session 76 the curator regenerated the entire
+skeleton on every Mode A dispatch — but the skeleton has 6 mechanical
+components and 1 judgment component (the synthesis tail per bullet +
+the section header). Emitting the skeleton from script saves ~30-50% of
+Mode A token cost; the curator's dispatch is now scoped to filling the
+two placeholder tokens only.
 
 ### 4A. Dispatch wiki-curator with mode: soft
 
@@ -114,8 +137,21 @@ Wiki root: <absolute path to wiki/>
 Last refreshed at ingest: <prev_n>
 Current ingest count: <curr_n>
 
-Honor the Mode A scope rule: edit ONLY the `## Recent ingests N–M`
-section of overview.md. Every other section is off-limits.
+The skeleton for `## Ingests <prev_n+1>–<curr_n>` has already been emitted
+into overview.md by `emit_recent_ingests_skeleton.py` (skill step 3A.2).
+Your scope is narrowed to filling two placeholder tokens:
+  - Replace `<SECTION-TITLE>` in the section header with a short thematic
+    label distilling the batch.
+  - Replace every `<SYNTHESIS>` placeholder (one per bullet) with the
+    one-clause framing that connects the ingest to wider wiki threads.
+
+Do NOT regenerate or rewrite the skeleton lines — the mechanical
+components (ingest number, title, author wikilink, date, created/updated
+lists) are authoritative as written. Editing them is out of scope.
+
+Honor the Mode A scope rule: edit ONLY the `## Ingests <prev_n+1>–<curr_n>`
+section of overview.md (and within it, only the two placeholder tokens).
+Every other section is off-limits.
 
 Return the structured Mode A report.
 ```

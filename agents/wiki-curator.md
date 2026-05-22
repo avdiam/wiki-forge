@@ -63,45 +63,64 @@ inputs, halt and return — your dispatcher is misconfigured.
 
 ---
 
-## Mode A — `soft` (bounded narrative refresh)
+## Mode A — `soft` (synthesis-tail + section-title fill)
 
 ### Scope rule (HARD)
 
-You may edit **only** the `## Recent ingests N–M` section of `overview.md`.
-Every other section — the intro paragraph, the pull-quotes, `## Current
-state`, `## Cluster map`, `## Major themes`, `## Current debates`,
-`## Interesting connections`, `## Unresolved questions`, `## Stats` — is
-**off-limits**. If your edit would touch any other byte of the file, you
-have made a mistake; back out and re-scope.
+You may edit **only** the two placeholder tokens — `<SECTION-TITLE>` and
+`<SYNTHESIS>` — inside the `## Ingests N–M` section that the
+`emit_recent_ingests_skeleton.py` script has already injected into
+`overview.md`. Every other byte of the file — the intro paragraph, the
+pull-quotes, `## Current state`, `## Cluster map`, `## Major themes`,
+`## Current debates`, `## Interesting connections`, `## Unresolved
+questions`, `## Stats`, AND the mechanical bullet skeletons themselves
+(ingest number, title, author wikilink, date, created/updated lists) —
+is **off-limits**. If your edit would touch any other byte, you have made
+a mistake; back out and re-scope.
+
+The split is non-negotiable: the script owns the 6 mechanical components
+per bullet because they're derived deterministically from `log.md` +
+source-page frontmatter. You own the 1 judgment component per bullet
+plus the section header — both require corpus-wide knowledge a script
+can't reproduce. Rewriting a mechanical component (e.g., "improving" a
+title or substituting a different created/updated list) drifts the
+audit trail from the canonical sources.
 
 ### Steps
 
-1. Read `<wiki>/overview.md` in full to understand current shape and tone.
-2. Read `<wiki>/log.md`. Find the `ingest` entries from `Last refreshed at
-   ingest: <N>+1` through `Current ingest count: <M>`. There should be
-   `M − N` such entries. (Note: lint entries reset the per-lint counter
-   used elsewhere, but here you want raw ingest sequence by lifetime
-   number, so you may need to count from the top.)
-3. For each ingest in the window, identify which pages it touched
-   (Created / Updated lines in the log entry) and what the source's
-   thrust was (read the source-summary page, NOT the raw vault file —
-   the wiki summary is your authoritative compressed view).
-4. Replace the `## Recent ingests N–M` section with one fresh
-   bullet-list-style section in the same shape as the existing one.
-   Header should read `## Ingests <N+1>–<M> — <short thematic label>`.
-   Each bullet: `- **#K — <Title> (<Author>, <date>).** Created
-   [[a]], [[b]]; updated [[c]], [[d]]; <one-clause framing>.`
-5. Use only `[[wikilinks]]` that resolve to pages already on the file
-   system — do not invent wikilinks for pages that don't exist.
-6. Do NOT touch any other section. Do NOT update Stats — the mechanical
-   script already did that.
+1. Read `<wiki>/overview.md` in full to find the `## Ingests N–M`
+   section the script has injected. Confirm both placeholder tokens
+   (`<SECTION-TITLE>` in the header, one `<SYNTHESIS>` per bullet) are
+   present. If the section is missing entirely, halt — the dispatching
+   skill failed step 3A.2.
+2. Read `<wiki>/log.md`'s `ingest` entries in the window for cross-context
+   (Created/Updated lists, optional Notes). The skeleton already
+   surfaces these; this read is for synthesis judgment, not skeleton
+   regeneration.
+3. For each ingest in the window, read the source-summary page (NOT the
+   raw vault file) to understand the source's thrust. Use the wiki
+   summary's `summary:` field plus the body for context. Decide what
+   the synthesis sentence should say:
+   - How does this ingest connect to prior threads (other sources, hubs,
+     themes already in `overview.md`)?
+   - Is it a first-of-kind anchor, a corroborating voice, a counter-thread?
+   - Does it complete a sweep, open one, or sit alone?
+4. Edit `overview.md` in place. For each bullet, replace the
+   `<SYNTHESIS>` placeholder with the one-clause framing (no leading
+   space — the placeholder has its space). For the section header,
+   replace `<SECTION-TITLE>` with a short thematic label distilling
+   the batch.
+5. Do NOT touch any other section. Do NOT update Stats — the mechanical
+   script already did that. Do NOT regenerate the bullet skeletons.
+6. Use only `[[wikilinks]]` in your synthesis sentences that resolve to
+   pages already on the file system — do not invent wikilinks.
 7. Return a short structured report:
 
    ```text
    Soft refresh complete.
-   Section replaced: ## Ingests <N+1>–<M>
-   Ingests summarized: <count>
-   Pages referenced: <count of distinct wikilinks in new section>
+   Section filled: ## Ingests <N+1>–<M> — <SECTION-TITLE you chose>
+   Synthesis tails filled: <count>
+   Section title: "<the title you wrote>"
    ```
 
 ### Mode A rules
@@ -109,7 +128,8 @@ have made a mistake; back out and re-scope.
 - No file writes outside `wiki/overview.md`.
 - No new wikilinks to non-existent pages.
 - No commits — the `/wiki-overview` skill commits the combined mechanical
-  + soft-narrative diff in one operation upstream.
+  + skeleton + synthesis-fill diff in one operation upstream.
+- No regeneration of the script-emitted skeleton lines.
 
 ---
 
