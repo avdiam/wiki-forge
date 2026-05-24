@@ -224,8 +224,6 @@ times for the same fused result.
 
 The `--queries-json` flag takes a **file path** or `-` for stdin — it does not accept a literal JSON string as the argument. **Always use the file-path form**, not stdin.
 
-**Run this call in FOREGROUND only — never with `run_in_background: true`.** The script hangs indefinitely under background mode regardless of input form (stdin OR file-path); confirmed three times across sessions 77-78 (~0.2s CPU, ~35MB RSS, zero output for 8-15+ minutes per orphan). Root cause is in the script's init under the no-TTY background harness — likely ONNX runtime / tokenizer load or a stdout-buffering deadlock — not the input pipe. A foreground call returns in 3-5s; there is no upside to backgrounding it.
-
 ```bash
 TMP=$(mktemp --suffix=.json)
 echo '["<theme1>","<theme2>","<theme3>"]' > "$TMP"

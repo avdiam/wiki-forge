@@ -29,14 +29,31 @@ import argparse
 import collections
 import json
 import math
+import os
 import re
 import sys
 import time
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
+
+# Heartbeat instrumentation — writes [hb] <stage> markers to stderr at each
+# pipeline transition (including module-level imports). Enabled via either
+# the env var `HYBRID_SEARCH_HEARTBEAT=1` (catches import-time hangs) or the
+# `--heartbeat` CLI flag (catches runtime hangs after argparse). stdout (the
+# JSON result) is unaffected. See dev/tech-debt.md "Root-cause hybrid_search.py
+# background-execution hang" for the diagnostic plan.
+_HEARTBEAT = bool(os.environ.get("HYBRID_SEARCH_HEARTBEAT"))
+
+
+def _hb(stage: str) -> None:
+    if _HEARTBEAT:
+        print(f"[hb] {stage}", file=sys.stderr, flush=True)
+
+
+_hb("module top: stdlib imports done")
 
 # Threshold: if total index tokens are below this, the LLM can read
 # the indices directly — no need for search overhead. Calibrated against
@@ -52,29 +69,69 @@ MAX_BODY_CHARS = 2000
 # Optional imports — graceful degradation
 # --------------------------------------------------------------------------
 
+_hb("import numpy: start")
 try:
     import numpy as np  # type: ignore
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
+_hb(f"import numpy: done (HAS_NUMPY={HAS_NUMPY})")
 
+# ----------------------------------------------------------------------------
+# Workaround: disable platform._wmi BEFORE importing onnxruntime.
+#
+# Python 3.13 routes platform.system() / platform.uname() through a WMI
+# (Windows Management Instrumentation) query for accurate version info via
+# _wmi_query() → _wmi.exec_query() in stdlib platform.py. Under a no-TTY
+# harness wrapper (e.g., Claude Code's background-task Bash mode — which
+# the harness can autonomously select even when run_in_background is not
+# set), the COM-based exec_query call blocks indefinitely: no output, no
+# CPU progress past ~0.2 s, no timeout. onnxruntime/capi/_pybind_state.py
+# line 14 calls platform.system() during import, so any `import onnxruntime`
+# under the wrapper hangs forever (~30 MB RSS, 0.2 s CPU, 0 B output —
+# fingerprint reproduced sessions 77 + 78).
+#
+# Setting platform._wmi = None makes _wmi_query() raise OSError("not
+# supported") immediately, which _win32_ver() catches and falls back to
+# sys.getwindowsversion() + the `ver` syscmd. Both work fine under any I/O
+# configuration. platform.system() still returns "Windows" correctly; the
+# only loss is the verbose service-pack detail from WMI, which neither
+# onnxruntime nor this script use.
+#
+# Verified 2026-05-24: under the fix, `import onnxruntime` completes in
+# ~0.3 s under the same harness wrapper that hung indefinitely without it.
+# faulthandler.dump_traceback_later() pinpointed _wmi.exec_query() as the
+# block site across three repeated dumps. See dev/tech-debt.md
+# "Root-cause hybrid_search.py background-execution hang" and the
+# session 78 dev/sessions.md entry for the full investigation.
+# ----------------------------------------------------------------------------
+import platform as _platform_mod  # noqa: PLC0415
+_platform_mod._wmi = None
+del _platform_mod
+
+_hb("import onnxruntime: start")
 try:
     import onnxruntime as ort  # type: ignore
     HAS_ORT = True
 except ImportError:
     HAS_ORT = False
+_hb(f"import onnxruntime: done (HAS_ORT={HAS_ORT})")
 
+_hb("import tokenizers: start")
 try:
     from tokenizers import Tokenizer  # type: ignore
     HAS_TOKENIZER = True
 except ImportError:
     HAS_TOKENIZER = False
+_hb(f"import tokenizers: done (HAS_TOKENIZER={HAS_TOKENIZER})")
 
+_hb("import zvec: start")
 try:
     import zvec  # type: ignore
     HAS_ZVEC = True
 except ImportError:
     HAS_ZVEC = False
+_hb(f"import zvec: done (HAS_ZVEC={HAS_ZVEC})")
 
 HAS_SEMANTIC = HAS_NUMPY and HAS_ORT and HAS_TOKENIZER
 
@@ -178,15 +235,19 @@ def _load_model(model_dir: Path):
         return None, None
 
     try:
+        _hb("tokenizer.from_file start")
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
         # Enable padding so batch encoding produces uniform lengths
         tokenizer.enable_padding(pad_id=0, pad_token="[PAD]")
         tokenizer.enable_truncation(max_length=128)
+        _hb("tokenizer.from_file done")
 
+        _hb("ort.InferenceSession start")
         session = ort.InferenceSession(
             str(model_path),
             providers=["CPUExecutionProvider"],
         )
+        _hb("ort.InferenceSession done")
     except Exception as e:
         print(
             f"warning: failed to load ONNX model/tokenizer ({type(e).__name__}: {e}); "
@@ -583,7 +644,9 @@ def search(
         list(queries[1:]) if n_variations > 1 else None
     )
 
+    _hb("load_pages start")
     corpus, metadata = load_pages(wiki_root)
+    _hb(f"load_pages done: {len(corpus)} pages")
     if not corpus:
         return {
             "search_mode": "none",
@@ -605,8 +668,10 @@ def search(
             pass
 
     # 1. BM25 corpus build — once, shared across all variations
+    _hb("BM25 build start")
     tokenized_corpus = [_tokenize_for_bm25(doc) for doc in corpus]
     bm25 = BM25(tokenized_corpus)
+    _hb("BM25 build done")
 
     # 2. Dense ranker setup — once, shared across all variations
     search_mode = "bm25_only"
@@ -616,7 +681,9 @@ def search(
     use_zvec = False
     if HAS_SEMANTIC:
         model_dir = _get_model_dir(wiki_root)
+        _hb("_load_model start")
         tokenizer, session = _load_model(model_dir)
+        _hb("_load_model done")
         if tokenizer is not None and session is not None:
             use_zvec = HAS_ZVEC and not force_bruteforce
             if force_zvec and not HAS_ZVEC:
@@ -641,7 +708,9 @@ def search(
         rank_lists.append(("bm25", sparse_ranks))
 
         if has_dense:
+            _hb(f"_embed query start (q={q[:40]!r})")
             query_emb = _embed([q], tokenizer, session)
+            _hb("_embed query done")
             if use_zvec:
                 dense_ranks = _zvec_search(
                     wiki_root, query_emb, corpus, metadata,
@@ -763,6 +832,15 @@ def main() -> int:
     parser.add_argument("wiki_root", help="Path to the wiki root")
     parser.add_argument("query", nargs="?", default=None, help="Search query")
     parser.add_argument(
+        "--heartbeat",
+        action="store_true",
+        help=(
+            "Emit [hb] <stage> markers to stderr at each pipeline transition. "
+            "For diagnosing hangs under the no-TTY harness wrapper. "
+            "stdout (the JSON result) is unaffected."
+        ),
+    )
+    parser.add_argument(
         "--check-threshold",
         action="store_true",
         help="Check if index is small enough for direct LLM reading",
@@ -789,6 +867,11 @@ def main() -> int:
         help="Force brute-force cosine backend (for benchmarking)",
     )
     args = parser.parse_args()
+
+    if args.heartbeat:
+        global _HEARTBEAT
+        _HEARTBEAT = True
+        _hb("main entered (argparse done)")
 
     wiki_root = Path(args.wiki_root).resolve()
 
