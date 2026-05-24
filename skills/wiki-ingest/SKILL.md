@@ -222,7 +222,9 @@ runs BM25 + dense per query and RRF-fuses all rank lists in a single ONNX
 model load — three separate calls would pay the model spin-up cost three
 times for the same fused result.
 
-The `--queries-json` flag takes a **file path** or `-` for stdin — it does not accept a literal JSON string as the argument. **Always use the file-path form**, not stdin. The stdin path (`--queries-json -`) hangs indefinitely under `run_in_background: true` on Windows/git-bash due to a pipe-lifetime race (the shell can close the pipe write-end before Python reaches `sys.stdin.read()`, leaving the script blocked waiting for EOF that never arrives). The file-path form has no stdin dependency and is reliable foreground or background.
+The `--queries-json` flag takes a **file path** or `-` for stdin — it does not accept a literal JSON string as the argument. **Always use the file-path form**, not stdin.
+
+**Run this call in FOREGROUND only — never with `run_in_background: true`.** The script hangs indefinitely under background mode regardless of input form (stdin OR file-path); confirmed three times across sessions 77-78 (~0.2s CPU, ~35MB RSS, zero output for 8-15+ minutes per orphan). Root cause is in the script's init under the no-TTY background harness — likely ONNX runtime / tokenizer load or a stdout-buffering deadlock — not the input pipe. A foreground call returns in 3-5s; there is no upside to backgrounding it.
 
 ```bash
 TMP=$(mktemp --suffix=.json)
