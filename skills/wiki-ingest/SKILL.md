@@ -222,11 +222,13 @@ runs BM25 + dense per query and RRF-fuses all rank lists in a single ONNX
 model load — three separate calls would pay the model spin-up cost three
 times for the same fused result.
 
-The `--queries-json` flag takes a **file path** or `-` for stdin — it does not accept a literal JSON string as the argument. Pipe the array via stdin:
+The `--queries-json` flag takes a **file path** or `-` for stdin — it does not accept a literal JSON string as the argument. **Always use the file-path form**, not stdin. The stdin path (`--queries-json -`) hangs indefinitely under `run_in_background: true` on Windows/git-bash due to a pipe-lifetime race (the shell can close the pipe write-end before Python reaches `sys.stdin.read()`, leaving the script blocked waiting for EOF that never arrives). The file-path form has no stdin dependency and is reliable foreground or background.
 
 ```bash
-echo '["<theme1>","<theme2>","<theme3>"]' | \
-  python <wiki>/.scripts/hybrid_search.py <wiki> --queries-json - --top-k 5
+TMP=$(mktemp --suffix=.json)
+echo '["<theme1>","<theme2>","<theme3>"]' > "$TMP"
+python <wiki>/.scripts/hybrid_search.py <wiki> --queries-json "$TMP" --top-k 5
+rm "$TMP"
 ```
 
 This catches synonym/paraphrase overlap that grep can't (e.g., the source
