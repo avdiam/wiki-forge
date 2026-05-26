@@ -14,6 +14,7 @@ Modes:
                        fuses results across all queries via RRF (Phase 2)
   --force-zvec         Force zvec ANN path (for benchmarking)
   --force-bruteforce   Force brute-force cosine path (for benchmarking)
+  --rerank-typed-edges Phase 4 — typed-edge graph rerank (opt-in; off by default)
 
 Usage:
   python hybrid_search.py <wiki-root> --check-threshold
@@ -618,6 +619,10 @@ def search(
     top_k: int = 5,
     force_zvec: bool = False,
     force_bruteforce: bool = False,
+    rerank_typed_edges: bool = False,
+    rerank_top_n_seeds: int = 3,
+    rerank_lambda: float = 0.05,
+    rerank_window: int = 30,
 ) -> dict:
     """Run hybrid search. Returns JSON-serializable result dict.
 
@@ -747,6 +752,48 @@ def search(
 
     sorted_docs = sorted(dampened_scores.items(), key=lambda x: x[1], reverse=True)
 
+    # Phase 4 — typed-edge graph re-rank (opt-in via rerank_typed_edges).
+    # Boosts candidates that share a typed edge (contradicts / supersedes /
+    # superseded_by) with any of the top-N seeds from the hybrid pass. Re-rank
+    # is confined to the top-`rerank_window` candidates so a low-scored page
+    # cannot be elevated into the result set just by typed-edge connection —
+    # the hybrid signal stays the floor. Lambda is interpreted as a fraction
+    # of the rank-0 (post-dampening) score, so the same default works under
+    # hybrid (top scores ~0.06) and bm25_only (top scores ~20). Hub-dampening
+    # is applied to the boost so a typed edge to a hub seed counts less.
+    # Sage-wiki design ships only signal #1 (direct typed edges) at V1;
+    # shared-sources / common-neighbors / type-affinity gated on supersession-
+    # edge volume that the wiki doesn't yet have.
+    rerank_applied = False
+    if rerank_typed_edges and sorted_docs:
+        from graph_analyzer import build_typed_adjacency
+        typed_adj = build_typed_adjacency(wiki_root)
+        n_seeds = max(1, min(rerank_top_n_seeds, len(sorted_docs)))
+        seed_slugs = {metadata[doc_id]["slug"] for doc_id, _ in sorted_docs[:n_seeds]}
+        rank0_raw_score = sorted_docs[0][1]
+        window = min(rerank_window, len(sorted_docs))
+        window_slice = sorted_docs[:window]
+        rerank_count = 0
+        rerank_top_window = []
+        for doc_id, score in window_slice:
+            slug = metadata[doc_id]["slug"]
+            neighbors = typed_adj.get(slug, set())
+            # Exclude self-edges — a seed connected to itself isn't a signal.
+            typed_to_seeds = len((neighbors & seed_slugs) - {slug})
+            if typed_to_seeds > 0:
+                links = inbound_links.get(slug, 0)
+                boost = (
+                    rerank_lambda * rank0_raw_score * typed_to_seeds
+                    / (1.0 + alpha * links)
+                )
+                rerank_top_window.append((doc_id, score + boost))
+                rerank_count += 1
+            else:
+                rerank_top_window.append((doc_id, score))
+        rerank_top_window.sort(key=lambda x: x[1], reverse=True)
+        sorted_docs = rerank_top_window + sorted_docs[window:]
+        rerank_applied = rerank_count > 0
+
     # Compute normalization. The "perfect-match" cap depends on which ranker
     # combination is in play (see branches below), but in all cases the cap
     # is the raw-RRF ceiling for a doc that's rank-0 across the active
@@ -802,8 +849,18 @@ def search(
             "snippet": snippet,
         })
 
+    # Append `_graph_rerank` suffix to search_mode when the typed-edge rerank
+    # actually moved at least one candidate. The flag-set-but-no-boost case
+    # keeps the base search_mode so telemetry distinguishes "rerank was off"
+    # from "rerank was on but had nothing to do" from "rerank reshuffled".
+    output_search_mode = search_mode
+    if rerank_typed_edges:
+        output_search_mode = (
+            f"{search_mode}_graph_rerank" if rerank_applied else f"{search_mode}_graph_rerank_noop"
+        )
+
     output = {
-        "search_mode": search_mode,
+        "search_mode": output_search_mode,
         "dense_backend": dense_backend,
         "query": canonical_query,
         "query_variations": variation_field,
@@ -866,6 +923,43 @@ def main() -> int:
         action="store_true",
         help="Force brute-force cosine backend (for benchmarking)",
     )
+    parser.add_argument(
+        "--rerank-typed-edges",
+        action="store_true",
+        help=(
+            "Phase 4 — re-rank the top-N hybrid candidates by typed-edge "
+            "proximity to the top-K seed pages. Off by default; opt-in until "
+            "the eval harness justifies flipping the default."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-top-n-seeds",
+        type=int,
+        default=3,
+        help="Phase 4 — number of top hybrid results treated as seeds (default 3)",
+    )
+    parser.add_argument(
+        "--rerank-lambda",
+        type=float,
+        default=0.05,
+        help=(
+            "Phase 4 — typed-edge boost as a fraction of rank-0 score per "
+            "edge-to-seed (default 0.05 = 'one typed edge ≈ 5%% of rank-0 "
+            "quality'). Scale-relative so the default works under both "
+            "hybrid and bm25_only modes. Hub-dampened with the same alpha "
+            "as the hybrid score so edges to high-inbound seeds count less."
+        ),
+    )
+    parser.add_argument(
+        "--rerank-window",
+        type=int,
+        default=30,
+        help=(
+            "Phase 4 — re-rank window. Only the top-N hybrid candidates are "
+            "eligible for re-ordering (default 30). Pages outside the window "
+            "cannot be promoted into the result set by typed edges alone."
+        ),
+    )
     args = parser.parse_args()
 
     if args.heartbeat:
@@ -917,6 +1011,10 @@ def main() -> int:
         wiki_root, queries, args.top_k,
         force_zvec=args.force_zvec,
         force_bruteforce=args.force_bruteforce,
+        rerank_typed_edges=args.rerank_typed_edges,
+        rerank_top_n_seeds=args.rerank_top_n_seeds,
+        rerank_lambda=args.rerank_lambda,
+        rerank_window=args.rerank_window,
     )
     if result["search_mode"] == "bm25_only":
         if len(queries) > 1:

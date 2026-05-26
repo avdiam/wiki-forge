@@ -152,6 +152,62 @@ def count_typed_edges(wiki_root: Path) -> dict[str, int]:
     return counts
 
 
+def build_typed_adjacency(wiki_root: Path) -> dict[str, set[str]]:
+    """Build undirected typed-edge adjacency from frontmatter.
+
+    Folds `contradicts:` (symmetric), `supersedes:` and `superseded_by:`
+    (inverse pair) into one undirected adjacency map: slug → set of slugs
+    typed-connected at any depth-1 hop. Direction and edge-type are not
+    preserved — the consumer (hybrid_search rerank pass) treats any typed
+    edge to a seed page as a single boost signal regardless of which side
+    declared it. Pages whose `contradicts:` mentions a missing slug are
+    skipped silently (matches the wikilink-fold semantics of build_graph).
+
+    Returns `{slug: {neighbor_slug, ...}}`. Slugs with no typed edges are
+    omitted from the dict — callers should treat absence as empty set.
+    """
+    # Collect known slugs so we can filter dangling references
+    known: set[str] = set()
+    for page_type in PAGE_TYPES:
+        type_dir = wiki_root / "pages" / page_type
+        if not type_dir.is_dir():
+            continue
+        for md in type_dir.glob("*.md"):
+            known.add(md.stem)
+
+    adj: dict[str, set[str]] = defaultdict(set)
+    for page_type in PAGE_TYPES:
+        type_dir = wiki_root / "pages" / page_type
+        if not type_dir.is_dir():
+            continue
+        for md in sorted(type_dir.glob("*.md")):
+            slug = md.stem
+            try:
+                fm = parse_frontmatter(md.read_text(encoding="utf-8", errors="ignore"))
+            except OSError:
+                continue
+            for field in TYPED_EDGE_FIELDS:
+                value = fm.get(field)
+                if not value:
+                    continue
+                candidates = [value] if isinstance(value, str) else value
+                if not isinstance(candidates, list):
+                    continue
+                for c in candidates:
+                    if not isinstance(c, str):
+                        continue
+                    match = TYPED_LINK_RE.match(c.strip())
+                    if not match:
+                        continue
+                    target = match.group(1).strip()
+                    if target.endswith(".md"):
+                        target = target[:-3]
+                    if target in known and target != slug:
+                        adj[slug].add(target)
+                        adj[target].add(slug)
+    return dict(adj)
+
+
 def find_components(
     nodes: set[str],
     outbound: dict[str, set[str]],
