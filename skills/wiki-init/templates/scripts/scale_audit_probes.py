@@ -25,12 +25,10 @@ The --check-triggers flag exits 1 if any of the 5 hard re-audit triggers
 from `dev/2026-05-08-mode7-audit.md` § Re-audit triggers fires; 0 otherwise.
 Triggers:
     1. total_pages >= 600
-    2. needs_verification >= 100 (single snapshot; the "sustained" condition
-       is judgment work — this flags the threshold, the runner judges
-       sustained-vs-spike from `lint_log.jsonl` history)
-    3. broken_links > 5 (single snapshot; same sustained-vs-spike caveat)
+    2. needs_verification >= 100 sustained across the last 3 valid lint runs
+    3. broken_links > 5 sustained across the last 5 valid lint runs
     4. updated/created Q4-vs-Q1 ratio inverts (Q4 < 1.5 OR Q4 < Q1)
-    5. agent-harness exceeds 25_000 word-count proxy for the Read limit
+    5. top concept hub exceeds 25_000 words (Read-limit proxy)
 """
 
 from __future__ import annotations
@@ -58,7 +56,16 @@ TRIGGER_NEEDS_VERIFICATION_RUNS = 3  # "sustained across 3+ lint runs"
 TRIGGER_BROKEN_LINKS = 5  # strict inequality: > 5
 TRIGGER_BROKEN_LINKS_RUNS = 5  # "sustained over 5+ lint runs"
 TRIGGER_RATIO_FLOOR = 1.5
-TRIGGER_AGENT_HARNESS_WORDS = 25_000  # word-count proxy for the Read limit
+TRIGGER_TOP_CONCEPT_HUB_WORDS = 25_000  # word-count proxy for the Read limit
+
+# Trigger 5 covers top *concept* hub only, not top entity hub. Entity pages
+# naturally shed mass via `supersedes:` / version-specific sub-pages — a
+# single product entity rarely needs to carry every version's detail forever.
+# Concept pages don't have that pressure valve, so the structural-decomposition
+# concern is specifically a concept-page concern. Don't "fix" this by
+# extending to all hub types — the exclusion is intentional. See
+# dev/2026-05-08-mode7-audit.md § Re-audit triggers and the matching
+# Conditional entry in dev/tech-debt.md for the recorded decision.
 
 # Spot-check budgets for the judgment probes.
 SPOT_CHECK_HUB_COUNT = 3
@@ -417,9 +424,12 @@ def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
         "actual": total,
     })
 
-    # 2: needs_verification sustained across 3+ runs
+    # 2: needs_verification sustained across 3+ runs. Filter nulls BEFORE
+    # slicing so a malformed lint_log row (missing the count field) doesn't
+    # collapse the window and hide a met sustained condition.
     nv_series = probes["lint_trend"].get("series", {}).get("needs_verification", [])
-    nv_window = [v for v in nv_series[-TRIGGER_NEEDS_VERIFICATION_RUNS:] if isinstance(v, (int, float))]
+    nv_clean = [v for v in nv_series if isinstance(v, (int, float))]
+    nv_window = nv_clean[-TRIGGER_NEEDS_VERIFICATION_RUNS:]
     fired_2 = (
         len(nv_window) >= TRIGGER_NEEDS_VERIFICATION_RUNS
         and all(v >= TRIGGER_NEEDS_VERIFICATION for v in nv_window)
@@ -434,9 +444,11 @@ def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
         "latest": nv_window[-1] if nv_window else None,
     })
 
-    # 3: broken_links sustained across 5+ runs
+    # 3: broken_links sustained across 5+ runs. Same null-filter-before-slice
+    # discipline as trigger 2.
     bl_series = probes["lint_trend"].get("series", {}).get("broken_links", [])
-    bl_window = [v for v in bl_series[-TRIGGER_BROKEN_LINKS_RUNS:] if isinstance(v, (int, float))]
+    bl_clean = [v for v in bl_series if isinstance(v, (int, float))]
+    bl_window = bl_clean[-TRIGGER_BROKEN_LINKS_RUNS:]
     fired_3 = (
         len(bl_window) >= TRIGGER_BROKEN_LINKS_RUNS
         and all(v > TRIGGER_BROKEN_LINKS for v in bl_window)
@@ -484,8 +496,8 @@ def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
     triggers.append({
         "id": 5,
         "name": "top_concept_hub_size_proxy",
-        "fired": isinstance(hub_words, int) and hub_words >= TRIGGER_AGENT_HARNESS_WORDS,
-        "threshold_words": TRIGGER_AGENT_HARNESS_WORDS,
+        "fired": isinstance(hub_words, int) and hub_words >= TRIGGER_TOP_CONCEPT_HUB_WORDS,
+        "threshold_words": TRIGGER_TOP_CONCEPT_HUB_WORDS,
         "hub_slug": top_concept_hub["slug"] if top_concept_hub else None,
         "hub_words": hub_words,
         "note": "word-count proxy for the 25K-token Read limit",
