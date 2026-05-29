@@ -24,7 +24,7 @@ Output JSON shape (keys are stable; downstream parsers depend on them):
         "triage_file":     <str | null>,    # project-relative path, e.g. dev/ingest-triage-2026-05-05.md
         "triage_created":  <str | null>,    # ISO date from frontmatter, when state in {triaged, stale}
         "batch_label":     <str | null>,    # e.g. "Batch 10", when state == triaged
-        "batch_first_slug": <str | null>,   # first article in the next batch's body
+        "batch_first_slug": <str | null>,   # first not-yet-ingested article in the next batch's body
         "stale_count":     <int>            # files added since triage; nonzero only when state == stale
     }
   }
@@ -131,14 +131,25 @@ def compute_overview_state(
     }
 
 
-def compute_pending(vault_dir: Path, sources_dir: Path) -> int:
-    """Replicate lint_wiki.check_source_backlog len() — count handled vs unhandled vault files."""
-    if not vault_dir.is_dir():
-        return 0
+def compute_handled(vault_dir: Path, sources_dir: Path) -> set[str]:
+    """Slugs already handled — have a source page or a skip stub.
+
+    Shared by compute_pending (count) and compute_backlog_state (the
+    batch_first_slug self-heal). A slug in this set is one the ingest
+    pipeline has already dealt with, regardless of triage-checkbox state.
+    """
     source_slugs = {p.stem for p in sources_dir.glob("*.md")} if sources_dir.is_dir() else set()
     skipped_dir = vault_dir / ".skipped"
     skipped_slugs = {p.stem for p in skipped_dir.glob("*.md")} if skipped_dir.is_dir() else set()
-    handled = source_slugs | skipped_slugs
+    return source_slugs | skipped_slugs
+
+
+def compute_pending(vault_dir: Path, sources_dir: Path, handled: set[str] | None = None) -> int:
+    """Replicate lint_wiki.check_source_backlog len() — count handled vs unhandled vault files."""
+    if not vault_dir.is_dir():
+        return 0
+    if handled is None:
+        handled = compute_handled(vault_dir, sources_dir)
 
     pending = 0
     for raw_file in vault_dir.rglob("*.md"):
@@ -150,7 +161,8 @@ def compute_pending(vault_dir: Path, sources_dir: Path) -> int:
     return pending
 
 
-def compute_backlog_state(project_root: Path, pending: int) -> dict:
+def compute_backlog_state(project_root: Path, pending: int, handled: set[str] | None = None) -> dict:
+    handled = handled or set()
     out: dict = {
         "pending": pending,
         "state": "all_clear",
@@ -211,10 +223,31 @@ def compute_backlog_state(project_root: Path, pending: int) -> dict:
         )
         section = section_re.search(text)
         if section:
-            slug_match = re.search(r"^\d+\.\s*\*\*`([^`]+)`", section.group(0), re.MULTILINE)
-            if slug_match:
-                out["batch_first_slug"] = slug_match.group(1)
+            out["batch_first_slug"] = _first_open_article(section.group(0), handled)
     return out
+
+
+def _first_open_article(batch_body: str, handled: set[str]) -> str | None:
+    """First batch article that is neither ticked nor already on disk.
+
+    An article is "open" when its checkbox is unchecked (`- [ ]`) AND its
+    slug has no source page / skip stub yet. The on-disk check self-heals a
+    missed tick — and lets pre-checkbox (legacy numbered) triage files still
+    yield an honest pointer by falling back to the numbered format.
+    """
+    checkbox_re = re.compile(r"^- \[(?P<mark>[ xX])\]\s*\*\*`(?P<slug>[^`]+)`", re.MULTILINE)
+    articles = [(m.group("mark").strip().lower(), m.group("slug")) for m in checkbox_re.finditer(batch_body)]
+    if not articles:
+        # Legacy numbered format (predates per-article checkboxes): treat all as unchecked.
+        articles = [("", s) for s in re.findall(r"^\d+\.\s*\*\*`([^`]+)`", batch_body, re.MULTILINE)]
+    for mark, slug in articles:
+        if mark == "x":
+            continue  # ticked → done
+        slug_stem = slug[:-3] if slug.endswith(".md") else slug
+        if slug_stem in handled:
+            continue  # source page / skip stub exists → done even if tick was missed
+        return slug
+    return None
 
 
 def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
@@ -227,8 +260,9 @@ def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
 
     lint_counter, ingest_count = compute_lint_state(log_text)
     overview = compute_overview_state(wiki_root, graph_json_arg, ingest_count)
-    pending = compute_pending(vault_dir, sources_dir)
-    backlog = compute_backlog_state(project_root, pending)
+    handled = compute_handled(vault_dir, sources_dir)
+    pending = compute_pending(vault_dir, sources_dir, handled)
+    backlog = compute_backlog_state(project_root, pending, handled)
 
     return {
         "lint_counter": lint_counter,

@@ -86,8 +86,8 @@ Present as:
 ### Batch 1 — <thematic label>
 **Rationale:** <one sentence on why these go together>
 
-1. **`<slug>.md`** (<author>) — <one-line what it contributes>
-2. **`<slug>.md`** (<author>) — <one-line what it contributes>
+- [ ] **`<slug>.md`** (<author>) — <one-line what it contributes>
+- [ ] **`<slug>.md`** (<author>) — <one-line what it contributes>
 ...
 
 ### Batch 2 — <thematic label>
@@ -164,7 +164,8 @@ created: <date>
 
 **Rationale:** ...
 
-1. **`<slug>.md`** (<author>) — ...
+- [ ] **`<slug>.md`** (<author>) — ...
+- [ ] **`<slug>.md`** (<author>) — ...
 ...
 
 ## Batch N — ...
@@ -179,7 +180,15 @@ created: <date>
 
 ## Session protocol
 
-<same as the existing triage file template>
+- Dispatch one `/wiki-ingest` per article, sequentially.
+- `/wiki-ingest` ticks each article's checkbox (`- [ ]` → `- [x]`) as it
+  commits, and ticks the batch box in the Status checklist when the batch's
+  last article lands. A mid-batch stop therefore leaves an accurate record
+  of what's done — the next session's wake-up drill points "Batch X next /
+  First up" at the first *unticked* article, not at article #1.
+- Mechanical lint runs after every ingest (in-agent).
+- After every 10 ingests, `/wiki-lint` chains into `/wiki-overview --soft`.
+- Out-of-cycle full lint if any single ingest surfaces ≥3 contradictions.
 
 ## Cleanup trigger
 
@@ -232,3 +241,9 @@ Summarize to the user:
 - **Maybes are honest.** Don't force a decision on ambiguous files — defer
   them with a clear "decide at takeaway pass" trigger. The `/wiki-ingest`
   takeaway pass is the right place for borderline editorial judgment.
+- **Per-article checkboxes are load-bearing.** Each batch article is a
+  task-list item (`- [ ] **`<slug>.md`** …`), not a numbered list entry.
+  `/wiki-ingest` ticks them on commit and `drill_state.py` parses the
+  unticked ones to compute the "Batch X next / First up" pointer. The drill
+  falls back to legacy numbered parsing for old files, but new triage files
+  must use checkboxes so mid-batch progress survives across sessions.

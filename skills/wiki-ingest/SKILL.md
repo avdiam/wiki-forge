@@ -645,6 +645,45 @@ the most-recent fix-up commit when the README-ingest pattern produced one
 (per step 8 of the ingestor playbook) — both are correct amend targets.
 Personal-repo amend policy applies (see [`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
 
+### 13.5. Tick the triage batch checkbox (when this source came from a triage batch)
+
+If this ingest is part of an active triage batch, record per-article
+progress so a mid-batch stop is never mistaken for an unstarted batch. This
+is a no-op for one-off ingests (the grep in sub-step 2 returns nothing).
+
+1. **Find the active triage file** — the newest `dev/ingest-triage-*.md`
+   whose frontmatter `status:` is `active` (ignore `*-archived*` /
+   `*-superseded*`). None found → skip the whole step.
+2. **Locate the unchecked article line** for this source's slug
+   (`<suggested_slug>` from the step-3 brief, e.g.
+   `2026-05-16-claude-agent-sdk-iterative-refinement-loops`):
+   ```bash
+   grep -n "^- \[ \] \*\*\`<slug>.md\`\*\*" <triage-file>
+   ```
+   No match → the source wasn't a batch article (one-off, or already
+   ticked); skip the rest of the step.
+3. **Tick it** — flip that single line's `- [ ]` to `- [x]` with the Edit
+   tool (exact-match the one line; never `replace_all`).
+4. **Batch-completion roll-up** — if the article's `## Batch N` body now has
+   zero remaining `- [ ]` lines, also flip that batch's
+   `- [ ] **Batch N** — …` line in the `## Status checklist` to `- [x]`.
+5. **Commit the tick on its own** — the triage file lives in `dev/`,
+   separate from the wiki content the agent already committed, so don't fold
+   it into the ingest commit:
+   ```bash
+   git add <triage-file>
+   git commit -m "triage: tick <slug> (Batch N — <done>/<total>)"
+   ```
+6. **All-batches-done?** If this tick completed the file's last unchecked
+   batch box, the triage file's own Cleanup trigger applies — surface it in
+   step 14's relay ("Batch N complete; triage file ready to remove") rather
+   than auto-deleting here. Deletion stays a deliberate step.
+
+The wake-up drill's "Batch X next / First up" pointer reads these checkboxes
+(via `drill_state.py`, which skips ticked articles and self-heals a missed
+tick by also skipping any slug that already has a source page). Ticking here
+is what keeps that pointer honest across sessions.
+
 ### 14. Relay the result
 
 Summarize the agent's report to the user in the main chat:
@@ -656,6 +695,7 @@ Summarize the agent's report to the user in the main chat:
 - Commit hash
 - Mechanical lint findings (the key non-zero counts, or "clean")
 - Telemetry row appended (ok / failed — one line)
+- Triage progress (only if this source was a batch article): ticked `<slug>` — Batch N now <done>/<total>; flag batch or whole-triage completion when reached.
 - Cadence reminder if the agent's report flagged a 10th/20th/30th post-lint ingest — suggest `/wiki-lint` now.
 
 If the agent returned a HALT (late contradictions exceeded 5, rollback
