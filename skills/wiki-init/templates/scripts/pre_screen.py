@@ -95,12 +95,15 @@ def check_author_watchlist(author: str | None, vault_root: Path) -> dict | None:
     """Check if the source author is on the watchlist. Returns entry or None."""
     if not author:
         return None
+    # Author may be a YAML list (e.g. multiple authors) — coerce to a string.
+    if isinstance(author, (list, tuple)):
+        author = " ".join(str(a) for a in author)
     watchlist = parse_watchlist(vault_root)
     if not watchlist:
         return None
 
     # Normalize author to slug form for matching
-    author_lower = author.lower().strip()
+    author_lower = str(author).lower().strip()
     # Try exact slug match and common variations
     for slug, entry in watchlist.items():
         # Match against slug (e.g., "joe-njenga")
