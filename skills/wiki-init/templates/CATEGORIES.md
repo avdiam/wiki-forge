@@ -1,7 +1,7 @@
 ---
 schema_version: 2
 not_a_source: true
-last_updated: 2026-05-13
+last_updated: 2026-05-24
 ---
 
 # Wiki — Categories (authoritative taxonomy)
@@ -27,6 +27,7 @@ Categories are an **enumerated, lint-enforced taxonomy**. Every page's `category
 - `training-and-fine-tuning` — RLHF, SFT, distillation, evals, dataset curation
 - `prompt-engineering` — Prompting techniques, patterns, system prompts, chain-of-thought
 - `languages-and-frameworks` — Python, TypeScript, Rust, and language-specific libraries
+- `claude-code-workflow` — Workflow patterns, setup checklists, and end-to-end usage recipes for Claude Code specifically (multi-step playbooks, configuration walkthroughs, team-adoption guides). Distinct from `coding-agents` (the broader category about the tools themselves) and `prompt-engineering` (technique-level guidance not tied to a specific tool). Use when a source's primary value is "how to drive Claude Code in practice" rather than "what Claude Code is" or "how to prompt LLMs generally."
 
 ## Adding a new category
 

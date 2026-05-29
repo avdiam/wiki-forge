@@ -1,6 +1,6 @@
 # LLM Wiki Schema
 
-> **Schema version:** 3 — see [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) for change history. Bump on breaking changes (new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** since the list is now enumerated and lint-enforced). Non-breaking changes (template tweaks, rule clarifications, prose edits) don't bump. `CLAUDE.md` is the Claude Code auto-load anchor and `@-includes` this file; [`CATEGORIES.md`](CATEGORIES.md) is a sibling schema file (see [`README.md`](README.md) for the full layout).
+> **Schema version:** 4 — see [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) for change history. Bump on breaking changes (new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** since the list is now enumerated and lint-enforced). Non-breaking changes (template tweaks, rule clarifications, prose edits) don't bump. `CLAUDE.md` is the Claude Code auto-load anchor and `@-includes` this file; [`CATEGORIES.md`](CATEGORIES.md) is a sibling schema file (see [`README.md`](README.md) for the full layout).
 
 This file is the operational schema for the wiki in this directory. It is auto-loaded into the agent's context (via `CLAUDE.md`'s `@AGENTS.md` include) and is referenced by the `wiki-*` skills. Follow the rules and templates here exactly.
 
