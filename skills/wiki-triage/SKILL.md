@@ -205,7 +205,7 @@ Pre-screened by wiki/.scripts/triage_backlog.py + wiki/.scripts/pre_screen.py.
 
 ### 7. Regenerate the vault URL index
 
-Triage has just walked `vault/Web Articles/` + `vault/.skipped/` (and may
+Triage has just walked every content folder (`vault/Web Articles/`, `vault/Clippings/`, …) + `vault/.skipped/` (and may
 have just written new skip stubs in step 5) — exactly the moment the
 clipper-side URL dedup index can be authoritatively refreshed:
 
