@@ -281,30 +281,70 @@ owns only what's deterministic; the model owns the fetch.
 
 ### 2. Present the buckets
 
-Show the counts + per-bucket URLs. Call out that the `redirect_to_clipper`
-bucket needs the clipper — offer to drop those URLs into a mailbox message for
-the clipper (or hand them to the user to paste into the clipper task list). Do
-not try to WebFetch an `auth_required` URL; it returns a paywalled stub.
+Show the counts + per-bucket URLs as a short summary so the user sees the shape
+before anything happens — e.g. `40 → clipper, 3 fetchable, 4 already in vault,
+1 bad URL`. Then the bucket lists. Do **not** WebFetch an `auth_required` URL;
+it returns a paywalled stub.
 
-### 3. Capture the `fetchable` bucket inline
+### 3. Hand the `redirect_to_clipper` bucket to the clipper (draft → confirm → write)
 
-Loop the **normal single-capture pipeline** (Workflow steps 2–5b above) over
-each `fetchable` URL — run the Step 3a metadata cascade per URL (`head_preserving`
-trusts the WebFetch metadata; `default` runs `extract_page_metadata.py` then
-fetches the body), normalize, write to `vault/`, append to the index. Collect
-the written vault paths.
+If the bucket is non-empty, **draft** a mailbox message and show it to the user
+before writing — this is a real vault artifact, so it goes through a
+confirmation gate (and avoids preempting clipper coordination the user may be
+handling themselves). On approval, write it; if the user says they'll tell the
+clipper directly, skip the write and just leave the URLs listed.
 
-If the fetchable bucket is large (say >10), surface that to the user before
-firing the loop — the model-driven captures are token-heavy — and let them trim
-the list or confirm.
+Assemble the message per [`vault/_mailbox/README.md`](../../../vault/_mailbox/README.md):
+- **Filename:** `wiki_message_<next-N>.md`. Compute `next-N` by scanning **both**
+  the top-level `vault/_mailbox/` *and* `vault/_mailbox/.archive/**/` for the
+  highest existing message number and adding 1 (archived messages still count).
+- **Frontmatter:** `from: wiki`, `to: clipper`, `date: <today>`, `status: open`,
+  `re: null`, `subject: "Batch clip request — <N> URLs (<YYYY-MM-DD>)"`.
+- **Body:** a one-line directive ("Please clip these <N> URLs into `vault/Web
+  Articles/` per `.clipper-rules.md`.") followed by the bullet list of
+  `redirect_to_clipper` URLs.
 
-### 4. Chain the batch to `/wiki-ingest`
+(If batch clip-requests become routine, consider formalizing a `[CLIP QUEUE]`
+subject prefix — symmetric to the existing `[DRIFT QUEUE]` wiki→clipper
+directive — in the `_mailbox/README.md` prefix table + `.clipper-rules.md`. Not
+done yet; free-form subject is fine until the shape recurs.)
 
-Once the fetchable URLs are captured, hand the **list** of written vault paths
-to `/wiki-ingest` (or to `/wiki-triage` if the batch is big enough to warrant
-batching into ingest groups). Same atomic capture-then-ingest contract as the
-single-URL flow, applied across the batch. Report the final tally: captured /
-redirected-to-clipper / skipped-dup / errored.
+### 4. Capture loop over the `fetchable` bucket (run to exhaustion)
+
+If the bucket is large (>10), surface that first — captures are token-heavy
+(WebFetch + normalize each) — and let the user trim or confirm. Then loop the
+**normal single-capture pipeline** (Workflow steps 2–5b) over each URL, with
+batch-specific behavior:
+
+- **Per-URL error isolation.** A failed fetch / normalize / write does NOT abort
+  the batch. Record it as `failed: <url> (<reason>)` and continue to the next.
+- **Progress.** Emit a `[i/N] capturing <url>` line per URL so the loop is
+  legible.
+- **Defer the verification gate.** When a `default` URL is unreachable by urllib
+  and falls to `fallback-to-webfetch-with-verification` (Step 3a), do **not**
+  pause the loop for the hallucination-check confirmation. Capture it with
+  `tag_source: needs-verification`, add it to a deferred list, and keep going.
+  `head_preserving` and reachable `default` URLs capture normally.
+- Collect the written vault paths and a running tally (captured / failed /
+  deferred-for-verification).
+
+### 5. End-of-batch verification review
+
+If any URLs were deferred in step 4, surface them in **one** review pass: show
+each captured file + the metadata WebFetch claimed, and let the user
+confirm/correct in a single round rather than N interruptions mid-loop. Apply
+the same `url_classifier_lists.json` head_preserving / auth_required outcome the
+single-capture gate would (Step 3a), only confirmed → updates the file's
+`tag_source` and proposes the list edit.
+
+### 6. Hand the captured batch to `/wiki-triage`
+
+Pass the **list** of written vault paths to `/wiki-triage`, which batches them
+into ingest groups with the normal per-source approval gates — the right home
+for the expensive HITL phase, and how bulk ingests already work. (For a tiny
+batch — 1–2 files — chaining straight to `/wiki-ingest` per file is fine.) Then
+report the final tally: captured / clipper-queued / already-in-vault / failed /
+deferred-verification.
 
 ## Rules
 
