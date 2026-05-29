@@ -65,6 +65,20 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# File layout (the checks are grouped by kind; build_report() near the bottom
+# owns the canonical run order + JSON key order):
+#   MODULE CONSTANTS        — schema-fundamental thresholds / regexes / fields
+#   SHARED CORE             — collect_pages, find_wikilinks, parsing/config helpers
+#   PER-PAGE (RULE) CHECKS  — frontmatter / prose / schema checks (14)
+#   GRAPH CHECKS            — wikilink-graph / cross-page checks (7)
+#   FILESYSTEM / LOG CHECKS — vault backlog, broken sources, overview staleness (3)
+#   ORCHESTRATION & CLI     — build_report (fixed order), render_human, main
+# Each check-specific constant sits immediately above the function that owns it.
+# ---------------------------------------------------------------------------
+
+
+# === MODULE CONSTANTS ===
 REQUIRED_FIELDS = ["title", "type", "category", "summary", "confidence", "sources", "last_updated"]
 STALE_DAYS = 90
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
@@ -72,6 +86,7 @@ AMBIGUOUS_MARKER_RE = re.compile(r"\*\[AMBIGUOUS\]\*")
 CLAIM_TAG_SCOPE_TYPES = {"concepts", "entities", "comparisons", "syntheses"}
 
 
+# === SHARED CORE: page loading, wikilink/typed-edge parsing, config ===
 def collect_pages(wiki_root: Path) -> dict:
     """Collect all pages from type directories directly under wiki root."""
     pages: dict = {}
@@ -97,24 +112,148 @@ def find_wikilinks(text: str) -> list[str]:
     return [m.group(1).strip() for m in WIKILINK_RE.finditer(text)]
 
 
-def check_orphans(pages: dict) -> list[str]:
-    referenced: set[str] = set()
-    for info in pages.values():
-        for link in find_wikilinks(info["body"]):
-            referenced.add(link)
-    return sorted(slug for slug in pages if slug not in referenced)
+def _is_excluded_vault_path(relative_parts: tuple[str, ...]) -> bool:
+    """Match the ingest-exclusion rule: top-level segment under vault/ begins with . or _.
+
+    Catches protocol/config files (.wiki-identity.md, .clipper-rules.md),
+    protocol folders (_mailbox/, .skipped/), and Obsidian internals (.obsidian/).
+    """
+    if not relative_parts:
+        return False
+    top = relative_parts[0]
+    return top.startswith(".") or top.startswith("_")
 
 
-def check_broken_links(pages: dict) -> list[dict]:
-    broken: list[dict] = []
-    slugs = set(pages.keys())
-    for slug, info in pages.items():
-        for link in find_wikilinks(info["body"]):
-            if link not in slugs:
-                broken.append({"page": info["path"], "target": link})
-    return broken
+TYPED_EDGE_FIELDS = ("contradicts", "supersedes", "superseded_by")
+TYPED_LINK_RE = re.compile(r"^\[\[([^\]|#]+?)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]$")
 
 
+def _extract_typed_targets(field_value) -> list[str]:
+    """Extract slugs from a typed-edge frontmatter value.
+
+    Canonical shape is a YAML quoted-flow list: ["[[slug-a]]", "[[slug-b]]"].
+    Tolerates a single string for forgiving authoring. Entries that don't
+    parse as wikilinks are silently dropped here — `check_invalid_typed_links`
+    surfaces those by comparing against the page set, so we don't double-flag.
+    """
+    if not field_value:
+        return []
+    if isinstance(field_value, str):
+        candidates = [field_value]
+    elif isinstance(field_value, list):
+        candidates = [v for v in field_value if isinstance(v, str)]
+    else:
+        return []
+    targets: list[str] = []
+    for c in candidates:
+        m = TYPED_LINK_RE.match(c.strip())
+        if m:
+            targets.append(m.group(1).strip())
+    return targets
+
+
+# Authoritative category list — loaded at runtime from wiki/CATEGORIES.md.
+# Single source of truth as of the 2026-05-13 schema decomposition; the
+# previous hardcoded frozenset was a manual-sync contract with drift risk
+# (see dev/archive/2026-05-13-wiki-agents.md-refactor.md § Finding 1).
+def load_authoritative_categories(wiki_root: Path) -> frozenset[str]:
+    """Parse category slugs from wiki/CATEGORIES.md's enumerated list.
+
+    Looks for the H2 header `## Authoritative category list` and extracts
+    each bullet's slug — the text between the first backtick pair on lines
+    matching `- `<slug>` — <description>`. The list terminates at the next
+    `#`-prefixed header.
+    """
+    categories_path = wiki_root / "CATEGORIES.md"
+    if not categories_path.is_file():
+        print(
+            f"error: {categories_path} missing — required since the "
+            f"2026-05-13 schema decomposition. See dev/archive/2026-05-13-wiki-agents.md-refactor.md.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    text = categories_path.read_text(encoding="utf-8")
+    in_list = False
+    cats: set[str] = set()
+    for line in text.splitlines():
+        if line.startswith("## Authoritative category list"):
+            in_list = True
+            continue
+        if in_list and line.startswith("#"):
+            break
+        if in_list and line.lstrip().startswith("- `"):
+            try:
+                slug = line.split("`", 2)[1]
+                if slug:
+                    cats.add(slug)
+            except IndexError:
+                continue
+    if not cats:
+        print(f"error: no categories parsed from {categories_path}", file=sys.stderr)
+        sys.exit(2)
+    return frozenset(cats)
+
+
+def load_lint_config(wiki_root: Path) -> dict:
+    """Load `<wiki>/.meta/lint-config.json`. Returns {} when absent or unparseable.
+
+    Schema (currently): `{"artifact_check_categories": ["cat-a", "cat-b", ...]}`.
+    Empty / missing allowlist means the artifact-presence check is silent —
+    new wikis stay quiet by default until categories are explicitly opted in.
+    """
+    config_path = wiki_root / ".meta" / "lint-config.json"
+    if not config_path.is_file():
+        return {}
+    try:
+        return json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+# Universal structural-artifact patterns. A page passes if any one fires.
+# Single-instance patterns (one match is enough): fenced code, GFM table
+# separator (the `|---|` row that must exist for a real table), attributed
+# block-quote opener (`> "` or smart-quote variant).
+ARTIFACT_PATTERNS_ANY: dict[str, re.Pattern] = {
+    "fenced_code": re.compile(r"^```", re.MULTILINE),
+    "table": re.compile(r"^\|[\s:|\-]+\|\s*$", re.MULTILINE),
+    "attributed_quote": re.compile(r"^>\s*[\"“]", re.MULTILINE),
+}
+# Multi-instance patterns (≥2 matches): a single `1.` line isn't a procedure;
+# a single `**term** — defn` line isn't a definition list.
+ARTIFACT_PATTERNS_MULTI: dict[str, tuple[re.Pattern, int]] = {
+    "numbered_step": (re.compile(r"^\d+\.\s+\S", re.MULTILINE), 2),
+    "definition_list": (re.compile(r"^\*\*[^*\n]+\*\*\s*[—–\-]\s+\S", re.MULTILINE), 2),
+}
+
+
+def _strip_frontmatter(body: str) -> str:
+    """Drop YAML frontmatter so its pipes don't false-positive the table check."""
+    if body.startswith("---\n"):
+        end = body.find("\n---\n", 4)
+        if end != -1:
+            return body[end + 5:]
+    return body
+
+
+def _has_artifact(body: str) -> bool:
+    """True if body contains any structural artifact pattern."""
+    text = _strip_frontmatter(body)
+    for pat in ARTIFACT_PATTERNS_ANY.values():
+        if pat.search(text):
+            return True
+    for pat, threshold in ARTIFACT_PATTERNS_MULTI.values():
+        if len(pat.findall(text)) >= threshold:
+            return True
+    return False
+
+
+def _find_vault_dir(wiki_root: Path) -> Path:
+    """Find the vault/ directory (sibling to wiki/)."""
+    return wiki_root.parent / "vault"
+
+
+# === PER-PAGE (RULE) CHECKS: frontmatter / prose / schema ===
 SOURCELESS_STUB_ORIGINS = {"hub", "planned"}
 
 
@@ -161,101 +300,6 @@ def check_low_confidence(pages: dict) -> list[dict]:
                 issues.append({"page": info["path"], "confidence": conf, "reason": "out of range (must be 0.0-1.0)"})
             elif conf < 0.5:
                 issues.append({"page": info["path"], "confidence": conf})
-    return issues
-
-
-def check_index_drift(wiki_root: Path, pages: dict) -> dict:
-    """Check for drift between page dirs and pages/indexes/index-*.md files."""
-    indexes_dir = wiki_root / "pages" / "indexes"
-    index_text = ""
-    found_indices = False
-    if not indexes_dir.is_dir():
-        return {"missing_index": True, "in_pages_not_index": [], "in_index_not_pages": []}
-    for idx_file in sorted(indexes_dir.glob("index-*.md")):
-        found_indices = True
-        try:
-            index_text += idx_file.read_text(encoding="utf-8") + "\n"
-        except OSError:
-            continue
-
-    if not found_indices:
-        return {"missing_index": True, "in_pages_not_index": [], "in_index_not_pages": []}
-
-    index_slugs = set(find_wikilinks(index_text))
-    page_slugs = set(pages.keys())
-    return {
-        "missing_index": False,
-        "in_pages_not_index": sorted(page_slugs - index_slugs),
-        "in_index_not_pages": sorted(index_slugs - page_slugs),
-    }
-
-
-def _is_excluded_vault_path(relative_parts: tuple[str, ...]) -> bool:
-    """Match the ingest-exclusion rule: top-level segment under vault/ begins with . or _.
-
-    Catches protocol/config files (.wiki-identity.md, .clipper-rules.md),
-    protocol folders (_mailbox/, .skipped/), and Obsidian internals (.obsidian/).
-    """
-    if not relative_parts:
-        return False
-    top = relative_parts[0]
-    return top.startswith(".") or top.startswith("_")
-
-
-def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
-    """Check for raw files anywhere under vault/ that have no corresponding source summary
-    AND no skip stub.
-
-    Recurses into subdirectories (e.g., vault/Web Articles/), and excludes any
-    path whose top-level segment begins with . or _ (matches the ingest-exclusion
-    rule in vault/.wiki-identity.md). A file is "handled" if it either has a
-    source page in wiki/pages/sources/ OR a stub in vault/.skipped/ — both are
-    decisions recorded by the ingest flow; neither should re-surface as pending.
-    """
-    if not vault_dir.is_dir():
-        return []
-    source_slugs = {
-        slug for slug, info in pages.items() if info["type"] == "sources"
-    }
-    skipped_dir = vault_dir / ".skipped"
-    skipped_slugs: set[str] = set()
-    if skipped_dir.is_dir():
-        skipped_slugs = {p.stem for p in skipped_dir.glob("*.md")}
-    handled = source_slugs | skipped_slugs
-    backlog: list[str] = []
-    for raw_file in sorted(vault_dir.rglob("*.md")):
-        relative = raw_file.relative_to(vault_dir)
-        if _is_excluded_vault_path(relative.parts):
-            continue
-        if raw_file.stem not in handled:
-            backlog.append(relative.as_posix())
-    return backlog
-
-
-def check_broken_sources(vault_dir: Path, pages: dict) -> list[dict]:
-    """Check that sources: frontmatter entries point to existing vault/ files.
-
-    Frontmatter convention is full path from project root, e.g.
-    'vault/Web Articles/2026-03-18-foo.md'. Resolve against vault_dir.parent.
-    Fallback: if no 'vault/' prefix, treat as bare filename and search
-    recursively in vault/.
-    """
-    issues: list[dict] = []
-    for slug, info in pages.items():
-        fm = info["frontmatter"]
-        sources = fm.get("sources") or []
-        if not isinstance(sources, list):
-            continue
-        for src in sources:
-            if not isinstance(src, str):
-                continue
-            if src.startswith("vault/") or src.startswith("vault\\"):
-                src_path = vault_dir.parent / Path(src.replace("\\", "/"))
-            else:
-                candidates = list(vault_dir.rglob(Path(src).name))
-                src_path = candidates[0] if candidates else vault_dir / Path(src).name
-            if not src_path.is_file():
-                issues.append({"page": info["path"], "missing_source": src})
     return issues
 
 
@@ -374,124 +418,6 @@ def check_stale_source(pages: dict) -> list[dict]:
     return issues
 
 
-TYPED_EDGE_FIELDS = ("contradicts", "supersedes", "superseded_by")
-TYPED_LINK_RE = re.compile(r"^\[\[([^\]|#]+?)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]$")
-
-
-def _extract_typed_targets(field_value) -> list[str]:
-    """Extract slugs from a typed-edge frontmatter value.
-
-    Canonical shape is a YAML quoted-flow list: ["[[slug-a]]", "[[slug-b]]"].
-    Tolerates a single string for forgiving authoring. Entries that don't
-    parse as wikilinks are silently dropped here — `check_invalid_typed_links`
-    surfaces those by comparing against the page set, so we don't double-flag.
-    """
-    if not field_value:
-        return []
-    if isinstance(field_value, str):
-        candidates = [field_value]
-    elif isinstance(field_value, list):
-        candidates = [v for v in field_value if isinstance(v, str)]
-    else:
-        return []
-    targets: list[str] = []
-    for c in candidates:
-        m = TYPED_LINK_RE.match(c.strip())
-        if m:
-            targets.append(m.group(1).strip())
-    return targets
-
-
-def check_asymmetric_contradictions(pages: dict) -> list[dict]:
-    """For each page A listing `contradicts: [B, ...]`, verify B lists A back.
-
-    The `contradicts:` relationship is symmetric: A contradicting B implies B
-    contradicts A. One-way edges are typically a backfill miss or a typo.
-    """
-    issues: list[dict] = []
-    for slug, info in pages.items():
-        targets = _extract_typed_targets(info["frontmatter"].get("contradicts"))
-        for target in targets:
-            target_info = pages.get(target)
-            if target_info is None:
-                # broken target is reported by check_invalid_typed_links
-                continue
-            inverse = _extract_typed_targets(target_info["frontmatter"].get("contradicts"))
-            if slug not in inverse:
-                issues.append({
-                    "page": info["path"],
-                    "missing_inverse": target,
-                })
-    return issues
-
-
-def check_invalid_typed_links(pages: dict) -> list[dict]:
-    """Wikilinks in contradicts:/supersedes:/superseded_by: must resolve.
-
-    Mirrors `check_broken_links` for the frontmatter typed-edge fields. The
-    body-wikilink check doesn't read frontmatter, so without this a typo'd
-    `contradicts: ["[[gone-slug]]"]` would slip through.
-    """
-    issues: list[dict] = []
-    slugs = set(pages.keys())
-    for slug, info in pages.items():
-        for field in TYPED_EDGE_FIELDS:
-            for target in _extract_typed_targets(info["frontmatter"].get(field)):
-                if target not in slugs:
-                    issues.append({
-                        "page": info["path"],
-                        "field": field,
-                        "target": target,
-                    })
-    return issues
-
-
-OVERVIEW_MARKER_RE = re.compile(r"Mechanical refresh at ingest #(\d+)", re.IGNORECASE)
-OVERVIEW_STALE_THRESHOLD = 5
-
-
-def check_overview_staleness(wiki_root: Path) -> dict | None:
-    """Compare overview.md's refresh marker against the ingest count in log.md.
-
-    Returns a dict when the overview is >=5 ingests behind, or the marker is
-    missing entirely. Returns None when fresh.
-    """
-    overview_path = wiki_root / "overview.md"
-    log_path = wiki_root / "log.md"
-    if not overview_path.is_file() or not log_path.is_file():
-        return None
-
-    try:
-        overview_text = overview_path.read_text(encoding="utf-8", errors="ignore")
-        log_text = log_path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return None
-
-    match = OVERVIEW_MARKER_RE.search(overview_text)
-    ingest_count = sum(1 for line in log_text.splitlines() if re.match(r"^## \[.*?\] ingest \|", line))
-
-    if not match:
-        if ingest_count == 0:
-            return None
-        return {
-            "marker_ingest": None,
-            "actual_ingests": ingest_count,
-            "lag": ingest_count,
-            "reason": "no refresh marker found in overview.md",
-        }
-
-    marker_n = int(match.group(1))
-    lag = ingest_count - marker_n
-    if lag >= OVERVIEW_STALE_THRESHOLD:
-        return {
-            "marker_ingest": marker_n,
-            "actual_ingests": ingest_count,
-            "lag": lag,
-            "reason": f"overview.md last refreshed at ingest #{marker_n}; log.md shows {ingest_count} ingests ({lag} behind)",
-        }
-    return None
-
-
 def check_single_page_categories(pages: dict) -> list[dict]:
     """Flag categories with exactly one page — per wiki/CATEGORIES.md 'never create a category with a single page'."""
     from collections import defaultdict
@@ -508,48 +434,6 @@ def check_single_page_categories(pages: dict) -> list[dict]:
                 "page": paths[0],
             })
     return issues
-
-
-# Authoritative category list — loaded at runtime from wiki/CATEGORIES.md.
-# Single source of truth as of the 2026-05-13 schema decomposition; the
-# previous hardcoded frozenset was a manual-sync contract with drift risk
-# (see dev/archive/2026-05-13-wiki-agents.md-refactor.md § Finding 1).
-def load_authoritative_categories(wiki_root: Path) -> frozenset[str]:
-    """Parse category slugs from wiki/CATEGORIES.md's enumerated list.
-
-    Looks for the H2 header `## Authoritative category list` and extracts
-    each bullet's slug — the text between the first backtick pair on lines
-    matching `- `<slug>` — <description>`. The list terminates at the next
-    `#`-prefixed header.
-    """
-    categories_path = wiki_root / "CATEGORIES.md"
-    if not categories_path.is_file():
-        print(
-            f"error: {categories_path} missing — required since the "
-            f"2026-05-13 schema decomposition. See dev/archive/2026-05-13-wiki-agents.md-refactor.md.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    text = categories_path.read_text(encoding="utf-8")
-    in_list = False
-    cats: set[str] = set()
-    for line in text.splitlines():
-        if line.startswith("## Authoritative category list"):
-            in_list = True
-            continue
-        if in_list and line.startswith("#"):
-            break
-        if in_list and line.lstrip().startswith("- `"):
-            try:
-                slug = line.split("`", 2)[1]
-                if slug:
-                    cats.add(slug)
-            except IndexError:
-                continue
-    if not cats:
-        print(f"error: no categories parsed from {categories_path}", file=sys.stderr)
-        sys.exit(2)
-    return frozenset(cats)
 
 
 def check_single_source_unverified(pages: dict) -> list[dict]:
@@ -656,60 +540,6 @@ def check_long_summary(pages: dict) -> list[dict]:
     return issues
 
 
-# Universal structural-artifact patterns. A page passes if any one fires.
-# Single-instance patterns (one match is enough): fenced code, GFM table
-# separator (the `|---|` row that must exist for a real table), attributed
-# block-quote opener (`> "` or smart-quote variant).
-ARTIFACT_PATTERNS_ANY: dict[str, re.Pattern] = {
-    "fenced_code": re.compile(r"^```", re.MULTILINE),
-    "table": re.compile(r"^\|[\s:|\-]+\|\s*$", re.MULTILINE),
-    "attributed_quote": re.compile(r"^>\s*[\"“]", re.MULTILINE),
-}
-# Multi-instance patterns (≥2 matches): a single `1.` line isn't a procedure;
-# a single `**term** — defn` line isn't a definition list.
-ARTIFACT_PATTERNS_MULTI: dict[str, tuple[re.Pattern, int]] = {
-    "numbered_step": (re.compile(r"^\d+\.\s+\S", re.MULTILINE), 2),
-    "definition_list": (re.compile(r"^\*\*[^*\n]+\*\*\s*[—–\-]\s+\S", re.MULTILINE), 2),
-}
-
-
-def _strip_frontmatter(body: str) -> str:
-    """Drop YAML frontmatter so its pipes don't false-positive the table check."""
-    if body.startswith("---\n"):
-        end = body.find("\n---\n", 4)
-        if end != -1:
-            return body[end + 5:]
-    return body
-
-
-def _has_artifact(body: str) -> bool:
-    """True if body contains any structural artifact pattern."""
-    text = _strip_frontmatter(body)
-    for pat in ARTIFACT_PATTERNS_ANY.values():
-        if pat.search(text):
-            return True
-    for pat, threshold in ARTIFACT_PATTERNS_MULTI.values():
-        if len(pat.findall(text)) >= threshold:
-            return True
-    return False
-
-
-def load_lint_config(wiki_root: Path) -> dict:
-    """Load `<wiki>/.meta/lint-config.json`. Returns {} when absent or unparseable.
-
-    Schema (currently): `{"artifact_check_categories": ["cat-a", "cat-b", ...]}`.
-    Empty / missing allowlist means the artifact-presence check is silent —
-    new wikis stay quiet by default until categories are explicitly opted in.
-    """
-    config_path = wiki_root / ".meta" / "lint-config.json"
-    if not config_path.is_file():
-        return {}
-    try:
-        return json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
 def check_artifact_presence(pages: dict, config: dict) -> list[dict]:
     """Flag pages in opted-in categories that lack any structural artifact.
 
@@ -740,6 +570,95 @@ def check_artifact_presence(pages: dict, config: dict) -> list[dict]:
             continue
         if not _has_artifact(info["body"]):
             issues.append({"page": info["path"], "category": category})
+    return issues
+
+
+# === GRAPH CHECKS: wikilink-graph / cross-page relationships ===
+def check_orphans(pages: dict) -> list[str]:
+    referenced: set[str] = set()
+    for info in pages.values():
+        for link in find_wikilinks(info["body"]):
+            referenced.add(link)
+    return sorted(slug for slug in pages if slug not in referenced)
+
+
+def check_broken_links(pages: dict) -> list[dict]:
+    broken: list[dict] = []
+    slugs = set(pages.keys())
+    for slug, info in pages.items():
+        for link in find_wikilinks(info["body"]):
+            if link not in slugs:
+                broken.append({"page": info["path"], "target": link})
+    return broken
+
+
+def check_index_drift(wiki_root: Path, pages: dict) -> dict:
+    """Check for drift between page dirs and pages/indexes/index-*.md files."""
+    indexes_dir = wiki_root / "pages" / "indexes"
+    index_text = ""
+    found_indices = False
+    if not indexes_dir.is_dir():
+        return {"missing_index": True, "in_pages_not_index": [], "in_index_not_pages": []}
+    for idx_file in sorted(indexes_dir.glob("index-*.md")):
+        found_indices = True
+        try:
+            index_text += idx_file.read_text(encoding="utf-8") + "\n"
+        except OSError:
+            continue
+
+    if not found_indices:
+        return {"missing_index": True, "in_pages_not_index": [], "in_index_not_pages": []}
+
+    index_slugs = set(find_wikilinks(index_text))
+    page_slugs = set(pages.keys())
+    return {
+        "missing_index": False,
+        "in_pages_not_index": sorted(page_slugs - index_slugs),
+        "in_index_not_pages": sorted(index_slugs - page_slugs),
+    }
+
+
+def check_asymmetric_contradictions(pages: dict) -> list[dict]:
+    """For each page A listing `contradicts: [B, ...]`, verify B lists A back.
+
+    The `contradicts:` relationship is symmetric: A contradicting B implies B
+    contradicts A. One-way edges are typically a backfill miss or a typo.
+    """
+    issues: list[dict] = []
+    for slug, info in pages.items():
+        targets = _extract_typed_targets(info["frontmatter"].get("contradicts"))
+        for target in targets:
+            target_info = pages.get(target)
+            if target_info is None:
+                # broken target is reported by check_invalid_typed_links
+                continue
+            inverse = _extract_typed_targets(target_info["frontmatter"].get("contradicts"))
+            if slug not in inverse:
+                issues.append({
+                    "page": info["path"],
+                    "missing_inverse": target,
+                })
+    return issues
+
+
+def check_invalid_typed_links(pages: dict) -> list[dict]:
+    """Wikilinks in contradicts:/supersedes:/superseded_by: must resolve.
+
+    Mirrors `check_broken_links` for the frontmatter typed-edge fields. The
+    body-wikilink check doesn't read frontmatter, so without this a typo'd
+    `contradicts: ["[[gone-slug]]"]` would slip through.
+    """
+    issues: list[dict] = []
+    slugs = set(pages.keys())
+    for slug, info in pages.items():
+        for field in TYPED_EDGE_FIELDS:
+            for target in _extract_typed_targets(info["frontmatter"].get(field)):
+                if target not in slugs:
+                    issues.append({
+                        "page": info["path"],
+                        "field": field,
+                        "target": target,
+                    })
     return issues
 
 
@@ -814,11 +733,111 @@ def check_drifted_stubs(pages: dict) -> list[dict]:
     return issues
 
 
-def _find_vault_dir(wiki_root: Path) -> Path:
-    """Find the vault/ directory (sibling to wiki/)."""
-    return wiki_root.parent / "vault"
+# === FILESYSTEM / LOG CHECKS: vault backlog, broken sources, overview staleness ===
+def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
+    """Check for raw files anywhere under vault/ that have no corresponding source summary
+    AND no skip stub.
+
+    Recurses into subdirectories (e.g., vault/Web Articles/), and excludes any
+    path whose top-level segment begins with . or _ (matches the ingest-exclusion
+    rule in vault/.wiki-identity.md). A file is "handled" if it either has a
+    source page in wiki/pages/sources/ OR a stub in vault/.skipped/ — both are
+    decisions recorded by the ingest flow; neither should re-surface as pending.
+    """
+    if not vault_dir.is_dir():
+        return []
+    source_slugs = {
+        slug for slug, info in pages.items() if info["type"] == "sources"
+    }
+    skipped_dir = vault_dir / ".skipped"
+    skipped_slugs: set[str] = set()
+    if skipped_dir.is_dir():
+        skipped_slugs = {p.stem for p in skipped_dir.glob("*.md")}
+    handled = source_slugs | skipped_slugs
+    backlog: list[str] = []
+    for raw_file in sorted(vault_dir.rglob("*.md")):
+        relative = raw_file.relative_to(vault_dir)
+        if _is_excluded_vault_path(relative.parts):
+            continue
+        if raw_file.stem not in handled:
+            backlog.append(relative.as_posix())
+    return backlog
 
 
+def check_broken_sources(vault_dir: Path, pages: dict) -> list[dict]:
+    """Check that sources: frontmatter entries point to existing vault/ files.
+
+    Frontmatter convention is full path from project root, e.g.
+    'vault/Web Articles/2026-03-18-foo.md'. Resolve against vault_dir.parent.
+    Fallback: if no 'vault/' prefix, treat as bare filename and search
+    recursively in vault/.
+    """
+    issues: list[dict] = []
+    for slug, info in pages.items():
+        fm = info["frontmatter"]
+        sources = fm.get("sources") or []
+        if not isinstance(sources, list):
+            continue
+        for src in sources:
+            if not isinstance(src, str):
+                continue
+            if src.startswith("vault/") or src.startswith("vault\\"):
+                src_path = vault_dir.parent / Path(src.replace("\\", "/"))
+            else:
+                candidates = list(vault_dir.rglob(Path(src).name))
+                src_path = candidates[0] if candidates else vault_dir / Path(src).name
+            if not src_path.is_file():
+                issues.append({"page": info["path"], "missing_source": src})
+    return issues
+
+
+OVERVIEW_MARKER_RE = re.compile(r"Mechanical refresh at ingest #(\d+)", re.IGNORECASE)
+OVERVIEW_STALE_THRESHOLD = 5
+
+
+def check_overview_staleness(wiki_root: Path) -> dict | None:
+    """Compare overview.md's refresh marker against the ingest count in log.md.
+
+    Returns a dict when the overview is >=5 ingests behind, or the marker is
+    missing entirely. Returns None when fresh.
+    """
+    overview_path = wiki_root / "overview.md"
+    log_path = wiki_root / "log.md"
+    if not overview_path.is_file() or not log_path.is_file():
+        return None
+
+    try:
+        overview_text = overview_path.read_text(encoding="utf-8", errors="ignore")
+        log_text = log_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+
+    match = OVERVIEW_MARKER_RE.search(overview_text)
+    ingest_count = sum(1 for line in log_text.splitlines() if re.match(r"^## \[.*?\] ingest \|", line))
+
+    if not match:
+        if ingest_count == 0:
+            return None
+        return {
+            "marker_ingest": None,
+            "actual_ingests": ingest_count,
+            "lag": ingest_count,
+            "reason": "no refresh marker found in overview.md",
+        }
+
+    marker_n = int(match.group(1))
+    lag = ingest_count - marker_n
+    if lag >= OVERVIEW_STALE_THRESHOLD:
+        return {
+            "marker_ingest": marker_n,
+            "actual_ingests": ingest_count,
+            "lag": lag,
+            "reason": f"overview.md last refreshed at ingest #{marker_n}; log.md shows {ingest_count} ingests ({lag} behind)",
+        }
+    return None
+
+
+# === ORCHESTRATION & CLI ===
 def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
     if vault_dir is None:
         vault_dir = _find_vault_dir(wiki_root)
@@ -902,7 +921,7 @@ def render_human(report: dict) -> str:
         lines.append("")
         lines.append("Broken links:")
         for item in report["broken_links"][:20]:
-            lines.append(f"  {item['page']} \u2192 [[{item['target']}]]")
+            lines.append(f"  {item['page']} → [[{item['target']}]]")
 
     if report["missing_frontmatter"]:
         lines.append("")
@@ -914,11 +933,11 @@ def render_human(report: dict) -> str:
         lines.append("")
         lines.append("Categories with a single page:")
         for item in report["single_page_categories"][:20]:
-            lines.append(f"  {item['page_type']}/{item['category']} \u2192 {item['page']}")
+            lines.append(f"  {item['page_type']}/{item['category']} → {item['page']}")
 
     if report.get("unknown_category"):
         lines.append("")
-        lines.append("Unknown categories (not in the authoritative list \u2014 see wiki/CATEGORIES.md):")
+        lines.append("Unknown categories (not in the authoritative list — see wiki/CATEGORIES.md):")
         for item in report["unknown_category"][:20]:
             lines.append(f"  {item['page']}: {item['category']}")
 
