@@ -1,7 +1,7 @@
 ---
 name: wiki-capture
-description: Save new material (URL, file path, or pasted text) to the vault/ folder as clean markdown, then hand off to the /wiki-ingest skill which orchestrates the rest. Capture is an onramp — it lands raw material in vault/ with proper frontmatter and stops there. It does NOT touch wiki/, does NOT dispatch the wiki-ingestor agent directly. Use when the user wants to add a new source — e.g. /wiki-capture <url-or-text>, "save this article to the wiki", "capture this page", "add this to my wiki".
-argument-hint: "<url-or-path-or-paste>"
+description: Save new material (URL, file path, or pasted text) to the vault/ folder as clean markdown, then hand off to the /wiki-ingest skill which orchestrates the rest. Capture is an onramp — it lands raw material in vault/ with proper frontmatter and stops there. It does NOT touch wiki/, does NOT dispatch the wiki-ingestor agent directly. Use when the user wants to add a new source — e.g. /wiki-capture <url-or-text>, "save this article to the wiki", "capture this page", "add this to my wiki". Pass --batch <file> to triage a list of URLs (see Batch mode).
+argument-hint: "<url-or-path-or-paste> | --batch <urls-file>"
 disable-model-invocation: true
 ---
 
@@ -246,6 +246,65 @@ is captured and they can run `/wiki-ingest <path>` manually. Do NOT
 dispatch the `wiki-ingestor` agent directly — the agent's contract is
 that it receives a complete approved plan, which only `/wiki-ingest`
 produces.
+
+## Batch mode (`--batch <file>`)
+
+When the user has a *list* of URLs rather than one — e.g. a scratch file of
+articles to seed — `/wiki-capture --batch <file>` triages the list, then
+captures only the URLs the main session actually can.
+
+The list file is plain text: one URL per line, full-line `#` comments allowed
+(inline `#` is NOT stripped — URL fragments use it). It is **not** the same as a
+clipper task-list of article titles; it must be real URLs.
+
+### 1. Triage the list
+
+```bash
+python wiki/.scripts/batch_capture.py "<file>" --vault vault --json
+```
+
+The helper does the deterministic, network-free front-half — dedup against
+`vault/_indexes/url-index.json` and domain-classification — and returns four
+buckets:
+
+- **`fetchable`** — `head_preserving` / `default` domains. The main session
+  captures these (next step). Each carries `classification` + `next_action`.
+- **`redirect_to_clipper`** — `auth_required` domains (Medium, paywalls, login
+  walls). The main session **cannot** fetch these; only the authenticated
+  Chrome clipper can.
+- **`already_in_vault`** — URL already in the index. Skip.
+- **`errored`** — not a parseable http(s) URL, or an intra-file duplicate.
+
+Why the helper stops at classification: capture's fetch+normalize step is
+model-driven (WebFetch + body cleaning), not scriptable at quality. The script
+owns only what's deterministic; the model owns the fetch.
+
+### 2. Present the buckets
+
+Show the counts + per-bucket URLs. Call out that the `redirect_to_clipper`
+bucket needs the clipper — offer to drop those URLs into a mailbox message for
+the clipper (or hand them to the user to paste into the clipper task list). Do
+not try to WebFetch an `auth_required` URL; it returns a paywalled stub.
+
+### 3. Capture the `fetchable` bucket inline
+
+Loop the **normal single-capture pipeline** (Workflow steps 2–5b above) over
+each `fetchable` URL — run the Step 3a metadata cascade per URL (`head_preserving`
+trusts the WebFetch metadata; `default` runs `extract_page_metadata.py` then
+fetches the body), normalize, write to `vault/`, append to the index. Collect
+the written vault paths.
+
+If the fetchable bucket is large (say >10), surface that to the user before
+firing the loop — the model-driven captures are token-heavy — and let them trim
+the list or confirm.
+
+### 4. Chain the batch to `/wiki-ingest`
+
+Once the fetchable URLs are captured, hand the **list** of written vault paths
+to `/wiki-ingest` (or to `/wiki-triage` if the batch is big enough to warrant
+batching into ingest groups). Same atomic capture-then-ingest contract as the
+single-URL flow, applied across the batch. Report the final tally: captured /
+redirected-to-clipper / skipped-dup / errored.
 
 ## Rules
 
