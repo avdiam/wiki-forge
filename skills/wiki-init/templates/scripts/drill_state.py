@@ -48,7 +48,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -58,6 +57,7 @@ from pathlib import Path
 # Local sibling imports.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_overview_triggers import evaluate as evaluate_overview_triggers  # noqa: E402
+from source_backlog import collect_source_hashes, compute_backlog  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -81,14 +81,6 @@ NEXT_BATCH_RE = re.compile(
 )
 TRIAGE_STATUS_RE = re.compile(r"^status:\s*(\S+)", re.MULTILINE)
 TRIAGE_CREATED_RE = re.compile(r"^created:\s*(\S+)", re.MULTILINE)
-
-
-def _is_excluded_vault_path(relative_parts: tuple[str, ...]) -> bool:
-    """Mirror lint_wiki.py: top-level segment beginning with `.` or `_` is excluded."""
-    if not relative_parts:
-        return False
-    top = relative_parts[0]
-    return top.startswith(".") or top.startswith("_")
 
 
 def compute_lint_state(log_text: str) -> tuple[int, int]:
@@ -132,57 +124,23 @@ def compute_overview_state(
     }
 
 
-SOURCE_HASH_RE = re.compile(r"^source_hash:\s*[\"']?([0-9a-fA-F]+)", re.MULTILINE)
-
-
-def _read_source_hash(path: Path) -> str | None:
-    """Extract `source_hash:` from a source page's frontmatter block.
-
-    Scoped to the leading `---`…`---` fence so a stray body mention can't match.
-    Mirrors the value ingest_source.py writes (`sha256(read_bytes())[:16]`).
-    """
-    try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return None
-    fm_match = re.match(r"\A---\n(.*?)\n---", text, re.DOTALL)
-    fm_text = fm_match.group(1) if fm_match else text
-    m = SOURCE_HASH_RE.search(fm_text)
-    return m.group(1) if m else None
-
-
-def _vault_file_hash(raw_file: Path) -> str | None:
-    """sha256[:16] of a vault file's raw bytes — matches ingest_source.py's source_hash."""
-    try:
-        return hashlib.sha256(raw_file.read_bytes()).hexdigest()[:16]
-    except OSError:
-        return None
-
-
 def compute_handled(vault_dir: Path, sources_dir: Path) -> tuple[set[str], set[str]]:
     """Return (handled_slugs, handled_hashes) for vault files the ingest pipeline
     has already dealt with — source page, skip stub, or content-hash match.
 
     handled_slugs: stems of source pages + skip stubs (canonical slugs).
-    handled_hashes: `source_hash:` values from source-page frontmatter.
+    handled_hashes: `source_hash:` values from source-page frontmatter (head-read).
 
-    A vault file is handled if its stem is in handled_slugs OR its raw-bytes
-    sha256[:16] is in handled_hashes. The hash arm mirrors
-    lint_wiki.check_source_backlog and is what keeps the count robust to the
-    spacey-vault-filename / canonical-source-slug split — under stem-only
+    Hash extraction + the matcher itself live in `source_backlog` (shared with
+    lint_wiki and the statusline). Slugs alone still drive the batch_first_slug
+    self-heal (canonical-vs-canonical); the hash arm keeps the *count* robust to
+    the spacey-vault-filename / canonical-source-slug split — under stem-only
     matching every such ingest became a permanent phantom (filed 2026-06-03).
-    Slugs alone still drive the batch_first_slug self-heal (canonical-vs-canonical).
     """
     source_slugs = {p.stem for p in sources_dir.glob("*.md")} if sources_dir.is_dir() else set()
     skipped_dir = vault_dir / ".skipped"
     skipped_slugs = {p.stem for p in skipped_dir.glob("*.md")} if skipped_dir.is_dir() else set()
-    handled_hashes: set[str] = set()
-    if sources_dir.is_dir():
-        for p in sources_dir.glob("*.md"):
-            h = _read_source_hash(p)
-            if h:
-                handled_hashes.add(h)
-    return source_slugs | skipped_slugs, handled_hashes
+    return source_slugs | skipped_slugs, collect_source_hashes(sources_dir)
 
 
 def compute_pending(
@@ -190,27 +148,17 @@ def compute_pending(
     sources_dir: Path,
     handled: tuple[set[str], set[str]] | None = None,
 ) -> int:
-    """Replicate lint_wiki.check_source_backlog len() — count handled vs unhandled vault files.
+    """len() of the canonical source backlog — handled vs unhandled vault files.
 
-    Handled = stem in source/skip slugs OR raw-bytes hash in source_hashes.
+    Delegates the match to source_backlog.compute_backlog so the count can never
+    drift from lint_wiki's list or the statusline's reading.
     """
     if not vault_dir.is_dir():
         return 0
     if handled is None:
         handled = compute_handled(vault_dir, sources_dir)
     handled_slugs, handled_hashes = handled
-
-    pending = 0
-    for raw_file in vault_dir.rglob("*.md"):
-        relative = raw_file.relative_to(vault_dir)
-        if _is_excluded_vault_path(relative.parts):
-            continue
-        if raw_file.stem in handled_slugs:
-            continue
-        if handled_hashes and _vault_file_hash(raw_file) in handled_hashes:
-            continue
-        pending += 1
-    return pending
+    return len(compute_backlog(vault_dir, handled_slugs, handled_hashes))
 
 
 def compute_backlog_state(project_root: Path, pending: int, handled: set[str] | None = None) -> dict:
@@ -312,9 +260,11 @@ def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
 
     lint_counter, ingest_count = compute_lint_state(log_text)
     overview = compute_overview_state(wiki_root, graph_json_arg, ingest_count)
-    handled = compute_handled(vault_dir, sources_dir)
-    pending = compute_pending(vault_dir, sources_dir, handled)
-    backlog = compute_backlog_state(project_root, pending, handled)
+    handled_slugs, handled_hashes = compute_handled(vault_dir, sources_dir)
+    pending = compute_pending(vault_dir, sources_dir, (handled_slugs, handled_hashes))
+    # Self-heal compares triage slugs (canonical) to source slugs (canonical), so
+    # it takes the slug set only — never the (slugs, hashes) tuple.
+    backlog = compute_backlog_state(project_root, pending, handled_slugs)
 
     return {
         "lint_counter": lint_counter,
@@ -326,12 +276,20 @@ def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
 
 
 def emit_field_fast(wiki_root: Path, field: str) -> int:
-    """Fast path for the statusline: compute only what one field needs.
+    """Print one bare field value for the statusline (no JSON wrapping).
 
-    Avoids the overview-trigger evaluation and the vault walk done by
-    `build_state`, since the statusline renders on every prompt and only
-    needs the lint counter today.
+    `lint_counter` / `ingest_count` are log-only (instant). `pending` runs the
+    canonical source-backlog matcher (a vault walk + a head-read of source-page
+    frontmatter, ~35ms) — the statusline calls this instead of its old inline
+    bash `comm`, so the count it shows can't drift from the drill or lint. It
+    still skips the overview-trigger evaluation and graph build that the full
+    JSON state needs.
     """
+    if field == "pending":
+        vault_dir = wiki_root.parent / "vault"
+        sources_dir = wiki_root / "pages" / "sources"
+        print(compute_pending(vault_dir, sources_dir))
+        return 0
     log_path = wiki_root / "log.md"
     log_text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""
     lint_counter, ingest_count = compute_lint_state(log_text)
@@ -357,9 +315,10 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--field",
-        choices=["lint_counter", "ingest_count"],
-        help="Print one bare value (no JSON wrapping). Used by the statusline; "
-        "takes the fast path that skips the overview-trigger evaluation and the vault walk.",
+        choices=["lint_counter", "ingest_count", "pending"],
+        help="Print one bare value (no JSON wrapping). Used by the statusline. "
+        "lint_counter/ingest_count are log-only (instant); pending runs the shared "
+        "source-backlog matcher (vault walk + frontmatter head-read).",
     )
     args = parser.parse_args(argv)
 

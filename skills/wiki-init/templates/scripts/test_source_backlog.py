@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from lint_wiki import check_source_backlog
+import source_backlog as sb
 
 
 def _short_hash(data: bytes) -> str:
@@ -116,6 +117,78 @@ class CheckSourceBacklogTests(unittest.TestCase):
             sorted(check_source_backlog(self.vault, {})),
             ["Clippings/a.md", "Clippings/b.md"],
         )
+
+
+class ReadSourceHashTests(unittest.TestCase):
+    """The head-read extractor: source_hash from the frontmatter block only."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _page(self, text: str) -> Path:
+        p = self.dir / "page.md"
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def test_extracts_from_frontmatter(self):
+        p = self._page("---\ntitle: X\nsource_hash: abc123def4567890\n---\n\nBody.\n")
+        self.assertEqual(sb.read_source_hash(p), "abc123def4567890")
+
+    def test_quoted_value(self):
+        p = self._page('---\nsource_hash: "abc123def4567890"\n---\nBody\n')
+        self.assertEqual(sb.read_source_hash(p), "abc123def4567890")
+
+    def test_ignores_body_mention(self):
+        """A `source_hash:` line in the body (after the closing fence) is not read."""
+        p = self._page("---\ntitle: X\n---\n\nsource_hash: deadbeefdeadbeef\n")
+        self.assertIsNone(sb.read_source_hash(p))
+
+    def test_no_frontmatter(self):
+        p = self._page("# Just a heading\n\nNo fence.\n")
+        self.assertIsNone(sb.read_source_hash(p))
+
+    def test_missing_field(self):
+        p = self._page("---\ntitle: X\ntype: source\n---\nBody\n")
+        self.assertIsNone(sb.read_source_hash(p))
+
+
+class DrillLintParityTests(unittest.TestCase):
+    """drill_state.compute_pending must equal len(lint's check_source_backlog)."""
+
+    def test_parity(self):
+        import drill_state as ds
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        vault = root / "vault"
+        sources = root / "wiki" / "pages" / "sources"
+        (vault / "Clippings").mkdir(parents=True)
+        sources.mkdir(parents=True)
+
+        ingested = b"---\ntitle: Done\n---\n\nbody\n"
+        (vault / "Clippings" / "Spacey Done!.md").write_bytes(ingested)
+        h = hashlib.sha256(ingested).hexdigest()[:16]
+        (sources / "2026-01-01-done.md").write_text(
+            f"---\ntitle: Done\ntype: source\nsource_hash: {h}\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+        (vault / "Clippings" / "Pending One.md").write_bytes(b"# pending\n")
+
+        # lint path (in-memory pages dict)
+        pages = {
+            "2026-01-01-done": _source_page("2026-01-01-done", h),
+        }
+        lint_list = check_source_backlog(vault, pages)
+        # drill path (disk-read)
+        drill_count = ds.compute_pending(vault, sources)
+
+        self.assertEqual(len(lint_list), drill_count, "drill count must equal lint list length")
+        self.assertEqual(drill_count, 1, "only the genuinely un-ingested file counts")
 
 
 if __name__ == "__main__":

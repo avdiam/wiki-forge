@@ -51,7 +51,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -60,6 +59,7 @@ from pathlib import Path
 
 from constants import PAGE_TYPES
 from frontmatter import parse_frontmatter
+from source_backlog import compute_backlog
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -111,18 +111,6 @@ def collect_pages(wiki_root: Path) -> dict:
 
 def find_wikilinks(text: str) -> list[str]:
     return [m.group(1).strip() for m in WIKILINK_RE.finditer(text)]
-
-
-def _is_excluded_vault_path(relative_parts: tuple[str, ...]) -> bool:
-    """Match the ingest-exclusion rule: top-level segment under vault/ begins with . or _.
-
-    Catches protocol/config files (.wiki-identity.md, .clipper-rules.md),
-    protocol folders (_mailbox/, .skipped/), and Obsidian internals (.obsidian/).
-    """
-    if not relative_parts:
-        return False
-    top = relative_parts[0]
-    return top.startswith(".") or top.startswith("_")
 
 
 TYPED_EDGE_FIELDS = ("contradicts", "supersedes", "superseded_by")
@@ -756,6 +744,9 @@ def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
     """
     if not vault_dir.is_dir():
         return []
+    # Slug + hash sets come from the already-loaded `pages` dict — no extra I/O.
+    # The matching itself lives in source_backlog.compute_backlog, shared with
+    # drill_state and the statusline so the three can't drift.
     source_slugs = {
         slug for slug, info in pages.items() if info["type"] == "sources"
     }
@@ -768,29 +759,7 @@ def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
     skipped_slugs: set[str] = set()
     if skipped_dir.is_dir():
         skipped_slugs = {p.stem for p in skipped_dir.glob("*.md")}
-    handled = source_slugs | skipped_slugs
-    backlog: list[str] = []
-    for raw_file in sorted(vault_dir.rglob("*.md")):
-        relative = raw_file.relative_to(vault_dir)
-        if _is_excluded_vault_path(relative.parts):
-            continue
-        if raw_file.stem in handled:
-            continue
-        if source_hashes and _vault_file_hash(raw_file) in source_hashes:
-            continue
-        backlog.append(relative.as_posix())
-    return backlog
-
-
-def _vault_file_hash(raw_file: Path) -> str | None:
-    """Return sha256[:16] of a vault file's raw bytes, matching the `source_hash`
-    written at ingest by ingest_source.py (`sha256(read_bytes()).hexdigest()[:16]`).
-    Returns None on read error so the file falls through to stem matching.
-    """
-    try:
-        return hashlib.sha256(raw_file.read_bytes()).hexdigest()[:16]
-    except OSError:
-        return None
+    return compute_backlog(vault_dir, source_slugs | skipped_slugs, source_hashes)
 
 
 def check_broken_sources(vault_dir: Path, pages: dict) -> list[dict]:
