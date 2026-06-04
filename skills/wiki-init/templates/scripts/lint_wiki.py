@@ -51,6 +51,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -738,16 +739,30 @@ def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
     """Check for raw files anywhere under vault/ that have no corresponding source summary
     AND no skip stub.
 
-    Recurses into subdirectories (e.g., vault/Web Articles/), and excludes any
-    path whose top-level segment begins with . or _ (matches the ingest-exclusion
-    rule in vault/.wiki-identity.md). A file is "handled" if it either has a
-    source page in wiki/pages/sources/ OR a stub in vault/.skipped/ — both are
-    decisions recorded by the ingest flow; neither should re-surface as pending.
+    Recurses into subdirectories (e.g., vault/Web Articles/, vault/Clippings/),
+    and excludes any path whose top-level segment begins with . or _ (matches the
+    ingest-exclusion rule in vault/.wiki-identity.md). A file is "handled" if it
+    either has a source page in wiki/pages/sources/ OR a stub in vault/.skipped/ —
+    both are decisions recorded by the ingest flow; neither should re-surface as
+    pending.
+
+    Matching is content-identity-first: a vault file is handled if its
+    `sha256[:16]` matches any source page's `source_hash:` frontmatter, OR
+    (fallback) its filename stem matches a source/skip slug. Hash-first is what
+    makes the check robust to the established practice of leaving the vault file
+    with its non-canonical clipper-dropped name (spaces, caps, curly apostrophes,
+    parens) while the source page gets a canonical kebab slug — under stem-only
+    matching every such ingest became a permanent phantom backlog entry.
     """
     if not vault_dir.is_dir():
         return []
     source_slugs = {
         slug for slug, info in pages.items() if info["type"] == "sources"
+    }
+    source_hashes = {
+        str(info["frontmatter"]["source_hash"])
+        for info in pages.values()
+        if info["type"] == "sources" and info["frontmatter"].get("source_hash")
     }
     skipped_dir = vault_dir / ".skipped"
     skipped_slugs: set[str] = set()
@@ -759,9 +774,23 @@ def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
         relative = raw_file.relative_to(vault_dir)
         if _is_excluded_vault_path(relative.parts):
             continue
-        if raw_file.stem not in handled:
-            backlog.append(relative.as_posix())
+        if raw_file.stem in handled:
+            continue
+        if source_hashes and _vault_file_hash(raw_file) in source_hashes:
+            continue
+        backlog.append(relative.as_posix())
     return backlog
+
+
+def _vault_file_hash(raw_file: Path) -> str | None:
+    """Return sha256[:16] of a vault file's raw bytes, matching the `source_hash`
+    written at ingest by ingest_source.py (`sha256(read_bytes()).hexdigest()[:16]`).
+    Returns None on read error so the file falls through to stem matching.
+    """
+    try:
+        return hashlib.sha256(raw_file.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return None
 
 
 def check_broken_sources(vault_dir: Path, pages: dict) -> list[dict]:

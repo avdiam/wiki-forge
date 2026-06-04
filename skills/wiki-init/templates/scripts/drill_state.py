@@ -48,6 +48,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -131,33 +132,84 @@ def compute_overview_state(
     }
 
 
-def compute_handled(vault_dir: Path, sources_dir: Path) -> set[str]:
-    """Slugs already handled — have a source page or a skip stub.
+SOURCE_HASH_RE = re.compile(r"^source_hash:\s*[\"']?([0-9a-fA-F]+)", re.MULTILINE)
 
-    Shared by compute_pending (count) and compute_backlog_state (the
-    batch_first_slug self-heal). A slug in this set is one the ingest
-    pipeline has already dealt with, regardless of triage-checkbox state.
+
+def _read_source_hash(path: Path) -> str | None:
+    """Extract `source_hash:` from a source page's frontmatter block.
+
+    Scoped to the leading `---`…`---` fence so a stray body mention can't match.
+    Mirrors the value ingest_source.py writes (`sha256(read_bytes())[:16]`).
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    fm_match = re.match(r"\A---\n(.*?)\n---", text, re.DOTALL)
+    fm_text = fm_match.group(1) if fm_match else text
+    m = SOURCE_HASH_RE.search(fm_text)
+    return m.group(1) if m else None
+
+
+def _vault_file_hash(raw_file: Path) -> str | None:
+    """sha256[:16] of a vault file's raw bytes — matches ingest_source.py's source_hash."""
+    try:
+        return hashlib.sha256(raw_file.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return None
+
+
+def compute_handled(vault_dir: Path, sources_dir: Path) -> tuple[set[str], set[str]]:
+    """Return (handled_slugs, handled_hashes) for vault files the ingest pipeline
+    has already dealt with — source page, skip stub, or content-hash match.
+
+    handled_slugs: stems of source pages + skip stubs (canonical slugs).
+    handled_hashes: `source_hash:` values from source-page frontmatter.
+
+    A vault file is handled if its stem is in handled_slugs OR its raw-bytes
+    sha256[:16] is in handled_hashes. The hash arm mirrors
+    lint_wiki.check_source_backlog and is what keeps the count robust to the
+    spacey-vault-filename / canonical-source-slug split — under stem-only
+    matching every such ingest became a permanent phantom (filed 2026-06-03).
+    Slugs alone still drive the batch_first_slug self-heal (canonical-vs-canonical).
     """
     source_slugs = {p.stem for p in sources_dir.glob("*.md")} if sources_dir.is_dir() else set()
     skipped_dir = vault_dir / ".skipped"
     skipped_slugs = {p.stem for p in skipped_dir.glob("*.md")} if skipped_dir.is_dir() else set()
-    return source_slugs | skipped_slugs
+    handled_hashes: set[str] = set()
+    if sources_dir.is_dir():
+        for p in sources_dir.glob("*.md"):
+            h = _read_source_hash(p)
+            if h:
+                handled_hashes.add(h)
+    return source_slugs | skipped_slugs, handled_hashes
 
 
-def compute_pending(vault_dir: Path, sources_dir: Path, handled: set[str] | None = None) -> int:
-    """Replicate lint_wiki.check_source_backlog len() — count handled vs unhandled vault files."""
+def compute_pending(
+    vault_dir: Path,
+    sources_dir: Path,
+    handled: tuple[set[str], set[str]] | None = None,
+) -> int:
+    """Replicate lint_wiki.check_source_backlog len() — count handled vs unhandled vault files.
+
+    Handled = stem in source/skip slugs OR raw-bytes hash in source_hashes.
+    """
     if not vault_dir.is_dir():
         return 0
     if handled is None:
         handled = compute_handled(vault_dir, sources_dir)
+    handled_slugs, handled_hashes = handled
 
     pending = 0
     for raw_file in vault_dir.rglob("*.md"):
         relative = raw_file.relative_to(vault_dir)
         if _is_excluded_vault_path(relative.parts):
             continue
-        if raw_file.stem not in handled:
-            pending += 1
+        if raw_file.stem in handled_slugs:
+            continue
+        if handled_hashes and _vault_file_hash(raw_file) in handled_hashes:
+            continue
+        pending += 1
     return pending
 
 

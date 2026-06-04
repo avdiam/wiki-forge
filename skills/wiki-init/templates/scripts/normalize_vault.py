@@ -98,6 +98,29 @@ def is_tracked(repo_root: Path, file: Path) -> bool:
 
 
 def iter_content_files(vault: Path):
+    """Yield content `*.md` files under `vault`, supporting two invocation shapes.
+
+    - **Vault root** (`vault/`): iterate each top-level content dir (any child
+      directory not prefixed with `.` or `_`) and yield its `*.md` files.
+    - **Leaf content dir** (e.g. `vault/Clippings/`): when the passed path itself
+      holds loose `*.md` files, yield those directly.
+
+    A leaf dir under the vault root (e.g. `vault/Clippings` — the clipper's
+    current landing folder) has no child content dirs, so the root-shaped walk
+    finds nothing and the old code reported "Nothing to do" while silently
+    skipping every file. Yielding the passed dir's loose `*.md` first fixes that
+    false-negative, and also covers a vault root that happens to hold loose
+    `*.md`. main() counts what this yields to distinguish "all canonical" from
+    "no content files found at all".
+
+    The `.`/`_` exclusion that protects protocol/skip dirs in the child walk
+    also applies to the passed path itself: pointing the script at
+    `vault/.skipped` (or any `.`/`_`-prefixed dir) yields nothing, so skip
+    stubs and mailbox files are never normalized as content.
+    """
+    if not vault.name.startswith((".", "_")):
+        for md in sorted(vault.glob("*.md")):
+            yield md
     for child in sorted(vault.iterdir()):
         if not child.is_dir():
             continue
@@ -124,7 +147,9 @@ def main() -> int:
 
     renames: list[tuple[Path, Path]] = []
     collisions: list[tuple[Path, Path]] = []
+    seen = 0
     for file in iter_content_files(vault):
+        seen += 1
         if CANONICAL.match(file.name):
             continue
         target = file.with_name(normalized_name(file))
@@ -141,6 +166,16 @@ def main() -> int:
             print(f"  {original.name} -> {target.name} (already exists)",
                   file=sys.stderr)
         return 1
+
+    if seen == 0:
+        # No content files reachable under the passed path — neither loose *.md
+        # nor any in a top-level content dir. Almost always a wrong-path
+        # invocation; say so explicitly rather than the misleading
+        # "All filenames canonical" no-op.
+        print(f"No content files found under {vault} "
+              f"(expected loose *.md or vault/<content-dir>/*.md). "
+              f"Check the path.")
+        return 0
 
     if not renames:
         print("All filenames canonical. Nothing to do.")

@@ -59,11 +59,17 @@ a canonical name; the standalone `wiki/.scripts/normalize_vault.py` is the
 bulk pre-flight that handles the same case in batch.
 
 If the path is non-canonical, run the normalizer scoped to the single file's
-parent directory (cheap — content directories are small):
+parent content directory (cheap — content directories are small, and this
+keeps the rename blast radius to one folder rather than the whole vault):
 
 ```bash
-python <wiki>/.scripts/normalize_vault.py <vault-root>
+python <wiki>/.scripts/normalize_vault.py <vault>/<content-dir>   # e.g. vault/Clippings
 ```
+
+`normalize_vault.py` accepts either the vault root (walks every content
+dir) or a single content dir directly (e.g. `vault/Clippings`); pass the
+file's parent dir here. (Pointing it at a `.`/`_`-prefixed dir is a no-op
+by design — skip stubs and protocol files are never normalized.)
 
 The script halts on slug collisions; if it does, surface the message to the
 user and stop the ingest — collision resolution is a manual call, not
