@@ -67,9 +67,18 @@ ingest-gate decision has fired yet. Invariant:
 present (`github.com/anthropic`, `linkedin.com/in/<user>`) for tier-
 classifier path-prefix patterns.
 
-Cost fields stay `null` in v1 — `/wiki-resolve-contradictions` is
-main-session only (no subagent dispatched). Reserved for forward
-symmetry with the other JSONL logs.
+Cost fields (`total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
+`context_tokens_post_pass`, `output_tokens_pass`) were `null` in v1 — the
+harness emits no `<usage>` block for main-session (non-subagent) work. v2
+(2026-06-07) recovers them after the fact from the Claude Code **session
+transcript JSONL** via `session_cost_probe.py`, mirroring the
+`append_corroborate_log.py` v2 instrumentation. The skill records the
+transcript line count at the start of its per-pair loop, tags every row with a
+`--batch-id`, then runs the probe and `--backfill-cost --batch-id <id>` to
+stamp invocation-level cost onto all rows of the batch. Feeds the same
+fork-vs-inline ROI question (dev/tech-debt.md "execution shape" entry) — median
+`websearch_calls` / `context_tokens_post_pass`. `skill_version` records the
+producing skill revision.
 
 Usage:
     # Initial write — one row per pair searched (user_action defaults to deferred).
@@ -99,6 +108,13 @@ Usage:
     # close the loop.
     python append_contradiction_log.py --wiki <wiki-root> --backfill-ingest \\
         --pair-key "agents-md|2026-02-12-..." --outcome a_wins
+
+    # Backfill cost — stamp invocation-level cost (from session_cost_probe.py)
+    # onto every row sharing --batch-id. Run once per invocation after the loop.
+    python append_contradiction_log.py --wiki <wiki-root> --backfill-cost \\
+        --batch-id 9803eda1-940 --total-tokens 41200 --tool-uses 7 \\
+        --duration-ms 83100 --websearch-calls 6 \\
+        --context-tokens-post 96800 --output-tokens-pass 5100
 """
 from __future__ import annotations
 
@@ -142,6 +158,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Stamp the resolution decision on the most recent row matching --pair-key. Requires --outcome a_wins|b_wins|both_stand|defer. On a_wins/b_wins/both_stand sets resolved_at_ingest=now; on defer leaves it null. Matches any user_action so manual-edit paths still close the loop.",
     )
+    mode.add_argument(
+        "--backfill-cost",
+        action="store_true",
+        help="Stamp invocation-level cost fields (from session_cost_probe.py) onto every row matching --batch-id. Run once per invocation after the per-pair loop.",
+    )
     p.add_argument(
         "--outcome",
         choices=sorted(VALID_OUTCOMES - {"pending"}),
@@ -149,7 +170,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Resolution outcome for --backfill-ingest. a_wins/b_wins/both_stand are resolving; defer leaves the contradiction in place.",
     )
     # Initial-write fields
-    p.add_argument("--pair-key", required=True, help="`<slug-a>|<slug-b>` with slugs sorted ascending")
+    p.add_argument("--pair-key", default=None,
+                   help="`<slug-a>|<slug-b>` with slugs sorted ascending. Required except for --backfill-cost (which matches on --batch-id).")
     p.add_argument("--pair-a-slug", default=None)
     p.add_argument("--pair-a-type", choices=sorted(VALID_PAGE_TYPES), default=None)
     p.add_argument("--pair-b-slug", default=None)
@@ -169,10 +191,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--user-picked", type=optional_str, default=None)
     p.add_argument("--user-action", choices=sorted(VALID_USER_ACTIONS), default="deferred")
     p.add_argument("--captured-to-vault", type=optional_str, default=None)
-    # Cost fields — null in v1 (main-session only)
+    # Invocation grouping (v2) — links the per-pair rows of one run.
+    p.add_argument("--batch-id", type=optional_str, default=None,
+                   help="Invocation id shared by every per-pair row of one run. Required on --backfill-cost.")
+    p.add_argument("--skill-version", type=optional_str, default=None,
+                   help="Skill revision that produced the row/batch.")
+    # Cost fields — v2 backfilled from session_cost_probe.py (see module docstring).
     p.add_argument("--total-tokens", type=optional_int, default=None)
     p.add_argument("--tool-uses", type=optional_int, default=None)
     p.add_argument("--duration-ms", type=optional_int, default=None)
+    p.add_argument("--websearch-calls", type=optional_int, default=None,
+                   help="server_tool_use.web_search_requests summed over the invocation window.")
+    p.add_argument("--context-tokens-post", type=optional_int, default=None,
+                   help="Main-session context size at the last turn of the pass.")
+    p.add_argument("--output-tokens-pass", type=optional_int, default=None,
+                   help="output_tokens summed over the invocation window.")
     return p.parse_args(argv)
 
 
@@ -195,9 +228,14 @@ def build_row(args: argparse.Namespace) -> dict:
         "captured_to_vault": args.captured_to_vault,
         "outcome": "pending",
         "resolved_at_ingest": None,
+        "batch_id": args.batch_id,
+        "skill_version": args.skill_version,
         "total_tokens": args.total_tokens,
         "tool_uses": args.tool_uses,
         "duration_ms": args.duration_ms,
+        "websearch_calls": args.websearch_calls,
+        "context_tokens_post_pass": args.context_tokens_post,
+        "output_tokens_pass": args.output_tokens_pass,
     }
 
 
@@ -232,6 +270,28 @@ def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
     raise SystemExit(f"error: no row for pair_key={args.pair_key!r} to backfill")
 
 
+def _backfill_cost(rows: list[dict], args: argparse.Namespace) -> int:
+    """Stamp invocation-level cost fields onto every row whose batch_id matches
+    args.batch_id. Only non-None args overwrite. Returns the number stamped."""
+    cost = {
+        "total_tokens": args.total_tokens,
+        "tool_uses": args.tool_uses,
+        "duration_ms": args.duration_ms,
+        "websearch_calls": args.websearch_calls,
+        "context_tokens_post_pass": args.context_tokens_post,
+        "output_tokens_pass": args.output_tokens_pass,
+    }
+    cost = {k: v for k, v in cost.items() if v is not None}
+    n = 0
+    for r in rows:
+        if r.get("batch_id") == args.batch_id:
+            r.update(cost)
+            n += 1
+    if n == 0:
+        raise SystemExit(f"error: no rows with batch_id={args.batch_id!r} to backfill")
+    return n
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
 
@@ -241,12 +301,23 @@ def main(argv: list[str]) -> int:
 
     log_path = wiki_root / ".meta" / "contradiction_log.jsonl"
 
-    if args.backfill or args.backfill_ingest:
+    if not args.backfill_cost and args.pair_key is None:
+        print("error: --pair-key is required (omit only for --backfill-cost)", file=sys.stderr)
+        return 2
+
+    if args.backfill or args.backfill_ingest or args.backfill_cost:
         rows = read_rows(log_path)
         if not rows:
             print(f"error: {log_path} is empty — nothing to backfill", file=sys.stderr)
             return 2
-        if args.backfill:
+        if args.backfill_cost:
+            if args.batch_id is None:
+                print("error: --backfill-cost requires --batch-id", file=sys.stderr)
+                return 2
+            n = _backfill_cost(rows, args)
+            write_rows(log_path, rows)
+            print(f"backfilled cost on {n} row(s) for batch_id={args.batch_id}")
+        elif args.backfill:
             idx = _backfill_capture(rows, args)
             write_rows(log_path, rows)
             print(f"backfilled row {idx} for pair_key={args.pair_key} (action={args.user_action})")

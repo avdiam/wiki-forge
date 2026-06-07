@@ -68,10 +68,23 @@ the loop.
 only on Y (full clear); left `null` on P / N / no-decision.
 Invariant: `flag_cleared_at_ingest != null` ⟺ `flag_decision_at_ingest == "Y"`.
 
-Cost fields stay `null` in v1 — `/wiki-corroborate` is main-session
-only (no subagent dispatched); per the session 42 finding,
-`total_tokens` for main-session work isn't surfaced by the harness.
-Reserved fields kept for forward symmetry with the other JSONL logs.
+Cost fields (`total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
+`context_tokens_post_pass`, `output_tokens_pass`) were `null` in v1 — the
+harness emits no `<usage>` block for main-session (non-subagent) work, so
+there was no live surface to read. v2 (2026-06-07) recovers them *after the
+fact* from the Claude Code **session transcript JSONL** via
+`session_cost_probe.py`, which aggregates per-turn `usage` over the
+invocation's line-window. The `/wiki-corroborate` (and
+`/wiki-resolve-contradictions`) skill records the transcript line count at
+the start of its search loop, tags every per-flag row with a `--batch-id`,
+then runs the probe and `--backfill-cost --batch-id <id>` to stamp the
+invocation-level cost onto all rows of the batch. This is the telemetry the
+dev/tech-debt.md "execution shape — inline vs subagent" entry needs: median
+`websearch_calls` and per-invocation `context_tokens_post_pass` drive the
+fork-vs-inline ROI decision. `batch_id` groups the per-flag rows of one
+invocation so per-invocation aggregation (medians) is computable — without
+it the per-flag rows have no invocation key. `skill_version` records which
+skill revision produced the batch.
 
 Usage:
     # Initial write — one row per flag searched (user_action defaults to deferred).
@@ -98,6 +111,14 @@ Usage:
     # parallel-path captures (e.g., /wiki-triage) close the loop.
     python append_corroborate_log.py --wiki <wiki-root> --backfill-ingest \\
         --page-slug claude-managed-agents --decision Y
+
+    # Backfill cost — stamp invocation-level cost (from session_cost_probe.py)
+    # onto every row sharing --batch-id. Run once per /wiki-corroborate
+    # invocation, after the search loop closes.
+    python append_corroborate_log.py --wiki <wiki-root> --backfill-cost \\
+        --batch-id 9803eda1-940 --total-tokens 41200 --tool-uses 7 \\
+        --duration-ms 83100 --websearch-calls 6 \\
+        --context-tokens-post 96800 --output-tokens-pass 5100
 """
 from __future__ import annotations
 
@@ -135,10 +156,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                       help="Mutate the most recent row matching --page-slug (and user_action=deferred unless --user-picked given) — sets user_picked / user_action / captured_to_vault.")
     mode.add_argument("--backfill-ingest", action="store_true",
                       help="Stamp the verify-clearing decision on the most recent row matching --page-slug. Requires --decision Y|P|N. On Y sets flag_cleared_at_ingest=now; on P/N leaves it null. Always sets flag_decision_at_ingest. Matches any user_action so parallel-path captures (e.g., /wiki-triage) close the loop.")
+    mode.add_argument("--backfill-cost", action="store_true",
+                      help="Stamp invocation-level cost fields (from session_cost_probe.py) onto every row matching --batch-id. Run once per /wiki-corroborate invocation after the search loop closes.")
     p.add_argument("--decision", choices=sorted(VALID_DECISIONS), default=None,
                    help="Verify-clearing decision for --backfill-ingest. Y=clear; P=partial-narrow; N=retain.")
     # Initial-write fields
-    p.add_argument("--page-slug", required=True)
+    p.add_argument("--page-slug", default=None,
+                   help="Required for initial write / --backfill / --backfill-ingest; unused by --backfill-cost (which matches on --batch-id).")
     p.add_argument("--page-type", choices=sorted(VALID_PAGE_TYPES), default=None)
     p.add_argument("--page-bucket", choices=sorted(VALID_PAGE_BUCKETS), default=None)
     p.add_argument("--callout-text", default=None)
@@ -153,10 +177,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--user-action", choices=sorted(VALID_USER_ACTIONS), default="deferred")
     p.add_argument("--captured-to-vault", type=optional_str, default=None,
                    help="Vault path the picked URL was captured to via /wiki-capture")
-    # Cost fields — all null in v1 (main-session only); reserved for future
+    # Invocation grouping (v2) — links the per-flag rows of one /wiki-corroborate
+    # run so per-invocation cost aggregation (medians) is computable.
+    p.add_argument("--batch-id", type=optional_str, default=None,
+                   help="Invocation id shared by every per-flag row of one run (e.g. <session-short>-<start-line>). Required on --backfill-cost.")
+    p.add_argument("--skill-version", type=optional_str, default=None,
+                   help="Skill revision that produced the row/batch.")
+    # Cost fields — v2 backfilled from session_cost_probe.py (see module docstring).
     p.add_argument("--total-tokens", type=optional_int, default=None)
     p.add_argument("--tool-uses", type=optional_int, default=None)
     p.add_argument("--duration-ms", type=optional_int, default=None)
+    p.add_argument("--websearch-calls", type=optional_int, default=None,
+                   help="server_tool_use.web_search_requests summed over the invocation window.")
+    p.add_argument("--context-tokens-post", type=optional_int, default=None,
+                   help="Main-session context size (input+cache_read+cache_creation) at the last turn of the pass.")
+    p.add_argument("--output-tokens-pass", type=optional_int, default=None,
+                   help="output_tokens summed over the invocation window.")
     return p.parse_args(argv)
 
 
@@ -176,9 +212,14 @@ def build_row(args: argparse.Namespace) -> dict:
         "captured_to_vault": args.captured_to_vault,
         "flag_cleared_at_ingest": None,
         "flag_decision_at_ingest": None,
+        "batch_id": args.batch_id,
+        "skill_version": args.skill_version,
         "total_tokens": args.total_tokens,
         "tool_uses": args.tool_uses,
         "duration_ms": args.duration_ms,
+        "websearch_calls": args.websearch_calls,
+        "context_tokens_post_pass": args.context_tokens_post,
+        "output_tokens_pass": args.output_tokens_pass,
     }
 
 
@@ -215,6 +256,29 @@ def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
     raise SystemExit(f"error: no row for page_slug={args.page_slug!r} to backfill")
 
 
+def _backfill_cost(rows: list[dict], args: argparse.Namespace) -> int:
+    """Stamp invocation-level cost fields onto every row whose batch_id matches
+    args.batch_id. Only non-None args overwrite (so a partial probe can't wipe a
+    field). Returns the number of rows stamped."""
+    cost = {
+        "total_tokens": args.total_tokens,
+        "tool_uses": args.tool_uses,
+        "duration_ms": args.duration_ms,
+        "websearch_calls": args.websearch_calls,
+        "context_tokens_post_pass": args.context_tokens_post,
+        "output_tokens_pass": args.output_tokens_pass,
+    }
+    cost = {k: v for k, v in cost.items() if v is not None}
+    n = 0
+    for r in rows:
+        if r.get("batch_id") == args.batch_id:
+            r.update(cost)
+            n += 1
+    if n == 0:
+        raise SystemExit(f"error: no rows with batch_id={args.batch_id!r} to backfill")
+    return n
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
 
@@ -224,12 +288,24 @@ def main(argv: list[str]) -> int:
 
     log_path = wiki_root / ".meta" / "corroborate_log.jsonl"
 
-    if args.backfill or args.backfill_ingest:
+    needs_slug = not args.backfill_cost
+    if needs_slug and args.page_slug is None:
+        print("error: --page-slug is required (omit only for --backfill-cost)", file=sys.stderr)
+        return 2
+
+    if args.backfill or args.backfill_ingest or args.backfill_cost:
         rows = read_rows(log_path)
         if not rows:
             print(f"error: {log_path} is empty — nothing to backfill", file=sys.stderr)
             return 2
-        if args.backfill:
+        if args.backfill_cost:
+            if args.batch_id is None:
+                print("error: --backfill-cost requires --batch-id", file=sys.stderr)
+                return 2
+            n = _backfill_cost(rows, args)
+            write_rows(log_path, rows)
+            print(f"backfilled cost on {n} row(s) for batch_id={args.batch_id}")
+        elif args.backfill:
             idx = _backfill_capture(rows, args)
             write_rows(log_path, rows)
             print(f"backfilled row {idx} for page_slug={args.page_slug} (action={args.user_action})")

@@ -94,6 +94,23 @@ resolving.` The skill still emits blocks for those pairs (the queue
 visibility matters more than the data-quality nag) but the user should
 know.
 
+### 3.5 — Open the cost-measurement window
+
+Run **once**, immediately before the per-pair loop, only when `returned > 0`.
+Captures the session-transcript line count so the invocation's main-session
+cost can be reconstructed at close — the same fork-vs-inline ROI telemetry
+`/wiki-corroborate` records (`dev/tech-debt.md` "execution shape" entry). This
+skill is main-session only, so the harness emits no `<usage>` block; the
+transcript is the cost surface, read after the fact.
+
+```bash
+python <wiki>/.scripts/session_cost_probe.py --emit-marker
+```
+
+Capture `start_line` and `batch_id`; hold both for steps 4.6 and 4.7. (If the
+probe errors, skip instrumentation silently — run the loop, write rows without
+`--batch-id`, skip step 4.7. Cost telemetry is best-effort.)
+
 ### 4. Per-pair loop
 
 For each pair in `returned`:
@@ -270,9 +287,12 @@ python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> \
   --candidates-returned <N filtered candidates> \
   --candidates-by-tier '{"tier_1":N,"tier_2":N,"tier_3":N,"unclassified":N}' \
   --candidate-urls '[{"url":"<url>","tier":"<tier>"}, ...]' \
-  --include-tier-3-flag <true|false>
+  --include-tier-3-flag <true|false> \
+  --batch-id "<batch_id from step 3.5>" --skill-version "resolve-contradictions-v2"
 ```
 
+Pass `--batch-id` (from step 3.5) on every per-pair row so step 4.7 can
+backfill the invocation cost onto them. Omit it only if step 3.5 was skipped.
 `user_action` defaults to `deferred` and `outcome` defaults to `pending`
 on the initial write. Both fields are backfilled later — `/wiki-capture`
 flips `user_action` to `captured`; the ingestor sets `outcome` (one of
@@ -282,6 +302,30 @@ Pass `--candidates-returned` as the count of items shown to the user
 (post-filter), not the raw WebSearch count. `--candidate-urls` takes the
 same `[{url, tier}, ...]` list as `/wiki-corroborate` — domains are
 extracted via `_domain_from_url`; pass `'[]'` when WebSearch failed.
+
+#### 4.7 — Close the cost-measurement window
+
+Run **once**, after the per-pair loop (skip if step 3.5 was skipped). Probe the
+window opened at 3.5, then stamp the invocation cost onto every row of this batch:
+
+```bash
+python <wiki>/.scripts/session_cost_probe.py --since-line <start_line>
+```
+
+Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
+`context_tokens_post_pass`, `output_tokens_pass` from the JSON, then:
+
+```bash
+python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> --backfill-cost \
+  --batch-id "<batch_id>" \
+  --total-tokens <total_tokens> --tool-uses <tool_uses> \
+  --duration-ms <duration_ms> --websearch-calls <websearch_calls> \
+  --context-tokens-post <context_tokens_post_pass> \
+  --output-tokens-pass <output_tokens_pass>
+```
+
+Same surface and ROI rationale as `/wiki-corroborate` § 4.7 — the two skills'
+cost telemetry is pooled for the inline-vs-fork decision.
 
 ### 5. Footer
 

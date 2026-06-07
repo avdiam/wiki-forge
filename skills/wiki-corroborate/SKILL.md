@@ -74,6 +74,24 @@ If `returned == 0` and the user passed `--single <slug>` that doesn't match
 any flagged page, tell the user the slug isn't currently flagged (offer
 `--all` to see what is) and stop.
 
+### 3.5 — Open the cost-measurement window
+
+Run **once**, immediately before the per-flag loop, only when `returned > 0`
+(there are flags to search). This captures the session-transcript line count so
+the invocation's main-session cost can be reconstructed at close — the telemetry
+that answers the inline-vs-subagent ROI question (`dev/tech-debt.md` "execution
+shape" entry). `/wiki-corroborate` is main-session only, so the harness emits no
+`<usage>` block; the transcript is the only cost surface, read after the fact.
+
+```bash
+python <wiki>/.scripts/session_cost_probe.py --emit-marker
+```
+
+Capture `start_line` and `batch_id` from the JSON. Hold both for steps 4.6 and
+4.7. (If the probe errors — e.g. transcript not found in a non-standard runtime
+— skip instrumentation silently: run the loop, write rows without `--batch-id`,
+and skip step 4.7. Cost telemetry is best-effort; never block a drain on it.)
+
 ### 4. Per-flag loop
 
 For each flag in `returned`:
@@ -293,10 +311,14 @@ python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> \
   --candidates-by-tier '{"tier_1":N,"tier_2":N,"tier_3":N,"unclassified":N}' \
   --candidate-urls '[{"url":"<url>","tier":"<tier>"}, ...]' \
   --include-tier-3-flag <true|false> \
+  --batch-id "<batch_id from step 3.5>" --skill-version "corroborate-v2" \
   --user-action deferred
 ```
 
-`--user-action deferred` is the initial state — backfilled later by `/wiki-capture`
+Pass `--batch-id` (from step 3.5) on every per-flag row so the invocation's
+rows share an aggregation key; step 4.7 backfills the cost onto them. Omit
+`--batch-id` only if step 3.5 was skipped. `--user-action deferred` is the
+initial state — backfilled later by `/wiki-capture`
 (to `captured`) and the ingestor (sets `flag_cleared_at_ingest` on Y). Pass
 `--candidates-returned` as the count of items shown to the user (post-filter),
 not the raw WebSearch count.
@@ -314,6 +336,34 @@ field's purpose is **seed-list backfill**: analysis of unclassified
 domains across many rows surfaces real-world host patterns the
 `url_classifier_lists.json` seeds miss, so the user can extend the lists
 at decision-gate time per the cascade-update rule.
+
+#### 4.7 — Close the cost-measurement window
+
+Run **once**, after the per-flag loop finishes (skip if step 3.5 was skipped).
+Probe the transcript window opened at step 3.5, then stamp the invocation-level
+cost onto every row of this batch:
+
+```bash
+python <wiki>/.scripts/session_cost_probe.py --since-line <start_line>
+```
+
+Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
+`context_tokens_post_pass`, `output_tokens_pass` from the JSON, then:
+
+```bash
+python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> --backfill-cost \
+  --batch-id "<batch_id>" \
+  --total-tokens <total_tokens> --tool-uses <tool_uses> \
+  --duration-ms <duration_ms> --websearch-calls <websearch_calls> \
+  --context-tokens-post <context_tokens_post_pass> \
+  --output-tokens-pass <output_tokens_pass>
+```
+
+The window includes this step's own probe/backfill turns — negligible and
+constant across runs. `websearch_calls` and median `context_tokens_post_pass`
+across invocations are the load-bearing inputs for the fork-vs-inline ROI
+decision; `websearch_calls ≥ 10` (median) is one of the entry's three standalone
+ROI triggers, computable without any token surface.
 
 ### 5. Footer
 
