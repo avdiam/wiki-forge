@@ -103,99 +103,26 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import datetime
-from pathlib import Path
-from urllib.parse import urlsplit
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+from _log_writer import (
+    append_jsonl,
+    candidate_urls,
+    candidates_dict,
+    optional_bool,
+    optional_int,
+    optional_str,
+    read_rows,
+    resolve_wiki_root,
+    write_rows,
+)
 
 
 VALID_USER_ACTIONS = {"captured", "skipped", "deferred"}
 VALID_OUTCOMES = {"pending", "a_wins", "b_wins", "both_stand", "defer"}
 RESOLVED_OUTCOMES = {"a_wins", "b_wins", "both_stand"}
 VALID_PAGE_TYPES = {"concept", "entity", "comparison", "synthesis", "source"}
-
-
-def optional_int(raw: str) -> int | None:
-    if raw is None or raw == "" or raw.lower() == "null":
-        return None
-    return int(raw)
-
-
-def optional_str(raw: str) -> str | None:
-    if raw is None or raw == "" or raw.lower() == "null":
-        return None
-    return raw
-
-
-def optional_bool(raw: str) -> bool:
-    if raw is None or raw == "" or raw.lower() == "null":
-        return False
-    if raw.lower() in ("true", "1", "yes"):
-        return True
-    if raw.lower() in ("false", "0", "no"):
-        return False
-    raise argparse.ArgumentTypeError(f"--include-tier-3-flag must be true/false: got {raw!r}")
-
-
-def candidates_dict(raw: str) -> dict:
-    """Parse --candidates-by-tier as a JSON object with int values per tier key."""
-    if raw is None or raw == "":
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise argparse.ArgumentTypeError(f"--candidates-by-tier must be JSON: {e}")
-    if not isinstance(parsed, dict):
-        raise argparse.ArgumentTypeError("--candidates-by-tier must be a JSON object")
-    for k, v in parsed.items():
-        if not isinstance(v, int):
-            raise argparse.ArgumentTypeError(f"--candidates-by-tier values must be int (got {k}={v!r})")
-    return parsed
-
-
-def _domain_from_url(url: str) -> str:
-    """Mirror append_corroborate_log.py's _domain_from_url — host + first
-    path segment (lowercased, www. stripped) so vendor-org tier patterns
-    like github.com/anthropic stay distinguishable in analysis."""
-    parts = urlsplit(url.strip())
-    if parts.netloc:
-        host = parts.netloc.lower().strip()
-        path = parts.path or ""
-    else:
-        raw = parts.path or ""
-        segs = raw.lstrip("/").split("/", 1)
-        host = segs[0].lower().strip()
-        path = "/" + segs[1] if len(segs) > 1 else ""
-    if host.startswith("www."):
-        host = host[4:]
-    first = path.lstrip("/").split("/", 1)[0]
-    if first:
-        return f"{host}/{first}"
-    return host
-
-
-def candidate_urls(raw: str) -> list[dict] | None:
-    if raw is None:
-        return None
-    if raw == "":
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise argparse.ArgumentTypeError(f"--candidate-urls must be JSON: {e}")
-    if not isinstance(parsed, list):
-        raise argparse.ArgumentTypeError("--candidate-urls must be a JSON array")
-    out = []
-    for item in parsed:
-        if not isinstance(item, dict) or "url" not in item or "tier" not in item:
-            raise argparse.ArgumentTypeError(f"each --candidate-urls record needs url+tier: {item!r}")
-        out.append({"domain": _domain_from_url(item["url"]), "tier": item["tier"]})
-    return out
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -274,19 +201,6 @@ def build_row(args: argparse.Namespace) -> dict:
     }
 
 
-def _read_rows(log_path: Path) -> list[dict]:
-    if not log_path.is_file():
-        return []
-    with log_path.open("r", encoding="utf-8") as f:
-        return [json.loads(ln) for ln in f if ln.strip()]
-
-
-def _write_rows(log_path: Path, rows: list[dict]) -> None:
-    with log_path.open("w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
 def _backfill_capture(rows: list[dict], args: argparse.Namespace) -> int:
     """Set user_picked / user_action / captured_to_vault on the most recent
     row matching pair_key AND user_action='deferred'."""
@@ -321,26 +235,20 @@ def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
 
-    wiki_root = Path(args.wiki).resolve()
-    if not (wiki_root / "CLAUDE.md").is_file():
-        print(
-            f"error: {wiki_root} does not look like a wiki root (no CLAUDE.md)",
-            file=sys.stderr,
-        )
+    wiki_root = resolve_wiki_root(args.wiki)
+    if wiki_root is None:
         return 2
 
-    meta_dir = wiki_root / ".meta"
-    meta_dir.mkdir(exist_ok=True)
-    log_path = meta_dir / "contradiction_log.jsonl"
+    log_path = wiki_root / ".meta" / "contradiction_log.jsonl"
 
     if args.backfill or args.backfill_ingest:
-        rows = _read_rows(log_path)
+        rows = read_rows(log_path)
         if not rows:
             print(f"error: {log_path} is empty — nothing to backfill", file=sys.stderr)
             return 2
         if args.backfill:
             idx = _backfill_capture(rows, args)
-            _write_rows(log_path, rows)
+            write_rows(log_path, rows)
             print(f"backfilled row {idx} for pair_key={args.pair_key} (action={args.user_action})")
         else:
             if args.outcome is None:
@@ -350,7 +258,7 @@ def main(argv: list[str]) -> int:
                 )
                 return 2
             idx = _backfill_ingest(rows, args)
-            _write_rows(log_path, rows)
+            write_rows(log_path, rows)
             print(f"backfilled row {idx} outcome={args.outcome} for pair_key={args.pair_key}")
         return 0
 
@@ -363,9 +271,7 @@ def main(argv: list[str]) -> int:
         print(f"error: --{', --'.join(missing)} required on initial write", file=sys.stderr)
         return 2
 
-    row = build_row(args)
-    with log_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    append_jsonl(log_path, build_row(args))
 
     print(f"appended 1 row to {log_path}")
     return 0

@@ -23,7 +23,7 @@ Six cases:
   well-formed output.
 - malformed_no_opening_fence: text doesn't start with --- → return False.
 
-Run:  python wiki/.scripts/test_freshness_edit.py
+Run:  python run_tests.py   (from the tests dir; or run this file directly)
 """
 
 import re
@@ -32,7 +32,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+# Locate the helper-scripts dir in either the live (dev/tests/ -> wiki/.scripts)
+# or the wiki-forge (tests/ -> skills/wiki-init/templates/scripts) layout, so
+# this file stays byte-identical across both repos.
+def _scripts_dir() -> Path:
+    here = Path(__file__).resolve()
+    for cand in (
+        here.parents[2] / "wiki" / ".scripts",
+        here.parents[1] / "skills" / "wiki-init" / "templates" / "scripts",
+    ):
+        if cand.is_dir():
+            return cand
+    raise RuntimeError(f"cannot locate helper-scripts dir from {here}")
+
+
+SCRIPTS = _scripts_dir()
+sys.path.insert(0, str(SCRIPTS))
 from check_source_freshness import edit_source_page_for_drift
 from frontmatter import parse_frontmatter
 

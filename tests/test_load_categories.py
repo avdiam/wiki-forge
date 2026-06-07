@@ -8,7 +8,7 @@ The parser is intentionally naive — it looks for the exact H2 header
 bullet shape. These tests pin the contract so format-drift is caught
 before lint silently fails in production.
 
-Run:  python wiki/.scripts/test_load_categories.py
+Run:  python run_tests.py   (from the tests dir; or run this file directly)
 
 Exit codes: 0 = all tests pass; 1 = at least one test failed.
 """
@@ -20,14 +20,27 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-# Make lint_wiki importable.
-SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
+# Locate the helper-scripts dir in either the live (dev/tests/ -> wiki/.scripts)
+# or the wiki-forge (tests/ -> skills/wiki-init/templates/scripts) layout, so
+# this file stays byte-identical across both repos.
+def _scripts_dir() -> Path:
+    here = Path(__file__).resolve()
+    for cand in (
+        here.parents[2] / "wiki" / ".scripts",
+        here.parents[1] / "skills" / "wiki-init" / "templates" / "scripts",
+    ):
+        if cand.is_dir():
+            return cand
+    raise RuntimeError(f"cannot locate helper-scripts dir from {here}")
+
+
+SCRIPTS = _scripts_dir()
+sys.path.insert(0, str(SCRIPTS))
 
 from lint_wiki import load_authoritative_categories
 
-# Live wiki root (parent of .scripts/).
-WIKI_ROOT = SCRIPT_DIR.parent
+# Wiki root that owns CATEGORIES.md (parent of the scripts dir in both layouts).
+WIKI_ROOT = SCRIPTS.parent
 
 
 class TestLoadCategoriesLive(unittest.TestCase):

@@ -12,7 +12,7 @@ confirms the regex actually catches the other 4 if the harness ever
 starts emitting them. Pins the contract: when Anthropic ships per-field
 counts in `<usage>`, the parser keeps working without code change.
 
-Run:  python wiki/.scripts/test_usage_parsing.py
+Run:  python run_tests.py   (from the tests dir; or run this file directly)
 """
 
 import re

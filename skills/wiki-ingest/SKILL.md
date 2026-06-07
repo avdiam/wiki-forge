@@ -586,7 +586,7 @@ when present.
 > emitting `input_tokens`, the regex will return the longer field's value
 > as if it were `input_tokens`. Fix when it bites: anchor with negative
 > lookbehind — `(?<![a-z_])input_tokens:\s*(\d+)`. The contract + quirk are
-> pinned by `wiki/.scripts/test_usage_parsing.py` (six cases, stdlib
+> pinned by `dev/tests/test_usage_parsing.py` (six cases, stdlib
 > unittest); update spec and test together.
 
 If the entire block is missing or all field regexes fail, pass empty

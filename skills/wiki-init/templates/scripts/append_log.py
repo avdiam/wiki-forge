@@ -23,7 +23,8 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import datetime
-from pathlib import Path
+
+from _log_writer import resolve_wiki_root
 
 
 VALID_OPS = {"ingest", "capture", "query-filed", "lint", "init", "note", "stub"}
@@ -80,9 +81,8 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
-    wiki_root = Path(args.wiki).resolve()
-    if not (wiki_root / "CLAUDE.md").is_file():
-        print(f"error: {wiki_root} does not look like a wiki root (no CLAUDE.md)", file=sys.stderr)
+    wiki_root = resolve_wiki_root(args.wiki)
+    if wiki_root is None:
         return 2
 
     log_path = wiki_root / "log.md"

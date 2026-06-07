@@ -59,20 +59,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import datetime
-from pathlib import Path
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
-
-
-def optional_str(raw: str) -> str | None:
-    if raw is None or raw == "" or raw.lower() == "null":
-        return None
-    return raw
+from _log_writer import append_jsonl, optional_str, resolve_wiki_root, strict_bool
 
 
 def http_status_value(raw: str) -> "int | str | None":
@@ -83,15 +73,6 @@ def http_status_value(raw: str) -> "int | str | None":
         return int(raw)
     except ValueError:
         return raw
-
-
-def strict_bool(raw: str) -> bool:
-    low = raw.lower()
-    if low in ("true", "1", "yes"):
-        return True
-    if low in ("false", "0", "no"):
-        return False
-    raise argparse.ArgumentTypeError(f"expected true/false, got '{raw}'")
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -134,18 +115,12 @@ def build_row(args: argparse.Namespace) -> dict:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
 
-    wiki_root = Path(args.wiki).resolve()
-    if not (wiki_root / "CLAUDE.md").is_file():
-        print(f"error: {wiki_root} does not look like a wiki root (no CLAUDE.md)", file=sys.stderr)
+    wiki_root = resolve_wiki_root(args.wiki)
+    if wiki_root is None:
         return 2
 
-    meta_dir = wiki_root / ".meta"
-    meta_dir.mkdir(exist_ok=True)
-    log_path = meta_dir / "source_freshness.jsonl"
-
-    row = build_row(args)
-    with log_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    log_path = wiki_root / ".meta" / "source_freshness.jsonl"
+    append_jsonl(log_path, build_row(args))
 
     print(f"appended 1 row to {log_path}")
     return 0

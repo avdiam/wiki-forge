@@ -85,33 +85,19 @@ import argparse
 import json
 import sys
 from datetime import datetime
-from pathlib import Path
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+from _log_writer import (
+    append_jsonl,
+    optional_float,
+    optional_int,
+    optional_str,
+    resolve_wiki_root,
+    split_slugs,
+)
 
 
 VALID_SEARCH_MODES = {"inline", "hybrid", "hybrid_zvec", "bm25_only", "slug-anchored"}
 VALID_QUERY_SKILLS = {"query", "graph", "summarize"}
-
-
-def optional_int(raw: str) -> int | None:
-    if raw is None or raw == "" or raw.lower() == "null":
-        return None
-    return int(raw)
-
-
-def optional_float(raw: str) -> float | None:
-    if raw is None or raw == "" or raw.lower() == "null":
-        return None
-    return float(raw)
-
-
-def optional_str(raw: str) -> str | None:
-    if raw is None or raw == "" or raw.lower() == "null":
-        return None
-    return raw
 
 
 def optional_str_list(raw: str) -> "list[str] | None":
@@ -130,12 +116,6 @@ def optional_str_list(raw: str) -> "list[str] | None":
     if not isinstance(parsed, list) or not all(isinstance(s, str) for s in parsed):
         raise argparse.ArgumentTypeError("--query-variations must be a JSON array of strings")
     return parsed if parsed else None
-
-
-def split_slugs(raw: str) -> list[str]:
-    if not raw:
-        return []
-    return [s.strip() for s in raw.split(",") if s.strip()]
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -226,18 +206,12 @@ def main(argv: list[str]) -> int:
         # search_mode is null for graph rows; ignore any value passed
         args.search_mode = None
 
-    wiki_root = Path(args.wiki).resolve()
-    if not (wiki_root / "CLAUDE.md").is_file():
-        print(f"error: {wiki_root} does not look like a wiki root (no CLAUDE.md)", file=sys.stderr)
+    wiki_root = resolve_wiki_root(args.wiki)
+    if wiki_root is None:
         return 2
 
-    meta_dir = wiki_root / ".meta"
-    meta_dir.mkdir(exist_ok=True)
-    log_path = meta_dir / "query_log.jsonl"
-
-    row = build_row(args)
-    with log_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    log_path = wiki_root / ".meta" / "query_log.jsonl"
+    append_jsonl(log_path, build_row(args))
 
     print(f"appended 1 row to {log_path}")
     return 0

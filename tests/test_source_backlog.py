@@ -19,7 +19,7 @@ Cases:
 - genuinely_unhandled: no stem match and no hash match → IS backlog.
 - excluded_paths: files under `.`/`_` top-level segments are never counted.
 
-Run:  python wiki/.scripts/test_source_backlog.py
+Run:  python run_tests.py   (from the tests dir; or run this file directly)
 """
 
 import hashlib
@@ -28,7 +28,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+# Locate the helper-scripts dir in either the live (dev/tests/ -> wiki/.scripts)
+# or the wiki-forge (tests/ -> skills/wiki-init/templates/scripts) layout, so
+# this file stays byte-identical across both repos.
+def _scripts_dir() -> Path:
+    here = Path(__file__).resolve()
+    for cand in (
+        here.parents[2] / "wiki" / ".scripts",
+        here.parents[1] / "skills" / "wiki-init" / "templates" / "scripts",
+    ):
+        if cand.is_dir():
+            return cand
+    raise RuntimeError(f"cannot locate helper-scripts dir from {here}")
+
+
+SCRIPTS = _scripts_dir()
+sys.path.insert(0, str(SCRIPTS))
 from lint_wiki import check_source_backlog
 import source_backlog as sb
 
