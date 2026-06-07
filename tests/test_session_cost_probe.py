@@ -35,9 +35,16 @@ sys.path.insert(0, str(SCRIPTS))
 import session_cost_probe as scp  # noqa: E402
 
 
-def _asst(output, inp, cache_read, cache_create, ws=0, ts=None, tool_uses=0):
-    """Build one assistant-turn transcript entry."""
+def _asst(output, inp, cache_read, cache_create, ws=0, ts=None, tool_uses=0,
+          tool_names=None):
+    """Build one assistant-turn transcript entry.
+
+    tool_uses adds that many generic ("X") tool_use blocks; tool_names adds one
+    named tool_use block per entry (e.g. ["WebSearch"]) on top of those.
+    """
     content = [{"type": "tool_use", "name": "X"} for _ in range(tool_uses)]
+    for nm in tool_names or []:
+        content.append({"type": "tool_use", "name": nm})
     return json.dumps(
         {
             "type": "assistant",
@@ -87,6 +94,34 @@ class TestAggregate(unittest.TestCase):
         self.assertEqual(r["total_tokens"], 300)
         # duration: 10:00:10 -> 10:01:00 = 50s
         self.assertEqual(r["duration_ms"], 50_000)
+
+    def test_websearch_client_tool_counted(self):
+        # Claude Code WebSearch is a client tool: server_tool_use stays 0 but a
+        # tool_use block named "WebSearch" is present. websearch_calls must count
+        # it (the bug the 2026-06-07 smoke test caught).
+        lines = [
+            _asst(
+                100, 10, 50, 5, ws=0,
+                ts="2026-06-07T12:00:00.000Z",
+                tool_names=["WebSearch", "WebFetch"],
+            ),
+        ]
+        r = scp.aggregate(lines, since_line=0, until_line=None)
+        self.assertEqual(r["web_search_requests"], 0)  # server counter unused
+        self.assertEqual(r["websearch_tool_uses"], 1)
+        self.assertEqual(r["websearch_calls"], 1)  # from the client tool_use
+        self.assertEqual(r["webfetch_tool_uses"], 1)
+        self.assertEqual(r["webfetch_calls"], 1)
+        self.assertEqual(r["tool_uses"], 2)
+
+    def test_websearch_calls_sums_both_surfaces(self):
+        # A turn with both a server counter and a client WebSearch block sums.
+        lines = [
+            _asst(10, 1, 1, 1, ws=2, ts="2026-06-07T12:00:00.000Z",
+                  tool_names=["WebSearch"]),
+        ]
+        r = scp.aggregate(lines, since_line=0, until_line=None)
+        self.assertEqual(r["websearch_calls"], 3)  # 2 server + 1 client
 
     def test_skips_non_assistant(self):
         r = scp.aggregate(self.lines, since_line=2, until_line=None)

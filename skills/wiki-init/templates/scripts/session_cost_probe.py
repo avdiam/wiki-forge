@@ -9,9 +9,14 @@ object on every assistant turn:
      "cache_read_input_tokens": N, "output_tokens": N,
      "server_tool_use": {"web_search_requests": N, "web_fetch_requests": N}}
 
-plus a millisecond ISO `timestamp` and the turn's `content` blocks. This makes
-main-session cost recoverable *after the fact* even though the harness emits no
-`<usage>` block for main-session (non-subagent) work — the surface that
+plus a millisecond ISO `timestamp` and the turn's `content` blocks. NOTE:
+WebSearch in Claude Code is a *client/harness* tool (a `tool_use` block named
+`WebSearch`), NOT the Anthropic API's server-side `web_search` tool, so
+`server_tool_use.web_search_requests` stays 0 for main-session work — the call
+count must come from counting `WebSearch` tool_use blocks by name. The probe
+counts both surfaces and sums them (mutually exclusive per environment). This
+makes main-session cost recoverable *after the fact* even though the harness
+emits no `<usage>` block for main-session (non-subagent) work — the surface that
 `/wiki-corroborate` instrumentation needs to answer the inline-vs-fork ROI
 question (dev/tech-debt.md "execution shape" entry).
 
@@ -117,8 +122,10 @@ def aggregate(lines: list[str], since_line: int, until_line: int | None) -> dict
         "input_tokens_pass": 0,
         "cache_creation_pass": 0,
         "cache_read_pass": 0,
-        "web_search_requests": 0,
+        "web_search_requests": 0,  # Anthropic API server-tool counter (subagents)
         "web_fetch_requests": 0,
+        "websearch_tool_uses": 0,  # Claude Code client-tool blocks named WebSearch
+        "webfetch_tool_uses": 0,
         "tool_uses": 0,
     }
     context_post = None
@@ -147,6 +154,11 @@ def aggregate(lines: list[str], since_line: int, until_line: int | None) -> dict
         for block in msg.get("content", []):
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 agg["tool_uses"] += 1
+                name = block.get("name", "")
+                if name == "WebSearch":
+                    agg["websearch_tool_uses"] += 1
+                elif name == "WebFetch":
+                    agg["webfetch_tool_uses"] += 1
         context_post = _context_size(usage)
         ts = parse_ts(d.get("timestamp"))
         if ts is not None:
@@ -174,7 +186,14 @@ def aggregate(lines: list[str], since_line: int, until_line: int | None) -> dict
         + agg["input_tokens_pass"]
         + agg["cache_creation_pass"]
     )
-    agg["websearch_calls"] = agg["web_search_requests"]
+    # WebSearch in Claude Code is a *client* tool (logged as a tool_use block
+    # named "WebSearch"), NOT the Anthropic API server-side web_search tool — so
+    # usage.server_tool_use.web_search_requests stays 0 for main-session work.
+    # Count both surfaces; they're mutually exclusive per environment (client
+    # tool in Claude Code main session vs server tool in API subagents), so the
+    # sum is the true call count without double-counting.
+    agg["websearch_calls"] = agg["websearch_tool_uses"] + agg["web_search_requests"]
+    agg["webfetch_calls"] = agg["webfetch_tool_uses"] + agg["web_fetch_requests"]
     return agg
 
 
