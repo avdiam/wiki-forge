@@ -2,7 +2,7 @@
 name: wiki-capture
 description: Save new material (URL, file path, or pasted text) to the vault/ folder as clean markdown, then hand off to the /wiki-ingest skill which orchestrates the rest. Capture is an onramp — it lands raw material in vault/ with proper frontmatter and stops there. It does NOT touch wiki/, does NOT dispatch the wiki-ingestor agent directly. Use when the user wants to add a new source — e.g. /wiki-capture <url-or-text>, "save this article to the wiki", "capture this page", "add this to my wiki". Pass --batch <file> to triage a list of URLs (see Batch mode).
 argument-hint: "<url-or-path-or-paste> | --batch <urls-file>"
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # wiki-capture (onramp only)
