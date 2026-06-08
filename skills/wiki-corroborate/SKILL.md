@@ -348,7 +348,8 @@ python <wiki>/.scripts/session_cost_probe.py --since-line <start_line>
 ```
 
 Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
-`context_tokens_post_pass`, `output_tokens_pass` from the JSON, then:
+`context_tokens_post_pass`, `context_tokens_pre_pass`, `context_growth`,
+`output_tokens_pass` from the JSON, then:
 
 ```bash
 python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> --backfill-cost \
@@ -356,14 +357,22 @@ python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> --backfill-cost \
   --total-tokens <total_tokens> --tool-uses <tool_uses> \
   --duration-ms <duration_ms> --websearch-calls <websearch_calls> \
   --context-tokens-post <context_tokens_post_pass> \
+  --context-tokens-pre <context_tokens_pre_pass> \
+  --context-growth <context_growth> \
   --output-tokens-pass <output_tokens_pass>
 ```
 
 The window includes this step's own probe/backfill turns — negligible and
-constant across runs. `websearch_calls` and median `context_tokens_post_pass`
-across invocations are the load-bearing inputs for the fork-vs-inline ROI
-decision; `websearch_calls ≥ 10` (median) is one of the entry's three standalone
-ROI triggers, computable without any token surface.
+constant across runs. The backfill also auto-stamps `flags_in_batch` (= the
+number of rows sharing this `batch_id`) — the per-flag normalization
+denominator. **Batch-unit convention (2026-06-08):** the fork-vs-inline gate
+reads **per-invocation `context_growth`** for context discipline (the absolute
+`context_tokens_post_pass` is contaminated by how full the session already was —
+the session-95 warmup taint) and **per-flag `total_tokens / flags_in_batch`**
+for throughput. `websearch_calls` (≈1/flag) is descriptive, not a standalone
+gate. If `context_growth` is `null` (probe found no pre-window anchor — e.g. the
+pass began on transcript line 0), pass it as `null`; the backfill skips null
+fields.
 
 ### 5. Footer
 

@@ -68,17 +68,25 @@ present (`github.com/anthropic`, `linkedin.com/in/<user>`) for tier-
 classifier path-prefix patterns.
 
 Cost fields (`total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
-`context_tokens_post_pass`, `output_tokens_pass`) were `null` in v1 — the
-harness emits no `<usage>` block for main-session (non-subagent) work. v2
-(2026-06-07) recovers them after the fact from the Claude Code **session
-transcript JSONL** via `session_cost_probe.py`, mirroring the
-`append_corroborate_log.py` v2 instrumentation. The skill records the
-transcript line count at the start of its per-pair loop, tags every row with a
-`--batch-id`, then runs the probe and `--backfill-cost --batch-id <id>` to
-stamp invocation-level cost onto all rows of the batch. Feeds the same
-fork-vs-inline ROI question (dev/tech-debt.md "execution shape" entry) — median
-`websearch_calls` / `context_tokens_post_pass`. `skill_version` records the
-producing skill revision.
+`context_tokens_post_pass`, `context_tokens_pre_pass`, `context_growth`,
+`output_tokens_pass`, `flags_in_batch`) were `null` in v1 — the harness emits no
+`<usage>` block for main-session (non-subagent) work. v2 (2026-06-07) recovers
+them after the fact from the Claude Code **session transcript JSONL** via
+`session_cost_probe.py`, mirroring the `append_corroborate_log.py` v2
+instrumentation. The skill records the transcript line count at the start of its
+per-pair loop, tags every row with a `--batch-id`, then runs the probe and
+`--backfill-cost --batch-id <id>` to stamp invocation-level cost onto all rows
+of the batch. Feeds the same fork-vs-inline ROI question (dev/tech-debt.md
+"execution shape" entry). `skill_version` records the producing skill revision.
+
+**Batch-unit convention (decided 2026-06-08).** Identical to
+`append_corroborate_log.py` — see its docstring for the full rationale. The unit
+is the invocation (batch); `flags_in_batch` (= pairs drained) is the per-flag
+normalization denominator. Context discipline gates on per-invocation
+`context_growth` (post − pre), not the absolute `context_tokens_post_pass`
+(contaminated by prior session fill). Throughput (`total_tokens` /
+`output_tokens_pass`) normalizes per-pair; `websearch_calls` (≈1/pair) is
+descriptive, not a standalone gate.
 
 Usage:
     # Initial write — one row per pair searched (user_action defaults to deferred).
@@ -114,7 +122,8 @@ Usage:
     python append_contradiction_log.py --wiki <wiki-root> --backfill-cost \\
         --batch-id 9803eda1-940 --total-tokens 41200 --tool-uses 7 \\
         --duration-ms 83100 --websearch-calls 6 \\
-        --context-tokens-post 96800 --output-tokens-pass 5100
+        --context-tokens-post 96800 --context-tokens-pre 85000 \\
+        --context-growth 11800 --output-tokens-pass 5100
 """
 from __future__ import annotations
 
@@ -204,6 +213,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="server_tool_use.web_search_requests summed over the invocation window.")
     p.add_argument("--context-tokens-post", type=optional_int, default=None,
                    help="Main-session context size at the last turn of the pass.")
+    p.add_argument("--context-tokens-pre", type=optional_int, default=None,
+                   help="Main-session context size at the last turn BEFORE the pass (the window's pre-anchor).")
+    p.add_argument("--context-growth", type=optional_int, default=None,
+                   help="context_tokens_post_pass - context_tokens_pre_pass: how much this invocation inflated main-session context. The load-bearing per-invocation fork-decision signal — absolute post is contaminated by prior session fill (the session-95 warmup taint), growth is not.")
     p.add_argument("--output-tokens-pass", type=optional_int, default=None,
                    help="output_tokens summed over the invocation window.")
     return p.parse_args(argv)
@@ -235,7 +248,10 @@ def build_row(args: argparse.Namespace) -> dict:
         "duration_ms": args.duration_ms,
         "websearch_calls": args.websearch_calls,
         "context_tokens_post_pass": args.context_tokens_post,
+        "context_tokens_pre_pass": args.context_tokens_pre,
+        "context_growth": args.context_growth,
         "output_tokens_pass": args.output_tokens_pass,
+        "flags_in_batch": None,
     }
 
 
@@ -272,24 +288,29 @@ def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
 
 def _backfill_cost(rows: list[dict], args: argparse.Namespace) -> int:
     """Stamp invocation-level cost fields onto every row whose batch_id matches
-    args.batch_id. Only non-None args overwrite. Returns the number stamped."""
+    args.batch_id. Only non-None cost args overwrite. `flags_in_batch` is ALWAYS
+    stamped = the number of matched rows (the batch size) — the per-flag
+    normalization denominator that makes throughput cost comparable across
+    uneven batches, always knowable at backfill time. Returns the number
+    stamped."""
     cost = {
         "total_tokens": args.total_tokens,
         "tool_uses": args.tool_uses,
         "duration_ms": args.duration_ms,
         "websearch_calls": args.websearch_calls,
         "context_tokens_post_pass": args.context_tokens_post,
+        "context_tokens_pre_pass": args.context_tokens_pre,
+        "context_growth": args.context_growth,
         "output_tokens_pass": args.output_tokens_pass,
     }
     cost = {k: v for k, v in cost.items() if v is not None}
-    n = 0
-    for r in rows:
-        if r.get("batch_id") == args.batch_id:
-            r.update(cost)
-            n += 1
-    if n == 0:
+    matched = [r for r in rows if r.get("batch_id") == args.batch_id]
+    if not matched:
         raise SystemExit(f"error: no rows with batch_id={args.batch_id!r} to backfill")
-    return n
+    cost["flags_in_batch"] = len(matched)
+    for r in matched:
+        r.update(cost)
+    return len(matched)
 
 
 def main(argv: list[str]) -> int:

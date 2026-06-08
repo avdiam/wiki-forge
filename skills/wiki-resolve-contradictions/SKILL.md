@@ -313,7 +313,8 @@ python <wiki>/.scripts/session_cost_probe.py --since-line <start_line>
 ```
 
 Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
-`context_tokens_post_pass`, `output_tokens_pass` from the JSON, then:
+`context_tokens_post_pass`, `context_tokens_pre_pass`, `context_growth`,
+`output_tokens_pass` from the JSON, then:
 
 ```bash
 python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> --backfill-cost \
@@ -321,11 +322,18 @@ python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> --backfill-cost
   --total-tokens <total_tokens> --tool-uses <tool_uses> \
   --duration-ms <duration_ms> --websearch-calls <websearch_calls> \
   --context-tokens-post <context_tokens_post_pass> \
+  --context-tokens-pre <context_tokens_pre_pass> \
+  --context-growth <context_growth> \
   --output-tokens-pass <output_tokens_pass>
 ```
 
-Same surface and ROI rationale as `/wiki-corroborate` § 4.7 — the two skills'
-cost telemetry is pooled for the inline-vs-fork decision.
+Same surface, batch-unit convention, and ROI rationale as `/wiki-corroborate`
+§ 4.7 — the two skills' cost telemetry is pooled for the inline-vs-fork
+decision. The backfill auto-stamps `flags_in_batch` (here = pairs in the batch);
+the gate reads per-invocation `context_growth` for context discipline and
+per-pair `total_tokens / flags_in_batch` for throughput, with `websearch_calls`
+descriptive only. Pass `context_growth` as `null` if the probe found no
+pre-window anchor.
 
 ### 5. Footer
 

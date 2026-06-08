@@ -69,22 +69,39 @@ only on Y (full clear); left `null` on P / N / no-decision.
 Invariant: `flag_cleared_at_ingest != null` ⟺ `flag_decision_at_ingest == "Y"`.
 
 Cost fields (`total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
-`context_tokens_post_pass`, `output_tokens_pass`) were `null` in v1 — the
-harness emits no `<usage>` block for main-session (non-subagent) work, so
-there was no live surface to read. v2 (2026-06-07) recovers them *after the
-fact* from the Claude Code **session transcript JSONL** via
-`session_cost_probe.py`, which aggregates per-turn `usage` over the
-invocation's line-window. The `/wiki-corroborate` (and
+`context_tokens_post_pass`, `context_tokens_pre_pass`, `context_growth`,
+`output_tokens_pass`, `flags_in_batch`) were `null` in v1 — the harness emits
+no `<usage>` block for main-session (non-subagent) work, so there was no live
+surface to read. v2 (2026-06-07) recovers them *after the fact* from the Claude
+Code **session transcript JSONL** via `session_cost_probe.py`, which aggregates
+per-turn `usage` over the invocation's line-window. The `/wiki-corroborate` (and
 `/wiki-resolve-contradictions`) skill records the transcript line count at
 the start of its search loop, tags every per-flag row with a `--batch-id`,
 then runs the probe and `--backfill-cost --batch-id <id>` to stamp the
 invocation-level cost onto all rows of the batch. This is the telemetry the
-dev/tech-debt.md "execution shape — inline vs subagent" entry needs: median
-`websearch_calls` and per-invocation `context_tokens_post_pass` drive the
-fork-vs-inline ROI decision. `batch_id` groups the per-flag rows of one
-invocation so per-invocation aggregation (medians) is computable — without
-it the per-flag rows have no invocation key. `skill_version` records which
-skill revision produced the batch.
+dev/tech-debt.md "execution shape — inline vs subagent" entry needs to answer
+the fork-vs-inline ROI question.
+
+**Batch-unit convention (decided 2026-06-08).** The unit of measurement is the
+**invocation (batch)**; every row carries `flags_in_batch` (= the number of
+flags the invocation drained) so analysis can normalize where the metric
+demands it. Two cost questions, two units:
+  - *Context discipline* — the load-bearing fork justification ("does running
+    this inline bloat the main session?") is measured **per-invocation** by
+    `context_growth` (= post − pre) and is NOT normalized: a fork helps exactly
+    when one invocation inflates resident context, regardless of how many flags
+    it covered. `context_growth` supersedes the absolute `context_tokens_post_pass`
+    as the gate metric — the absolute is contaminated by how full the session
+    already was when the pass ran (the session-95 ralphy warmup taint), the
+    delta is not.
+  - *Throughput cost* — `total_tokens` / `output_tokens_pass` scale with batch
+    size, so cross-invocation comparison divides by `flags_in_batch` (per-flag
+    cost). `websearch_calls` is ≈1/flag, i.e. batch size in disguise, so it is
+    retained as descriptive but is no longer a standalone ROI gate.
+
+`batch_id` groups the per-flag rows of one invocation so per-invocation
+aggregation (medians) is computable — without it the per-flag rows have no
+invocation key. `skill_version` records which skill revision produced the batch.
 
 Usage:
     # Initial write — one row per flag searched (user_action defaults to deferred).
@@ -118,7 +135,8 @@ Usage:
     python append_corroborate_log.py --wiki <wiki-root> --backfill-cost \\
         --batch-id 9803eda1-940 --total-tokens 41200 --tool-uses 7 \\
         --duration-ms 83100 --websearch-calls 6 \\
-        --context-tokens-post 96800 --output-tokens-pass 5100
+        --context-tokens-post 96800 --context-tokens-pre 85000 \\
+        --context-growth 11800 --output-tokens-pass 5100
 """
 from __future__ import annotations
 
@@ -191,6 +209,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="server_tool_use.web_search_requests summed over the invocation window.")
     p.add_argument("--context-tokens-post", type=optional_int, default=None,
                    help="Main-session context size (input+cache_read+cache_creation) at the last turn of the pass.")
+    p.add_argument("--context-tokens-pre", type=optional_int, default=None,
+                   help="Main-session context size at the last turn BEFORE the pass (the window's pre-anchor).")
+    p.add_argument("--context-growth", type=optional_int, default=None,
+                   help="context_tokens_post_pass - context_tokens_pre_pass: how much this invocation inflated main-session context. The load-bearing per-invocation fork-decision signal — absolute post is contaminated by prior session fill (the session-95 warmup taint), growth is not.")
     p.add_argument("--output-tokens-pass", type=optional_int, default=None,
                    help="output_tokens summed over the invocation window.")
     return p.parse_args(argv)
@@ -219,7 +241,10 @@ def build_row(args: argparse.Namespace) -> dict:
         "duration_ms": args.duration_ms,
         "websearch_calls": args.websearch_calls,
         "context_tokens_post_pass": args.context_tokens_post,
+        "context_tokens_pre_pass": args.context_tokens_pre,
+        "context_growth": args.context_growth,
         "output_tokens_pass": args.output_tokens_pass,
+        "flags_in_batch": None,
     }
 
 
@@ -258,25 +283,30 @@ def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
 
 def _backfill_cost(rows: list[dict], args: argparse.Namespace) -> int:
     """Stamp invocation-level cost fields onto every row whose batch_id matches
-    args.batch_id. Only non-None args overwrite (so a partial probe can't wipe a
-    field). Returns the number of rows stamped."""
+    args.batch_id. Only non-None cost args overwrite (so a partial probe can't
+    wipe a field). `flags_in_batch` is ALWAYS stamped = the number of matched
+    rows (the batch size) — it's the per-flag normalization denominator that
+    makes throughput cost comparable across uneven batches, and it's always
+    knowable at backfill time regardless of which probe fields are present.
+    Returns the number of rows stamped."""
     cost = {
         "total_tokens": args.total_tokens,
         "tool_uses": args.tool_uses,
         "duration_ms": args.duration_ms,
         "websearch_calls": args.websearch_calls,
         "context_tokens_post_pass": args.context_tokens_post,
+        "context_tokens_pre_pass": args.context_tokens_pre,
+        "context_growth": args.context_growth,
         "output_tokens_pass": args.output_tokens_pass,
     }
     cost = {k: v for k, v in cost.items() if v is not None}
-    n = 0
-    for r in rows:
-        if r.get("batch_id") == args.batch_id:
-            r.update(cost)
-            n += 1
-    if n == 0:
+    matched = [r for r in rows if r.get("batch_id") == args.batch_id]
+    if not matched:
         raise SystemExit(f"error: no rows with batch_id={args.batch_id!r} to backfill")
-    return n
+    cost["flags_in_batch"] = len(matched)
+    for r in matched:
+        r.update(cost)
+    return len(matched)
 
 
 def main(argv: list[str]) -> int:
