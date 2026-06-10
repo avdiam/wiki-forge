@@ -6,17 +6,33 @@
 Pools the per-invocation cost telemetry from `corroborate_log.jsonl` and
 `contradiction_log.jsonl` (the two skills share the cost machinery and the entry
 says their telemetry is pooled), dedups to one record per `batch_id`, and applies
-the **2026-06-08 de-confounded gate**:
+the gate:
 
-  - **Context discipline** — median per-invocation `context_growth` (= post − pre)
-    over ALL growth-bearing batches. Threshold: ≥ 30K. `context_growth` is a
-    delta, so it is valid from any session regardless of prior fill.
-  - **Throughput** — median per-flag `total_tokens / flags_in_batch` over
-    FRESH-session batches only. Threshold: ≥ 8K. `total_tokens` includes
-    `cache_creation`, which inflates with cache churn in a fat session, so a
-    batch only counts toward this median if it started in a roughly-fresh
-    session. Freshness proxy: `context_tokens_pre_pass < --fresh-threshold`
-    (default 60K — the session was not already loaded when the pass began).
+  - **Context discipline (PRIMARY, load-bearing)** — median per-invocation
+    `context_growth` (= post − pre) over ALL growth-bearing batches.
+    Threshold: ≥ 30K. `context_growth` is a delta, so it is valid from any
+    session regardless of prior fill. This is the metric that actually tracks
+    what a fork buys: a forked surface-pass keeps the WebSearch results +
+    tier-classification reasoning out of the main session's resident context.
+
+  - **Throughput (SECONDARY)** — median per-flag `output_tokens_pass /
+    flags_in_batch` over ALL batches carrying both fields. Threshold: ≥ 5K.
+
+    **2026-06-10 metric fix.** This gate previously keyed on
+    `total_tokens / flags_in_batch` restricted to "fresh" sessions
+    (`context_tokens_pre_pass < 60K`). That was wrong: `total_tokens` includes
+    cache tokens, which inflate in BOTH directions — `cache_read` in a fat
+    session (the bug the fresh-restriction tried to dodge) AND `cache_creation`
+    in a fresh session (the unguarded direction: a fresh session *pays to build*
+    the cache). So the "fresh-session per-flag total_tokens" the old gate trusted
+    was itself contaminated, and with n_fresh small it could be set by a single
+    cache-creation-inflated batch. `output_tokens_pass` (generated, never cached)
+    is cache-immune in both directions, so it needs no fresh/fat split — every
+    batch with output + flags counts, which also removes the small-n_fresh
+    fragility. The 5K threshold is provisional (the old 8K was on a different,
+    larger-scale metric); revisit if the distribution shifts. Note this signal
+    is partly redundant with `context_growth` (output tokens are a large
+    component of growth) — context_growth remains the load-bearing gate.
 
 Verdict:
   - **INSUFFICIENT** — fewer than `--target-n` growth-bearing batches; keep draining.
@@ -34,7 +50,6 @@ Stdlib only; Python 3.9-safe.
 Usage:
     python corroborate_cost_report.py --wiki wiki
     python corroborate_cost_report.py --wiki wiki --json
-    python corroborate_cost_report.py --wiki wiki --fresh-threshold 50000
 """
 from __future__ import annotations
 
@@ -45,8 +60,7 @@ from pathlib import Path
 from statistics import median
 
 GROWTH_GATE = 30_000
-PERFLAG_GATE = 8_000
-FRESH_PRE_THRESHOLD = 60_000
+OUTPUT_PERFLAG_GATE = 5_000  # provisional — cache-immune throughput proxy (see docstring)
 TARGET_N = 5
 LOGS = ("corroborate_log.jsonl", "contradiction_log.jsonl")
 
@@ -81,37 +95,37 @@ def collect_batches(wiki: Path) -> dict:
                 "date": (r.get("timestamp") or "")[:10],
                 "context_growth": r.get("context_growth"),
                 "context_tokens_pre_pass": r.get("context_tokens_pre_pass"),
-                "total_tokens": r.get("total_tokens"),
+                "output_tokens_pass": r.get("output_tokens_pass"),
                 "flags_in_batch": r.get("flags_in_batch"),
             }
     return batches
 
 
-def compute(batches: dict, fresh_threshold: int, target_n: int) -> dict:
+def compute(batches: dict, target_n: int) -> dict:
     growth = [
         b["context_growth"] for b in batches.values()
         if b.get("context_growth") is not None
     ]
-    per_flag_fresh = []
+    # Cache-immune throughput: output tokens are generated, never cached, so a
+    # batch counts regardless of how warm its session was. No fresh/fat split.
+    per_flag_output = []
     for b in batches.values():
-        pre = b.get("context_tokens_pre_pass")
-        tot = b.get("total_tokens")
+        out = b.get("output_tokens_pass")
         flags = b.get("flags_in_batch")
-        if tot is None or not flags:
+        if out is None or not flags:
             continue
-        if pre is not None and pre < fresh_threshold:  # fresh-session only
-            per_flag_fresh.append(tot / flags)
+        per_flag_output.append(out / flags)
 
     n = len(growth)
     med_growth = median(growth) if growth else None
-    med_perflag = median(per_flag_fresh) if per_flag_fresh else None
+    med_output = median(per_flag_output) if per_flag_output else None
 
     growth_crosses = med_growth is not None and med_growth >= GROWTH_GATE
-    perflag_crosses = med_perflag is not None and med_perflag >= PERFLAG_GATE
+    output_crosses = med_output is not None and med_output >= OUTPUT_PERFLAG_GATE
 
     if n < target_n:
         verdict = "INSUFFICIENT"
-    elif growth_crosses or perflag_crosses:
+    elif growth_crosses or output_crosses:
         verdict = "FORK-WARRANTED"
     else:
         verdict = "NOT-WARRANTED"
@@ -122,11 +136,10 @@ def compute(batches: dict, fresh_threshold: int, target_n: int) -> dict:
         "median_context_growth": med_growth,
         "growth_gate": GROWTH_GATE,
         "growth_crosses": growth_crosses,
-        "n_fresh_perflag": len(per_flag_fresh),
-        "median_perflag_total_tokens": med_perflag,
-        "perflag_gate": PERFLAG_GATE,
-        "perflag_crosses": perflag_crosses,
-        "fresh_threshold": fresh_threshold,
+        "n_output": len(per_flag_output),
+        "median_perflag_output_tokens": med_output,
+        "output_gate": OUTPUT_PERFLAG_GATE,
+        "output_crosses": output_crosses,
         "verdict": verdict,
     }
 
@@ -144,28 +157,25 @@ def render(summary: dict, batches: dict) -> str:
     )
     lines.append("")
     gx = "CROSSES" if summary["growth_crosses"] else "below"
-    px = "CROSSES" if summary["perflag_crosses"] else "below"
+    ox = "CROSSES" if summary["output_crosses"] else "below"
     lines.append(
-        f"  median context_growth        = {_fmt(summary['median_context_growth'])}"
-        f"   (gate {summary['growth_gate']:,} — {gx})"
+        f"  median context_growth         = {_fmt(summary['median_context_growth'])}"
+        f"   (gate {summary['growth_gate']:,} — {gx})   [PRIMARY]"
     )
     lines.append(
-        f"  median per-flag total_tokens = {_fmt(summary['median_perflag_total_tokens'])}"
-        f"   (gate {summary['perflag_gate']:,} — {px}; "
-        f"n_fresh={summary['n_fresh_perflag']}, pre<{summary['fresh_threshold']:,})"
+        f"  median per-flag output_tokens = {_fmt(summary['median_perflag_output_tokens'])}"
+        f"   (gate {summary['output_gate']:,} — {ox}; n={summary['n_output']})   [secondary]"
     )
     lines.append("")
     lines.append("  batches:")
     for b in sorted(batches.values(), key=lambda x: x["date"]):
-        pre = b.get("context_tokens_pre_pass")
-        fresh = "fresh" if (pre is not None and pre < summary["fresh_threshold"]) else "fat"
         flags = b.get("flags_in_batch")
-        tot = b.get("total_tokens")
-        perflag = (tot / flags) if (tot and flags) else None
+        out = b.get("output_tokens_pass")
+        perflag = (out / flags) if (out and flags) else None
         lines.append(
             f"    [{b['date']}] {b['batch_id']:<16} {b['log']:<13} "
             f"growth={_fmt(b.get('context_growth')):>8}  "
-            f"per-flag={_fmt(perflag):>8} ({fresh}, flags={flags})"
+            f"out/flag={_fmt(perflag):>8} (flags={flags})"
         )
     if summary["verdict"] == "INSUFFICIENT":
         need = summary["target_n"] - summary["n_growth"]
@@ -182,9 +192,6 @@ def parse_args(argv: list) -> argparse.Namespace:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--wiki", required=True, help="Path to the wiki root")
-    p.add_argument("--fresh-threshold", type=int, default=FRESH_PRE_THRESHOLD,
-                   help="context_tokens_pre_pass below this counts as a fresh session "
-                        f"for the per-flag total_tokens median (default {FRESH_PRE_THRESHOLD}).")
     p.add_argument("--target-n", type=int, default=TARGET_N,
                    help=f"growth-bearing batches needed before a verdict fires (default {TARGET_N}).")
     p.add_argument("--json", action="store_true", help="Emit the summary as JSON.")
@@ -198,7 +205,7 @@ def main(argv: list) -> int:
         print(f"error: {wiki} has no .meta/ — not a wiki root", file=sys.stderr)
         return 2
     batches = collect_batches(wiki)
-    summary = compute(batches, args.fresh_threshold, args.target_n)
+    summary = compute(batches, args.target_n)
     if args.json:
         print(json.dumps(summary))
     else:
