@@ -26,6 +26,13 @@ Output JSON shape (keys are stable; downstream parsers depend on them):
         "batch_label":     <str | null>,    # e.g. "Batch 10", when state == triaged
         "batch_first_slug": <str | null>,   # first not-yet-ingested article in the next batch's body
         "stale_count":     <int>            # files added since triage; nonzero only when state == stale
+    },
+    "scale_audit": {                        # Mode 7 re-audit detection (scale_audit_probes.evaluate)
+        "should_audit":    <bool>,          # any re-audit trigger fired against the live baseline
+        "fired_count":     <int>,           # number of fired triggers (out of 5)
+        "reasons":         [<str>, ...],    # short reason strings for fired triggers (banner text)
+        "last_audit_date": <str | null>,    # ISO date of the last audit (from scale-audit-config.json)
+        "configured":      <bool>           # whether a .meta/scale-audit-config.json baseline exists
     }
   }
 
@@ -57,6 +64,7 @@ from pathlib import Path
 # Local sibling imports.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_overview_triggers import evaluate as evaluate_overview_triggers  # noqa: E402
+from scale_audit_probes import evaluate as evaluate_scale_audit  # noqa: E402
 from source_backlog import collect_source_hashes, compute_backlog  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -265,6 +273,10 @@ def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
     # Self-heal compares triage slugs (canonical) to source slugs (canonical), so
     # it takes the slug set only — never the (slugs, hashes) tuple.
     backlog = compute_backlog_state(project_root, pending, handled_slugs)
+    # Mode 7 scale-audit re-fire detection. Own page walk (~0.3s); thresholds
+    # come from .meta/scale-audit-config.json so a latched trigger stops nagging
+    # once an audit resets the baseline. Drives the ⚙ SCALE AUDIT DUE banner.
+    scale_audit = evaluate_scale_audit(wiki_root)
 
     return {
         "lint_counter": lint_counter,
@@ -272,6 +284,7 @@ def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
         "ingest_count": ingest_count,
         "overview": overview,
         "backlog": backlog,
+        "scale_audit": scale_audit,
     }
 
 

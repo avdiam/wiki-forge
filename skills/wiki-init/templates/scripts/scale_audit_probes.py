@@ -20,12 +20,24 @@ Usage:
     python wiki/.scripts/scale_audit_probes.py wiki
     python wiki/.scripts/scale_audit_probes.py wiki --json
     python wiki/.scripts/scale_audit_probes.py wiki --check-triggers
+    python wiki/.scripts/scale_audit_probes.py wiki --init --force \
+        --total-pages 800 --verify-queue 250 --audit-doc dev/<date>-mode7-audit.md
 
-The --check-triggers flag exits 1 if any of the 5 hard re-audit triggers
-from `dev/2026-05-08-mode7-audit.md` § Re-audit triggers fires; 0 otherwise.
-Triggers:
+Trigger thresholds are config-driven: read from `.meta/scale-audit-config.json`
+(the live baseline, reset by `--init` after every audit), falling back to the
+conservative DEFAULT_THRESHOLDS when no config exists (a fresh wiki). This
+mirrors the overview-config.json / `check_overview_triggers.py --init` pattern —
+without it, a latched trigger (e.g. total_pages, permanently past its threshold)
+would nag the welcome report forever. `evaluate(wiki_root)` is the drill-facing
+entry point that drill_state.py consumes for the `⚙ SCALE AUDIT DUE` banner.
+
+The --check-triggers flag exits 1 if any re-audit trigger fires; 0 otherwise.
+Triggers (thresholds shown are the conservative first-audit defaults; the live
+baseline overrides them):
     1. total_pages >= 600
-    2. needs_verification >= 100 sustained across the last 3 valid lint runs
+    2. verify queue composite: needs_verification >= 100 sustained across the
+       last 3 valid lint runs AND latest (needs_verification +
+       single_source_unverified) >= 250
     3. broken_links > 5 sustained across the last 5 valid lint runs
     4. updated/created Q4-vs-Q1 ratio inverts (Q4 < 1.5 OR Q4 < Q1)
     5. top concept hub exceeds 25_000 words (Read-limit proxy)
@@ -39,6 +51,7 @@ import re
 import statistics
 import sys
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 from constants import PAGE_TYPES
@@ -49,14 +62,39 @@ if hasattr(sys.stdout, "reconfigure"):
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 
-# The 5 hard re-audit triggers from dev/2026-05-08-mode7-audit.md
+# Default re-audit-trigger thresholds. These are the FALLBACK values used when
+# no `.meta/scale-audit-config.json` baseline exists (a fresh wiki, which is
+# always small enough that none fire). After every audit the runner resets the
+# live baseline via `--init` to the forward thresholds the audit decided — so an
+# already-fired latched trigger (e.g. total_pages, permanently past 600) stops
+# nagging the welcome report. This mirrors the overview-config.json / Mode-B
+# `check_overview_triggers.py --init` pattern exactly. Don't edit these to "fix"
+# a stale fire — reset the config instead (run `/wiki-scale-audit`).
+#
+# History: the 600-page / 25K-word values are the 2026-05-08 first-audit
+# thresholds; the 2026-06-06 second audit reset the live baseline to ≥800 pages
+# and added the verify-queue composite to trigger 2 (see that audit's "Trigger
+# reset" section). The defaults stay at the original first-audit values so a
+# brand-new wiki inherits the conservative starting line.
 TRIGGER_TOTAL_PAGES = 600
 TRIGGER_NEEDS_VERIFICATION = 100
 TRIGGER_NEEDS_VERIFICATION_RUNS = 3  # "sustained across 3+ lint runs"
+TRIGGER_VERIFY_QUEUE = 250  # needs_verification + single_source_unverified, latest lint
 TRIGGER_BROKEN_LINKS = 5  # strict inequality: > 5
 TRIGGER_BROKEN_LINKS_RUNS = 5  # "sustained over 5+ lint runs"
 TRIGGER_RATIO_FLOOR = 1.5
 TRIGGER_TOP_CONCEPT_HUB_WORDS = 25_000  # word-count proxy for the Read limit
+
+DEFAULT_THRESHOLDS = {
+    "total_pages": TRIGGER_TOTAL_PAGES,
+    "needs_verification": TRIGGER_NEEDS_VERIFICATION,
+    "needs_verification_runs": TRIGGER_NEEDS_VERIFICATION_RUNS,
+    "verify_queue": TRIGGER_VERIFY_QUEUE,
+    "broken_links": TRIGGER_BROKEN_LINKS,
+    "broken_links_runs": TRIGGER_BROKEN_LINKS_RUNS,
+    "ratio_floor": TRIGGER_RATIO_FLOOR,
+    "top_concept_hub_words": TRIGGER_TOP_CONCEPT_HUB_WORDS,
+}
 
 # Trigger 5 covers top *concept* hub only, not top entity hub. Entity pages
 # naturally shed mass via `supersedes:` / version-specific sub-pages — a
@@ -76,6 +114,79 @@ LINT_LOG_WINDOW = 25
 
 # Ingest quartile for the updated/created ratio probe.
 INGEST_QUARTILE_SIZE = 28
+
+
+# Config baseline -------------------------------------------------------
+
+def config_path(wiki_root: Path) -> Path:
+    """Live re-audit baseline. Sibling of overview-config.json in .meta/."""
+    return wiki_root / ".meta" / "scale-audit-config.json"
+
+
+def load_config(wiki_root: Path) -> dict:
+    """Return the on-disk baseline, or {} if none exists.
+
+    No config is a valid state — a fresh wiki has never been audited. Callers
+    fall back to DEFAULT_THRESHOLDS via load_thresholds().
+    """
+    cfg_path = config_path(wiki_root)
+    if not cfg_path.is_file():
+        return {}
+    try:
+        return json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def load_thresholds(wiki_root: Path) -> dict:
+    """Merge DEFAULT_THRESHOLDS with any config-stored overrides.
+
+    Unknown keys in the config are ignored; missing keys fall back to defaults.
+    This keeps a partial/older config forward-compatible with new thresholds.
+    """
+    thresholds = dict(DEFAULT_THRESHOLDS)
+    stored = load_config(wiki_root).get("thresholds")
+    if isinstance(stored, dict):
+        for k in thresholds:
+            if k in stored and isinstance(stored[k], (int, float)):
+                thresholds[k] = stored[k]
+    return thresholds
+
+
+def init_config(
+    wiki_root: Path,
+    overrides: dict | None = None,
+    audit_doc: str | None = None,
+    audit_date: str | None = None,
+    force: bool = False,
+) -> int:
+    """Write the re-audit baseline. Run by /wiki-scale-audit after an audit to
+    reset the forward triggers the audit decided (mirrors
+    check_overview_triggers.py --init).
+
+    `overrides` set the next firing's thresholds; absent keys keep the current
+    defaults. `audit_date` defaults to today; `audit_doc` records the dated
+    audit doc this baseline was reset from.
+    """
+    cfg_path = config_path(wiki_root)
+    if cfg_path.exists() and not force:
+        print(f"error: {cfg_path} already exists — use --force to overwrite", file=sys.stderr)
+        return 2
+    thresholds = dict(DEFAULT_THRESHOLDS)
+    for k, v in (overrides or {}).items():
+        if k in thresholds and v is not None:
+            thresholds[k] = v
+    cfg = {
+        "last_audit_date": audit_date or date.today().isoformat(),
+        "last_audit_doc": audit_doc,
+        "thresholds": thresholds,
+    }
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    print(f"scale-audit baseline written to {cfg_path}")
+    print(f"  last audit: {cfg['last_audit_date']} ({cfg['last_audit_doc'] or 'no doc'})")
+    print(f"  thresholds: {thresholds}")
+    return 0
 
 
 def _content_pages(wiki_root: Path) -> dict[str, Path]:
@@ -241,7 +352,8 @@ def probe_lint_trend(wiki_root: Path) -> dict:
     window = rows[-LINT_LOG_WINDOW:]
     keys = (
         "orphans", "broken_links", "single_page_categories",
-        "needs_verification", "excessive_ambiguous", "drifted_sources",
+        "needs_verification", "single_source_unverified",
+        "excessive_ambiguous", "drifted_sources",
     )
 
     def _row_value(r: dict, k: str):
@@ -405,13 +517,24 @@ def probe_graph_metadata(pages: dict[str, Path], inbound: Counter) -> dict:
 
 # Re-audit triggers -----------------------------------------------------
 
-def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
-    """Check the 5 hard re-audit triggers from dev/2026-05-08-mode7-audit.md.
+def _latest(series: list) -> int | float | None:
+    """Last non-null numeric value in a series, or None."""
+    for v in reversed(series):
+        if isinstance(v, (int, float)):
+            return v
+    return None
 
-    Returns dict with per-trigger fired status + the threshold + the
-    actual value. Trigger 4 (ratio inversion) is the one that uses the
-    Q1/Q4 comparison; the others are single-snapshot thresholds.
+
+def check_triggers(probes: dict, pages: dict[str, Path], thresholds: dict | None = None) -> dict:
+    """Check the 5 hard re-audit triggers.
+
+    Thresholds come from the live `.meta/scale-audit-config.json` baseline
+    (via load_thresholds) so each audit can reset them forward; absent config
+    falls back to DEFAULT_THRESHOLDS. Returns dict with per-trigger fired
+    status + the threshold + the actual value. Trigger 4 (ratio inversion)
+    uses the Q1/Q4 comparison; the others are single-snapshot or sustained.
     """
+    t = thresholds or DEFAULT_THRESHOLDS
     triggers = []
 
     # 1: total pages
@@ -419,46 +542,60 @@ def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
     triggers.append({
         "id": 1,
         "name": "total_pages_threshold",
-        "fired": total >= TRIGGER_TOTAL_PAGES,
-        "threshold": TRIGGER_TOTAL_PAGES,
+        "fired": total >= t["total_pages"],
+        "threshold": t["total_pages"],
         "actual": total,
     })
 
-    # 2: needs_verification sustained across 3+ runs. Filter nulls BEFORE
-    # slicing so a malformed lint_log row (missing the count field) doesn't
-    # collapse the window and hide a met sustained condition.
-    nv_series = probes["lint_trend"].get("series", {}).get("needs_verification", [])
+    # 2: composite — needs_verification sustained across N runs AND the latest
+    # verify queue (needs_verification + single_source_unverified) at/over the
+    # queue threshold. The 2026-06-06 reset added the queue arm: a sustained-but-
+    # small nv shouldn't fire on its own (the v1.x corroborate drain handles
+    # that); the audit re-fires only when the *queue* is genuinely deep. Filter
+    # nulls BEFORE slicing so a malformed lint_log row can't collapse the window.
+    series = probes["lint_trend"].get("series", {})
+    nv_series = series.get("needs_verification", [])
     nv_clean = [v for v in nv_series if isinstance(v, (int, float))]
-    nv_window = nv_clean[-TRIGGER_NEEDS_VERIFICATION_RUNS:]
-    fired_2 = (
-        len(nv_window) >= TRIGGER_NEEDS_VERIFICATION_RUNS
-        and all(v >= TRIGGER_NEEDS_VERIFICATION for v in nv_window)
+    nv_runs = t["needs_verification_runs"]
+    nv_window = nv_clean[-nv_runs:]
+    nv_sustained = (
+        len(nv_window) >= nv_runs
+        and all(v >= t["needs_verification"] for v in nv_window)
     )
+    latest_nv = _latest(nv_series)
+    latest_ssu = _latest(series.get("single_source_unverified", []))
+    verify_queue = None
+    if latest_nv is not None:
+        verify_queue = latest_nv + (latest_ssu or 0)
+    queue_deep = verify_queue is not None and verify_queue >= t["verify_queue"]
     triggers.append({
         "id": 2,
-        "name": "needs_verification_sustained",
-        "fired": fired_2,
-        "threshold": TRIGGER_NEEDS_VERIFICATION,
-        "runs_required": TRIGGER_NEEDS_VERIFICATION_RUNS,
-        "last_n_values": nv_window,
-        "latest": nv_window[-1] if nv_window else None,
+        "name": "verify_queue_sustained",
+        "fired": bool(nv_sustained and queue_deep),
+        "threshold_needs_verification": t["needs_verification"],
+        "threshold_verify_queue": t["verify_queue"],
+        "runs_required": nv_runs,
+        "nv_last_n_values": nv_window,
+        "verify_queue": verify_queue,
+        "nv_sustained": nv_sustained,
     })
 
-    # 3: broken_links sustained across 5+ runs. Same null-filter-before-slice
+    # 3: broken_links sustained across N runs. Same null-filter-before-slice
     # discipline as trigger 2.
-    bl_series = probes["lint_trend"].get("series", {}).get("broken_links", [])
+    bl_series = series.get("broken_links", [])
     bl_clean = [v for v in bl_series if isinstance(v, (int, float))]
-    bl_window = bl_clean[-TRIGGER_BROKEN_LINKS_RUNS:]
+    bl_runs = t["broken_links_runs"]
+    bl_window = bl_clean[-bl_runs:]
     fired_3 = (
-        len(bl_window) >= TRIGGER_BROKEN_LINKS_RUNS
-        and all(v > TRIGGER_BROKEN_LINKS for v in bl_window)
+        len(bl_window) >= bl_runs
+        and all(v > t["broken_links"] for v in bl_window)
     )
     triggers.append({
         "id": 3,
         "name": "broken_links_sustained",
         "fired": fired_3,
-        "threshold": TRIGGER_BROKEN_LINKS,
-        "runs_required": TRIGGER_BROKEN_LINKS_RUNS,
+        "threshold": t["broken_links"],
+        "runs_required": bl_runs,
         "last_n_values": bl_window,
         "latest": bl_window[-1] if bl_window else None,
     })
@@ -469,12 +606,12 @@ def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
     q4 = qs.get("Q4_newest", {}).get("updated_per_created")
     fired_4 = False
     if isinstance(q1, (int, float)) and isinstance(q4, (int, float)):
-        fired_4 = q4 < TRIGGER_RATIO_FLOOR or q4 < q1
+        fired_4 = q4 < t["ratio_floor"] or q4 < q1
     triggers.append({
         "id": 4,
         "name": "ratio_inversion",
         "fired": fired_4,
-        "threshold_floor": TRIGGER_RATIO_FLOOR,
+        "threshold_floor": t["ratio_floor"],
         "Q1": q1,
         "Q4": q4,
     })
@@ -484,6 +621,7 @@ def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
     # `agent-harness`. The structural concern is universal: a high-traffic
     # concept page that has grown past the Read limit can no longer be
     # routinely opened mid-ingest, which forces structural decomposition.
+    hub_words_threshold = t["top_concept_hub_words"]
     top_concept_hub = next(
         (h for h in probes["inbound"]["top_hubs"] if h["type"] == "concepts"),
         None,
@@ -496,17 +634,62 @@ def check_triggers(probes: dict, pages: dict[str, Path]) -> dict:
     triggers.append({
         "id": 5,
         "name": "top_concept_hub_size_proxy",
-        "fired": isinstance(hub_words, int) and hub_words >= TRIGGER_TOP_CONCEPT_HUB_WORDS,
-        "threshold_words": TRIGGER_TOP_CONCEPT_HUB_WORDS,
+        "fired": isinstance(hub_words, int) and hub_words >= hub_words_threshold,
+        "threshold_words": hub_words_threshold,
         "hub_slug": top_concept_hub["slug"] if top_concept_hub else None,
         "hub_words": hub_words,
         "note": "word-count proxy for the 25K-token Read limit",
     })
 
     return {
-        "any_fired": any(t["fired"] for t in triggers),
-        "fired_count": sum(1 for t in triggers if t["fired"]),
+        "any_fired": any(t_["fired"] for t_ in triggers),
+        "fired_count": sum(1 for t_ in triggers if t_["fired"]),
         "triggers": triggers,
+    }
+
+
+# Drill-facing evaluation -----------------------------------------------
+
+def _reason_string(trig: dict) -> str:
+    """Short human-readable reason for a fired trigger (welcome-report banner)."""
+    tid = trig["id"]
+    if tid == 1:
+        return f"total_pages {trig['actual']}≥{trig['threshold']}"
+    if tid == 2:
+        return f"verify_queue {trig['verify_queue']}≥{trig['threshold_verify_queue']} (nv sustained)"
+    if tid == 3:
+        return f"broken_links sustained >{trig['threshold']}"
+    if tid == 4:
+        return f"ratio inversion (Q4 {trig['Q4']} < floor {trig['threshold_floor']} or < Q1 {trig['Q1']})"
+    if tid == 5:
+        return f"concept hub {trig['hub_slug']} {trig['hub_words']}w≥{trig['threshold_words']}"
+    return trig["name"]
+
+
+def evaluate(wiki_root: Path) -> dict:
+    """Compute the re-audit verdict for the wake-up drill.
+
+    Self-contained (own page walk, ~0.3s) — mirrors check_overview_triggers.evaluate.
+    Returns a compact block the welcome-report renderer maps to the
+    `⚙ SCALE AUDIT DUE` banner + offer line.
+    """
+    pages = _content_pages(wiki_root)
+    inbound = _inbound_counts(pages)
+    probes = {
+        "inbound": probe_inbound_distribution(pages, inbound),
+        "lint_trend": probe_lint_trend(wiki_root),
+        "ingest_ratio": probe_ingest_ratio(wiki_root),
+    }
+    thresholds = load_thresholds(wiki_root)
+    result = check_triggers(probes, pages, thresholds)
+    cfg = load_config(wiki_root)
+    fired = [tr for tr in result["triggers"] if tr["fired"]]
+    return {
+        "should_audit": result["any_fired"],
+        "fired_count": result["fired_count"],
+        "reasons": [_reason_string(tr) for tr in fired],
+        "last_audit_date": cfg.get("last_audit_date"),
+        "configured": bool(cfg),
     }
 
 
@@ -596,14 +779,51 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of text")
     parser.add_argument(
         "--check-triggers", action="store_true",
-        help="Exit 1 if any of the 5 re-audit triggers fire; 0 otherwise.",
+        help="Exit 1 if any of the (config-baselined) re-audit triggers fire; 0 otherwise.",
     )
+    parser.add_argument(
+        "--init", action="store_true",
+        help="Write/reset the .meta/scale-audit-config.json baseline (run by "
+        "/wiki-scale-audit after an audit). Use threshold flags to set the next "
+        "firing's thresholds; absent flags keep the conservative defaults.",
+    )
+    parser.add_argument("--force", action="store_true", help="With --init: overwrite an existing config.")
+    parser.add_argument("--audit-doc", help="With --init: path to the dated audit doc this baseline resets from.")
+    parser.add_argument("--audit-date", help="With --init: ISO date of the audit (default: today).")
+    # Threshold override flags for --init.
+    parser.add_argument("--total-pages", type=int)
+    parser.add_argument("--needs-verification", type=int)
+    parser.add_argument("--needs-verification-runs", type=int)
+    parser.add_argument("--verify-queue", type=int)
+    parser.add_argument("--broken-links", type=int)
+    parser.add_argument("--broken-links-runs", type=int)
+    parser.add_argument("--ratio-floor", type=float)
+    parser.add_argument("--top-concept-hub-words", type=int)
     args = parser.parse_args()
 
     wiki_root = args.wiki_root.resolve()
     if not wiki_root.is_dir():
         print(f"error: wiki_root not a directory: {wiki_root}", file=sys.stderr)
         return 2
+
+    if args.init:
+        overrides = {
+            "total_pages": args.total_pages,
+            "needs_verification": args.needs_verification,
+            "needs_verification_runs": args.needs_verification_runs,
+            "verify_queue": args.verify_queue,
+            "broken_links": args.broken_links,
+            "broken_links_runs": args.broken_links_runs,
+            "ratio_floor": args.ratio_floor,
+            "top_concept_hub_words": args.top_concept_hub_words,
+        }
+        return init_config(
+            wiki_root,
+            overrides={k: v for k, v in overrides.items() if v is not None},
+            audit_doc=args.audit_doc,
+            audit_date=args.audit_date,
+            force=args.force,
+        )
 
     pages = _content_pages(wiki_root)
     inbound = _inbound_counts(pages)
@@ -615,10 +835,11 @@ def main() -> int:
         "ingest_ratio": probe_ingest_ratio(wiki_root),
         "graph_meta": probe_graph_metadata(pages, inbound),
     }
-    triggers = check_triggers(probes, pages)
+    thresholds = load_thresholds(wiki_root)
+    triggers = check_triggers(probes, pages, thresholds)
 
     if args.json:
-        print(json.dumps({"probes": probes, "triggers": triggers}, indent=2))
+        print(json.dumps({"probes": probes, "triggers": triggers, "thresholds": thresholds}, indent=2))
     else:
         print(_format_text(probes, triggers))
 
