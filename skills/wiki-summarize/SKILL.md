@@ -118,7 +118,7 @@ in the relay (rare; signals graph drift) but proceed with the resolved pages.
   precision). Use the `--queries-json` heredoc form `/wiki-query` Path B
   established — survives quotes/backslashes/special chars in the topic safely:
   ```bash
-  python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json - --top-k 25 <<'JSON'
+  PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib" python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json - --top-k 25 <<'JSON'
   ["<topic-json-escaped>"]
   JSON
   ```

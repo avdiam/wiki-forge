@@ -199,10 +199,19 @@ per-wiki content — only the *machinery* (scripts, agents) lives in the plugin.
 
 ### 5. Optional: Semantic search setup
 
-First, check if semantic search is already configured:
+The Python **dependencies** (onnxruntime, tokenizers, numpy) are provisioned
+automatically by the plugin's SessionStart hook (`hooks/hooks.json` →
+`scripts/install_deps.py`), isolated into `${CLAUDE_PLUGIN_DATA}/pylib`. This
+step's job is therefore the **per-wiki ONNX model** (~30MB, downloaded into
+`<wiki-root>/.meta/models/`) — a wiki-root-relative artifact the deps hook does
+not handle.
+
+First, check whether semantic search is fully configured (deps present AND model
+downloaded). The `PYTHONPATH` prefix lets the check see the hook-provisioned
+deps in `pylib`:
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --check
+PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib" python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --check
 ```
 
 - If output is `installed`: skip this step entirely. Note "semantic search:
@@ -210,19 +219,23 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --check
 - If output is `not installed`: tell the user:
 
   > "Semantic search enables hybrid keyword+meaning search for larger wikis
-  > (~90+ pages). It requires ~100MB of dependencies (onnxruntime, tokenizers,
-  > numpy). Small wikis work fine without it — the LLM reads indices directly."
+  > (~90+ pages). The Python deps are already installed with the plugin; this
+  > downloads a ~30MB model. Small wikis work fine without it — the LLM reads
+  > indices directly."
 
-  Ask: "Install semantic search dependencies now?"
+  Ask: "Download the semantic-search model now?"
 
-  If yes: run `python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --yes --wiki <wiki-root>`
+  If yes: run
+  `PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib" python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --yes --wiki <wiki-root>`
+  (`--yes` also re-installs the deps into the active env as a fallback, should
+  the SessionStart hook not have run yet — e.g. first session with no network.)
 
-  If the installation fails (pip errors, network issues), use WebSearch to
-  look up current troubleshooting for the specific failing package and
-  present the results to the user.
+  If the model download or a fallback install fails (network issues, pip
+  errors), use WebSearch to look up current troubleshooting for the specific
+  failure and present the results to the user.
 
   If no: skip. Note in the report that they can add it later by running
-  `python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py"`.
+  `PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib" python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --wiki <wiki-root>`.
 
 Do NOT ask about `zvec` during init — it's only relevant for very large
 wikis (2000+ pages). Mention it briefly in the final report as a future

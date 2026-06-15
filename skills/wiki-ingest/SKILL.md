@@ -233,7 +233,7 @@ The `--queries-json` flag takes a **file path** or `-` for stdin — it does not
 ```bash
 TMP=$(mktemp --suffix=.json)
 echo '["<theme1>","<theme2>","<theme3>"]' > "$TMP"
-python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json "$TMP" --top-k 5
+PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib" python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json "$TMP" --top-k 5
 rm "$TMP"
 ```
 

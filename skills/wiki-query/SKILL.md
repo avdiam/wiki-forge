@@ -32,7 +32,7 @@ Path B uses it as a fallback if the Agent tool's `<usage>` is malformed.
 Run the threshold check:
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --check-threshold
+PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib" python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --check-threshold
 ```
 
 This prints `INDEX_READABLE <tokens> <pages>` or `SEARCH_NEEDED <tokens> <pages>`.
@@ -69,7 +69,7 @@ This avoids the token cost of spawning a subagent for small wikis.
 
 2. **Run hybrid search** with the original question plus variations as a JSON array. Use a quoted heredoc so the JSON survives shell quoting unmolested even if the user's question contains apostrophes, double-quotes, dollar signs, or backticks:
    ```bash
-   python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json - <<'JSON'
+   PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib" python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json - <<'JSON'
    ["<original question>","<variation 1>","<variation 2>","<variation 3>"]
    JSON
    ```

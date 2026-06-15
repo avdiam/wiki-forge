@@ -1,0 +1,24 @@
+# Python deps for wiki-forge's OPTIONAL semantic-search feature.
+#
+# Used ONLY by scripts/hybrid_search.py (dense retrieval — ONNX runtime +
+# tokenizers + numpy). Every other script is pure-stdlib and needs nothing
+# from this file. Without these, search degrades gracefully to BM25 keyword
+# mode — the plugin is fully functional without them.
+#
+# Provisioning (isolated, automatic): the plugin's SessionStart hook
+# (hooks/hooks.json) runs scripts/install_deps.py, which pip-installs these
+# into ${CLAUDE_PLUGIN_DATA}/pylib via `pip install --target` — isolated from
+# the user's Python environment (no global pollution, dodges PEP 668), and
+# idempotent via a manifest-diff guard (re-runs only when this file changes).
+# Search callsites prepend PYTHONPATH="${CLAUDE_PLUGIN_DATA}/pylib".
+#
+# The per-wiki ONNX model (~30MB) is a separate, wiki-root-relative artifact
+# downloaded by scripts/setup_search.py into <wiki>/.meta/models/ — NOT
+# installed by this file or the deps hook.
+#
+# Pins reflect versions validated on the reference machine 2026-05-14. Bump
+# opportunistically when a script touches the dependency. Python 3.9+.
+
+numpy==2.4.4
+onnxruntime==1.24.4
+tokenizers==0.22.2

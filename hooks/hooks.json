@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/install_deps.py",
+              "${CLAUDE_PLUGIN_ROOT}",
+              "${CLAUDE_PLUGIN_DATA}"
+            ],
+            "timeout": 300,
+            "statusMessage": "Provisioning wiki-forge semantic-search deps (first run only)..."
+          }
+        ]
+      }
+    ]
+  }
+}
