@@ -69,6 +69,107 @@ class PureHelperTests(unittest.TestCase):
         self.assertFalse(tc.is_excluded(Path("Clippings/y.md")))
 
 
+class ExtractClaimSentenceTests(unittest.TestCase):
+    """A2: pull the claim sentence ending at a `{#claim-id}` anchor."""
+
+    def test_takes_last_sentence(self):
+        self.assertEqual(
+            tc.extract_claim_sentence("Some intro. The claim here."),
+            "The claim here.",
+        )
+
+    def test_strips_trailing_tag_marker(self):
+        self.assertEqual(
+            tc.extract_claim_sentence("The synthesized claim. *[INFERRED]* "),
+            "The synthesized claim.",
+        )
+
+    def test_strips_multiple_tag_markers(self):
+        self.assertEqual(
+            tc.extract_claim_sentence("A contested claim. *[AMBIGUOUS]* *[INFERRED]*"),
+            "A contested claim.",
+        )
+
+    def test_strips_leading_blockquote(self):
+        self.assertEqual(
+            tc.extract_claim_sentence("> A blockquoted claim."),
+            "A blockquoted claim.",
+        )
+
+    def test_strips_leading_bullet(self):
+        self.assertEqual(
+            tc.extract_claim_sentence("- A bulleted claim."),
+            "A bulleted claim.",
+        )
+
+    def test_keeps_bold_intact(self):
+        # `**Bold` must not be mistaken for a `* ` list bullet (needs whitespace).
+        self.assertEqual(
+            tc.extract_claim_sentence("**Bold** claim stands."),
+            "**Bold** claim stands.",
+        )
+
+    def test_single_sentence_passthrough(self):
+        self.assertEqual(tc.extract_claim_sentence("Just one claim."), "Just one claim.")
+
+
+class ResolveClaimAnchorTests(unittest.TestCase):
+    """A2: resolve `[[page-slug#claim-id]]` to the claim text on the wiki page."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.wiki = Path(self._tmp.name)
+        (self.wiki / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+        page_dir = self.wiki / "pages" / "entities"
+        page_dir.mkdir(parents=True)
+        (page_dir / "foo.md").write_text(
+            "---\ntitle: Foo\n---\n\n"
+            "Intro sentence. The harness matters more than the model. "
+            "*[INFERRED]* {#claim-harness}\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_resolves_claim_text_and_line(self):
+        res = tc.resolve_claim_anchor(self.wiki, "foo", "claim-harness")
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["claim_text"], "The harness matters more than the model.")
+        self.assertEqual(res["page"], "pages/entities/foo.md")
+        self.assertEqual(res["line"], 5)
+
+    def test_page_not_found(self):
+        res = tc.resolve_claim_anchor(self.wiki, "nope", "claim-harness")
+        self.assertFalse(res["ok"])
+        self.assertIn("page not found", res["error"])
+
+    def test_anchor_not_found(self):
+        res = tc.resolve_claim_anchor(self.wiki, "foo", "claim-missing")
+        self.assertFalse(res["ok"])
+        self.assertIn("not found", res["error"])
+
+
+class AnchorQueryRegexTests(unittest.TestCase):
+    def test_matches_anchor_form(self):
+        m = tc.ANCHOR_QUERY_RE.match("[[claude-code#claim-cc-launch]]")
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1), "claude-code")
+        self.assertEqual(m.group(2), "claim-cc-launch")
+
+    def test_tolerates_inner_whitespace(self):
+        m = tc.ANCHOR_QUERY_RE.match("[[ foo # claim-bar ]]")
+        self.assertIsNotNone(m)
+        self.assertEqual((m.group(1), m.group(2)), ("foo", "claim-bar"))
+
+    def test_plain_quote_is_not_an_anchor(self):
+        self.assertIsNone(tc.ANCHOR_QUERY_RE.match("the harness matters more than the model"))
+
+    def test_non_claim_anchor_rejected(self):
+        # `#heading` without the `claim-` prefix is not a claim anchor.
+        self.assertIsNone(tc.ANCHOR_QUERY_RE.match("[[foo#some-heading]]"))
+
+
 class TraceTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -205,6 +306,89 @@ class MainCliTests(unittest.TestCase):
         payload = json.loads(out)
         self.assertEqual(payload["match_type"], "verbatim")
         self.assertEqual(payload["query"], "harness matters")
+        self.assertEqual(payload["input_kind"], "quote")
+
+
+class AnchorCliTests(unittest.TestCase):
+    """A2 end-to-end: a `[[page#claim-id]]` query resolves on the wiki and
+    traces the claim text into the vault."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.vault = root / "vault"
+        self.wiki = root / "wiki"
+        (self.vault / "Web Articles").mkdir(parents=True)
+        (self.vault / "Web Articles" / "src.md").write_text(
+            "\nThe harness matters more than the model.\n", encoding="utf-8"
+        )
+        self.wiki.mkdir(parents=True)
+        (self.wiki / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+        page_dir = self.wiki / "pages" / "entities"
+        page_dir.mkdir(parents=True)
+        (page_dir / "foo.md").write_text(
+            "---\ntitle: Foo\n---\n\n"
+            "Intro. The harness matters more than the model. {#claim-harness}\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            rc = tc.main(argv)
+        return rc, out.getvalue()
+
+    def test_anchor_resolves_and_traces_with_wiki_flag(self):
+        rc, out = self._run(
+            [str(self.vault), "[[foo#claim-harness]]", "--wiki", str(self.wiki)]
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("Resolved [[foo#claim-harness]]", out)
+        self.assertIn("pages/entities/foo.md", out)
+        self.assertIn("Verbatim source", out)
+
+    def test_anchor_sibling_wiki_inference(self):
+        # No --wiki: the wiki is the sibling 'wiki' dir of the vault root.
+        rc, out = self._run([str(self.vault), "[[foo#claim-harness]]"])
+        self.assertEqual(rc, 0)
+        self.assertIn("Verbatim source", out)
+
+    def test_anchor_json_shape(self):
+        import json
+
+        rc, out = self._run(
+            [str(self.vault), "[[foo#claim-harness]]", "--wiki", str(self.wiki), "--json"]
+        )
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["input_kind"], "anchor")
+        self.assertEqual(payload["anchor"], {"page_slug": "foo", "claim_id": "claim-harness"})
+        self.assertEqual(payload["resolved"]["page"], "pages/entities/foo.md")
+        self.assertEqual(
+            payload["resolved"]["claim_text"], "The harness matters more than the model."
+        )
+        self.assertEqual(payload["match_type"], "verbatim")
+
+    def test_anchor_page_not_found_exits_2(self):
+        rc, _ = self._run(
+            [str(self.vault), "[[missing#claim-x]]", "--wiki", str(self.wiki)]
+        )
+        self.assertEqual(rc, 2)
+
+    def test_anchor_not_found_exits_2(self):
+        rc, _ = self._run(
+            [str(self.vault), "[[foo#claim-absent]]", "--wiki", str(self.wiki)]
+        )
+        self.assertEqual(rc, 2)
+
+    def test_anchor_missing_wiki_root_exits_2(self):
+        rc, _ = self._run(
+            [str(self.vault), "[[foo#claim-harness]]", "--wiki", str(self.wiki / "nope")]
+        )
+        self.assertEqual(rc, 2)
 
 
 if __name__ == "__main__":

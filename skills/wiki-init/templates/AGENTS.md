@@ -231,6 +231,26 @@ stale: false
   page that needs corroborating sources, not a page that needs rewriting —
   distinct from `stale: true` and `verify: true` (page-level signals).
 
+  **Claim-ID anchors** — *Optional, opt-in, same body-only scope as the
+  markers above.* Make a specific claim *addressable* by appending
+  `{#claim-<slug>}` (slug = lowercase `[a-z0-9-]+`) immediately after its
+  terminal punctuation — after any `*[TAG]*` marker, separated by one space.
+  Add an ID **by judgment**, only to a claim worth referencing directly (one
+  likely to be traced, cited across pages, or subject to a future contradiction
+  cascade) — **not** to every sentence, exactly like the flag-as-exception
+  philosophy of the tag markers. Applies to EXTRACTED and tagged claims alike.
+  Forward-only: legacy claims are not retroactively anchored, and absence is
+  never a lint event.
+
+  > Mark Chen extends this to two-domain wikis. *[INFERRED]* {#claim-chen-two-domain}
+  > Claude Code shipped agent teams in 2026. {#claim-cc-agent-teams-2026}
+
+  The anchor is the stable input granularity for **`/wiki-trace`**: instead of
+  pasting a quote, reference the claim as `[[page-slug#claim-<slug>]]` and the
+  skill resolves it to the claim text, then traces that into the raw vault.
+  `lint_wiki.py`'s `claim_id_issues` check enforces per-page uniqueness (so the
+  reference resolves to a single claim) and well-formed slugs.
+
 #### Typed cross-reference fields (optional, any page type)
 
 These three fields surface structured cross-page relationships in

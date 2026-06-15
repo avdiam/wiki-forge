@@ -54,6 +54,7 @@ import argparse
 import json
 import re
 import sys
+from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -85,6 +86,12 @@ STALE_DAYS = 90
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 AMBIGUOUS_MARKER_RE = re.compile(r"\*\[AMBIGUOUS\]\*")
 CLAIM_TAG_SCOPE_TYPES = {"concepts", "entities", "comparisons", "syntheses"}
+# Claim-ID anchors (A2). Well-formed: `{#claim-<slug>}` with slug [a-z0-9-]+.
+# Loose pattern catches malformed slugs (uppercase / underscore / space) that
+# the strict pattern would silently skip — surfaced as a lint issue.
+CLAIM_ID_RE = re.compile(r"\{#(claim-[a-z0-9-]+)\}")
+CLAIM_ID_LOOSE_RE = re.compile(r"\{#\s*claim[-_A-Za-z0-9 ]*\}")
+CLAIM_ID_FULL_RE = re.compile(r"^\{#claim-[a-z0-9-]+\}$")
 
 
 # === SHARED CORE: page loading, wikilink/typed-edge parsing, config ===
@@ -325,6 +332,38 @@ def check_excessive_ambiguous(pages: dict, threshold: int = 3) -> list[str]:
         if len(AMBIGUOUS_MARKER_RE.findall(info["body"])) > threshold:
             flagged.append(info["path"])
     return sorted(flagged)
+
+
+def check_claim_ids(pages: dict) -> list[dict]:
+    """Claim-ID anchor hygiene (A2). Concept/entity/comparison/synthesis pages.
+
+    Two issue kinds, each as `{page, claim_id, reason}`:
+      - **duplicate** — the same `{#claim-<slug>}` appears more than once on a
+        page. Anchors must be unique per page so `[[page#claim-id]]` resolves
+        to a single claim (`/wiki-trace` takes the first hit).
+      - **malformed** — a `{#claim...}` anchor whose slug is not `[a-z0-9-]+`
+        (uppercase, underscore, or a space after `#`). Silently unresolvable
+        otherwise — the strict matcher skips it.
+
+    Per wiki/AGENTS.md "claim-tag inline markers" → "Claim-ID anchors" rule.
+    Opt-in convention: absence of any anchor is never an issue.
+    """
+    issues: list[dict] = []
+    for info in pages.values():
+        if info["type"] not in CLAIM_TAG_SCOPE_TYPES:
+            continue
+        body = info["body"]
+        for cid, count in Counter(CLAIM_ID_RE.findall(body)).items():
+            if count > 1:
+                issues.append(
+                    {"page": info["path"], "claim_id": cid, "reason": f"duplicate (x{count})"}
+                )
+        for anchor in CLAIM_ID_LOOSE_RE.findall(body):
+            if not CLAIM_ID_FULL_RE.match(anchor):
+                issues.append(
+                    {"page": info["path"], "claim_id": anchor, "reason": "malformed slug"}
+                )
+    return sorted(issues, key=lambda d: (d["page"], d["claim_id"]))
 
 
 def check_drifted_sources(pages: dict) -> list[str]:
@@ -857,6 +896,7 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "missing_source_type": check_missing_source_type(pages),
         "needs_verification": check_needs_verification(pages),
         "excessive_ambiguous": check_excessive_ambiguous(pages),
+        "claim_id_issues": check_claim_ids(pages),
         "drifted_sources": check_drifted_sources(pages),
         "duplicate_sources": check_duplicate_sources(pages),
         "overview_staleness": check_overview_staleness(wiki_root),
@@ -889,6 +929,7 @@ def render_human(report: dict) -> str:
         f"Missing source_type:  {len(report['missing_source_type'])}",
         f"Needs verification:   {len(report['needs_verification'])}",
         f"Excessive AMBIGUOUS:  {len(report['excessive_ambiguous'])}",
+        f"Claim-ID issues:      {len(report.get('claim_id_issues', []))}",
         f"Drifted sources:      {len(report['drifted_sources'])}",
         f"Duplicate sources:    {len(report.get('duplicate_sources', []))}",
         f"Single-page cats:     {len(report['single_page_categories'])}",
@@ -992,6 +1033,12 @@ def render_human(report: dict) -> str:
         lines.append("Duplicate sources (same source_hash across multiple source pages):")
         for item in report["duplicate_sources"][:20]:
             lines.append(f"  hash {item['hash']}: {', '.join(item['pages'])}")
+
+    if report.get("claim_id_issues"):
+        lines.append("")
+        lines.append("Claim-ID anchor issues (duplicate or malformed {#claim-<slug>}):")
+        for item in report["claim_id_issues"][:20]:
+            lines.append(f"  {item['page']}: {item['claim_id']} — {item['reason']}")
 
     return "\n".join(lines)
 

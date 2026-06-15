@@ -48,6 +48,16 @@ if hasattr(sys.stdout, "reconfigure"):
 _WS = re.compile(r"\s+")
 _WORD = re.compile(r"[a-z0-9]+")
 
+# A2 (claim-ID anchors). `[[page-slug#claim-<slug>]]` query form → resolve the
+# claim text on the wiki page, then trace that text into the vault. The body
+# anchor is `{#claim-<slug>}` placed after a claim's terminal punctuation.
+ANCHOR_QUERY_RE = re.compile(r"^\[\[\s*([^\]|#]+?)\s*#\s*(claim-[a-z0-9-]+)\s*\]\]$")
+# Strip trailing claim-tag markers (*[INFERRED]* / *[AMBIGUOUS]*) that sit
+# between the claim's terminal punctuation and the anchor.
+_TAG_TAIL_RE = re.compile(r"(?:\s*\*\[(?:INFERRED|AMBIGUOUS)\]\*)+\s*$")
+_LEAD_BLOCKQUOTE_RE = re.compile(r"^(?:\s*>+\s*)+")
+_LEAD_BULLET_RE = re.compile(r"^(?:[-*+]\s+|\d+\.\s+)")
+
 
 def normalize(text: str) -> str:
     """Lowercase + collapse all whitespace runs to single spaces, stripped."""
@@ -123,6 +133,56 @@ def _window(paragraph: str, needle_norm: str, max_chars: int) -> str:
     if end < len(paragraph):
         snippet = snippet + " …"
     return snippet
+
+
+def extract_claim_sentence(before_anchor: str) -> str:
+    """Given the text on a line up to (not including) the `{#claim-id}` anchor,
+    return the claim sentence.
+
+    The anchor sits after a claim's terminal punctuation, after any `*[TAG]*`
+    marker. So: strip the trailing tag marker(s), take the last sentence (the
+    anchor terminates one claim, not necessarily the whole line), then strip
+    leading blockquote / list markdown noise.
+    """
+    s = _TAG_TAIL_RE.sub("", before_anchor.rstrip()).rstrip()
+    sentences = re.split(r"(?<=[.!?])\s+", s)
+    claim = sentences[-1].strip() if sentences else s
+    claim = _LEAD_BLOCKQUOTE_RE.sub("", claim)
+    claim = _LEAD_BULLET_RE.sub("", claim)
+    return claim.strip()
+
+
+def resolve_claim_anchor(wiki_root: Path, page_slug: str, claim_id: str) -> dict:
+    """Resolve a `[[page-slug#claim-id]]` anchor to the claim text on the page.
+
+    Globs `wiki_root/pages/**/<page-slug>.md`, finds the line bearing the
+    `{#claim-id}` anchor, and extracts the claim sentence ending at it.
+
+    Returns `{ok: True, page, line, claim_text}` or `{ok: False, error}`.
+    """
+    matches = sorted(wiki_root.glob(f"pages/**/{page_slug}.md"))
+    if not matches:
+        return {
+            "ok": False,
+            "error": f"page not found: no pages/**/{page_slug}.md under {wiki_root}",
+        }
+    page = matches[0]
+    try:
+        text = page.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot read {page}: {exc}"}
+    rel = page.relative_to(wiki_root).as_posix()
+    needle = "{#" + claim_id + "}"
+    for i, line in enumerate(text.splitlines(), 1):
+        idx = line.find(needle)
+        if idx >= 0:
+            return {
+                "ok": True,
+                "page": rel,
+                "line": i,
+                "claim_text": extract_claim_sentence(line[:idx]),
+            }
+    return {"ok": False, "error": f"anchor {{#{claim_id}}} not found in {rel}"}
 
 
 def trace(
@@ -212,6 +272,15 @@ def render_human(result: dict) -> str:
     q = result["query"]
     mt = result["match_type"]
     lines: list[str] = []
+    if result.get("input_kind") == "anchor":
+        a = result["anchor"]
+        rv = result["resolved"]
+        lines.append(
+            f'Resolved [[{a["page_slug"]}#{a["claim_id"]}]] → '
+            f'`{rv["page"]}` (line {rv["line"]}):'
+        )
+        lines.append(_indent(f'"{rv["claim_text"]}"'))
+        lines.append("")
     if mt == "verbatim":
         lines.append(f'Verbatim source for: "{q}"')
         lines.append("")
@@ -250,7 +319,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         description="Trace a wiki claim back to its raw-vault source span."
     )
     p.add_argument("vault_root", type=Path, help="Path to the vault root")
-    p.add_argument("query", help="The quote or claim to trace (quote if it has spaces)")
+    p.add_argument(
+        "query",
+        help="The quote/claim to trace, or a [[page-slug#claim-id]] anchor (A2)",
+    )
+    p.add_argument(
+        "--wiki",
+        type=Path,
+        default=None,
+        help="Wiki root, for [[page#claim-id]] anchor resolution "
+        "(default: sibling 'wiki' dir of the vault root)",
+    )
     p.add_argument(
         "--max-results", type=int, default=5, help="Max spans to return (default 5)"
     )
@@ -277,12 +356,44 @@ def main(argv: list[str]) -> int:
     if args.max_results < 1:
         print("error: --max-results must be >= 1", file=sys.stderr)
         return 2
-    result = trace(
-        vault_root,
-        query,
-        max_results=args.max_results,
-        min_score=args.min_score,
-    )
+
+    anchor = ANCHOR_QUERY_RE.match(query)
+    if anchor:
+        page_slug, claim_id = anchor.group(1), anchor.group(2)
+        wiki_root = args.wiki.resolve() if args.wiki else vault_root.parent / "wiki"
+        if not (wiki_root / "CLAUDE.md").is_file():
+            print(
+                f"error: wiki root not found for anchor resolution: {wiki_root} "
+                "(pass --wiki <wiki-root>)",
+                file=sys.stderr,
+            )
+            return 2
+        res = resolve_claim_anchor(wiki_root, page_slug, claim_id)
+        if not res["ok"]:
+            print(f"error: {res['error']}", file=sys.stderr)
+            return 2
+        result = trace(
+            vault_root,
+            res["claim_text"],
+            max_results=args.max_results,
+            min_score=args.min_score,
+        )
+        result["input_kind"] = "anchor"
+        result["anchor"] = {"page_slug": page_slug, "claim_id": claim_id}
+        result["resolved"] = {
+            "page": res["page"],
+            "line": res["line"],
+            "claim_text": res["claim_text"],
+        }
+    else:
+        result = trace(
+            vault_root,
+            query,
+            max_results=args.max_results,
+            min_score=args.min_score,
+        )
+        result["input_kind"] = "quote"
+
     if args.json:
         print(json.dumps(result, indent=2))
     else:
