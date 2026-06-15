@@ -20,14 +20,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-# Locate the helper-scripts dir in either the live (dev/tests/ -> wiki/.scripts)
-# or the wiki-forge (tests/ -> skills/wiki-init/templates/scripts) layout, so
+# Locate the canonical helper-scripts dir in either the live repo (dev/tests/ ->
+# wiki-forge/scripts) or a standalone wiki-forge checkout (tests/ -> scripts), so
 # this file stays byte-identical across both repos.
 def _scripts_dir() -> Path:
     here = Path(__file__).resolve()
     for cand in (
-        here.parents[2] / "wiki" / ".scripts",
-        here.parents[1] / "skills" / "wiki-init" / "templates" / "scripts",
+        here.parents[2] / "wiki-forge" / "scripts",
+        here.parents[1] / "scripts",
     ):
         if cand.is_dir():
             return cand
@@ -39,10 +39,17 @@ sys.path.insert(0, str(SCRIPTS))
 
 from lint_wiki import load_authoritative_categories
 
-# Wiki root that owns CATEGORIES.md (parent of the scripts dir in both layouts).
-WIKI_ROOT = SCRIPTS.parent
+# Live wiki root that owns CATEGORIES.md. Post-collapse the scripts live in the
+# plugin (wiki-forge/scripts/), NOT inside the wiki, so derive the wiki root from
+# the repo layout rather than SCRIPTS.parent. Absent in a standalone wiki-forge
+# checkout (no live wiki) — the live smoke tests skip there.
+WIKI_ROOT = next(
+    (c for c in (Path(__file__).resolve().parents[2] / "wiki",) if (c / "CATEGORIES.md").is_file()),
+    None,
+)
 
 
+@unittest.skipUnless(WIKI_ROOT is not None, "no live wiki/CATEGORIES.md (standalone wiki-forge checkout)")
 class TestLoadCategoriesLive(unittest.TestCase):
     """Smoke test against the live wiki/CATEGORIES.md file.
 

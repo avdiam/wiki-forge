@@ -30,4 +30,4 @@ Thumbs.db
 
 # Wiki runtime (generated when wiki-init runs, not part of the kit)
 .meta/
-.scripts/models/
+.meta/models/

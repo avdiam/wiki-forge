@@ -214,7 +214,7 @@ _cached_session = None
 
 
 def _get_model_dir(wiki_root: Path) -> Path:
-    return wiki_root / ".scripts" / "models" / "all-MiniLM-L6-v2"
+    return wiki_root / ".meta" / "models" / "all-MiniLM-L6-v2"
 
 
 def _load_model(model_dir: Path):

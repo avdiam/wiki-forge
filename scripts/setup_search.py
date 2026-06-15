@@ -19,7 +19,7 @@ Checks for:
   - numpy
 
 
-Installs model to: <wiki>/.scripts/models/all-MiniLM-L6-v2/
+Installs model to: <wiki>/.meta/models/all-MiniLM-L6-v2/
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ def find_wiki_root(start: Path) -> Path | None:
 
 def is_setup_complete(wiki_root: Path) -> bool:
     """Check if semantic search is fully set up."""
-    model_dir = wiki_root / ".scripts" / "models" / MODEL_NAME
+    model_dir = wiki_root / ".meta" / "models" / MODEL_NAME
     has_model = (model_dir / "model.onnx").is_file()
     has_tokenizer = (model_dir / "tokenizer.json").is_file()
     has_packages = len(check_packages()) == 0
@@ -207,7 +207,7 @@ def main() -> int:
     print()
 
     # Download model files
-    model_dir = wiki_root / ".scripts" / "models" / MODEL_NAME
+    model_dir = wiki_root / ".meta" / "models" / MODEL_NAME
     model_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Downloading {MODEL_NAME} model to {model_dir}")
@@ -237,7 +237,7 @@ def main() -> int:
     print("automatically use it when the wiki grows beyond ~90 pages.")
     print()
     print("Tip: Add this to .gitignore to keep the model out of git:")
-    print("  .scripts/models/")
+    print("  .meta/models/")
     print("  .meta/embeddings_cache.json")
     print("  .meta/vectors.zvec")
     print()
@@ -247,7 +247,7 @@ def main() -> int:
 
     # Write .gitignore suggestion if not already there
     gitignore = wiki_root / ".gitignore"
-    lines_to_add = [".scripts/models/", ".meta/embeddings_cache.json"]
+    lines_to_add = [".meta/models/", ".meta/embeddings_cache.json"]
     if gitignore.is_file():
         existing = gitignore.read_text(encoding="utf-8")
         new_lines = [l for l in lines_to_add if l not in existing]

@@ -5,7 +5,7 @@ Stdlib `unittest` only — no pytest, no third-party deps. Discovers every
 `test_*.py` in this directory, puts the helper-scripts dir on `sys.path` so
 the tests can import the modules under test, and runs them.
 
-The suite tests the helper scripts that live in `wiki/.scripts/` (live repo)
+The suite tests the helper scripts that live in `wiki-forge/scripts/` (live repo)
 or `skills/wiki-init/templates/scripts/` (wiki-forge mirror). The path probe
 below resolves whichever layout this copy sits in, so this file — like the
 test files it discovers — stays byte-identical across both repos.
@@ -29,8 +29,8 @@ TESTS_DIR = Path(__file__).resolve().parent
 def _scripts_dir() -> Path:
     """Locate the helper-scripts dir in either the live or wiki-forge layout."""
     for cand in (
-        TESTS_DIR.parents[1] / "wiki" / ".scripts",
-        TESTS_DIR.parent / "skills" / "wiki-init" / "templates" / "scripts",
+        TESTS_DIR.parents[1] / "wiki-forge" / "scripts",
+        TESTS_DIR.parent / "scripts",
     ):
         if cand.is_dir():
             return cand

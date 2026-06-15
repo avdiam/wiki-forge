@@ -19,8 +19,8 @@ from pathlib import Path
 def _scripts_dir() -> Path:
     here = Path(__file__).resolve()
     for cand in (
-        here.parents[2] / "wiki" / ".scripts",
-        here.parents[1] / "skills" / "wiki-init" / "templates" / "scripts",
+        here.parents[2] / "wiki-forge" / "scripts",
+        here.parents[1] / "scripts",
     ):
         if cand.is_dir():
             return cand

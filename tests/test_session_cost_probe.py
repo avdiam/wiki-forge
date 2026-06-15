@@ -2,7 +2,7 @@
 """Unit tests for session_cost_probe.py — transcript-window cost aggregation.
 
 Stdlib unittest only. Byte-identical across the live (dev/tests/ ->
-wiki/.scripts) and wiki-forge (tests/ -> skills/wiki-init/templates/scripts)
+wiki-forge/scripts) and wiki-forge (tests/ -> skills/wiki-init/templates/scripts)
 layouts via the upward path probe below — same shape as test_log_writer.py.
 """
 from __future__ import annotations
@@ -14,15 +14,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# Locate the helper-scripts dir in either the live (dev/tests/ -> wiki/.scripts)
+# Locate the helper-scripts dir in either the live (dev/tests/ -> wiki-forge/scripts)
 # or wiki-forge (tests/ -> skills/wiki-init/templates/scripts) layout.
 here = Path(__file__).resolve()
 
 
 def _scripts_dir() -> Path:
     for cand in (
-        here.parents[2] / "wiki" / ".scripts",
-        here.parents[1] / "skills" / "wiki-init" / "templates" / "scripts",
+        here.parents[2] / "wiki-forge" / "scripts",
+        here.parents[1] / "scripts",
     ):
         if cand.is_dir():
             return cand
