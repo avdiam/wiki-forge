@@ -6,7 +6,7 @@ argument-hint: "<path|neighbors|subgraph> <slug> [<slug>] [--depth N] [--json]"
 
 # wiki-graph
 
-User-facing graph traversal over the wiki's wikilink topology. Three subcommands wrap `wiki/.scripts/graph_query.py`:
+User-facing graph traversal over the wiki's wikilink topology. Three subcommands wrap `${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py`:
 
 - `path A B` — shortest path between two slugs (undirected).
 - `neighbors X [--depth N]` — pages within N hops of X. Default depth 1 (the wiki is dense; depth 2 from a hub commonly reaches most of the graph).
@@ -39,14 +39,14 @@ If a slug doesn't resolve unambiguously (e.g., "Karpathy" matches both `andrej-k
 
 ### 3. Run graph_query.py
 ```bash
-python <wiki>/.scripts/graph_query.py <wiki> <op> <args>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py" <wiki> <op> <args>
 ```
 
 Examples:
 ```bash
-python wiki/.scripts/graph_query.py wiki path andrej-karpathy graphify
-python wiki/.scripts/graph_query.py wiki neighbors lethal-trifecta --depth 2
-python wiki/.scripts/graph_query.py wiki subgraph llm-wiki-pattern
+python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py" wiki path andrej-karpathy graphify
+python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py" wiki neighbors lethal-trifecta --depth 2
+python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py" wiki subgraph llm-wiki-pattern
 ```
 
 Add `--json` if the user asked for machine-readable output, or if downstream chaining wants structured fields.
@@ -60,7 +60,7 @@ For very large `subgraph` results (>40 edges) the script truncates with a `… (
 Write one row to `wiki/.meta/query_log.jsonl` so the operation is visible in `query_stats.py` analyses and Phase-2 router design has real `/wiki-graph` invocation data.
 
 ```bash
-python <wiki>/.scripts/append_query_log.py --wiki <wiki> \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --query-skill graph \
   --query "<op> <slug-args>" \
   --pages-consulted "<comma-sep result slugs>" \

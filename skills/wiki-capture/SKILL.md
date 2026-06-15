@@ -65,7 +65,7 @@ source pages) runs in `/wiki-ingest` step 4 — they're complementary.
 For URL captures, run the classifier first:
 
 ```bash
-python wiki/.scripts/extract_page_metadata.py "<url>"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/extract_page_metadata.py" "<url>"
 ```
 
 The script returns a JSON object with `classification`, `next_action`, `metadata`, `tag_source`, and (when applicable) `fetch_status` / `http_code` / `fetch_error`. Route on `next_action`:
@@ -89,7 +89,7 @@ urllib couldn't reach the site (4xx / 5xx / timeout). Try WebFetch with the cano
 > 1. Confirm the metadata is real → I'll write `source_tags: [...]` and propose adding `<domain>` to the `head_preserving` list (so future captures from this domain skip the verification gate).
 > 2. Reject the metadata → I'll write `source_tags: []` with the `[clippings]` marker, and propose adding `<domain>` to the `auth_required` list (so future captures redirect to clipper)."
 
-Wait for user choice. Apply their decision to `wiki/.scripts/url_classifier_lists.json` only after confirmation. `tag_source: needs-verification` until confirmed; once confirmed, becomes `page-meta` (option 1) or `clippings-marker` (option 2).
+Wait for user choice. Apply their decision to the plugin's canonical `${CLAUDE_PLUGIN_ROOT}/scripts/url_classifier_lists.json` (locate via Glob `**/scripts/url_classifier_lists.json` for the Edit) only after confirmation. `tag_source: needs-verification` until confirmed; once confirmed, becomes `page-meta` (option 1) or `clippings-marker` (option 2).
 
 **`use-webfetch-prompt`** (`classification: head_preserving`)
 The domain is already on the head_preserving list (validated previously via the verification gate). Use WebFetch with the canonical metadata prompt below (`webfetch_metadata_prompt`); trust the returned metadata without re-asking. Carry `tag_source: page-meta` forward.
@@ -211,13 +211,13 @@ capture passes just `<name>`:
 
 ```bash
 # Web article capture
-python wiki/.scripts/regen_vault_index.py --vault vault --append "Web Articles/<filename>"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/regen_vault_index.py" --vault vault --append "Web Articles/<filename>"
 
 # Paper capture
-python wiki/.scripts/regen_vault_index.py --vault vault --append "Research Papers/<filename>"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/regen_vault_index.py" --vault vault --append "Research Papers/<filename>"
 
 # Root capture (pasted text, conversation ref, etc.)
-python wiki/.scripts/regen_vault_index.py --vault vault --append "<filename>"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/regen_vault_index.py" --vault vault --append "<filename>"
 ```
 
 Skip-if-URL-present semantics — duplicate URLs are no-op'd silently. This
@@ -260,7 +260,7 @@ clipper task-list of article titles; it must be real URLs.
 ### 1. Triage the list
 
 ```bash
-python wiki/.scripts/batch_capture.py "<file>" --vault vault --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/batch_capture.py" "<file>" --vault vault --json
 ```
 
 The helper does the deterministic, network-free front-half — dedup against

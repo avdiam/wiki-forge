@@ -31,7 +31,7 @@ Expect one of:
 - `rerun <path>` — re-ingest a previously processed file
 
 If no argument given: ask the user which file, or offer to scan `vault/`
-(run `python wiki/.scripts/lint_wiki.py wiki --json` and read
+(run `python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" wiki --json` and read
 `source_backlog`).
 
 > [!NOTE]
@@ -55,7 +55,7 @@ Before invoking `ingest_source.py`, verify the raw source path is canonical
 drops, and any future capture path that bypasses `/wiki-capture` and the
 clipper can carry filenames with apostrophes, spaces, em-dashes, or
 non-ASCII. The wiki-side gate ensures the rest of the pipeline operates on
-a canonical name; the standalone `wiki/.scripts/normalize_vault.py` is the
+a canonical name; the standalone `${CLAUDE_PLUGIN_ROOT}/scripts/normalize_vault.py` is the
 bulk pre-flight that handles the same case in batch.
 
 If the path is non-canonical, run the normalizer scoped to the single file's
@@ -63,7 +63,7 @@ parent content directory (cheap — content directories are small, and this
 keeps the rename blast radius to one folder rather than the whole vault):
 
 ```bash
-python <wiki>/.scripts/normalize_vault.py <vault>/<content-dir>   # e.g. vault/Clippings
+python "${CLAUDE_PLUGIN_ROOT}/scripts/normalize_vault.py" <vault>/<content-dir>   # e.g. vault/Clippings
 ```
 
 `normalize_vault.py` accepts either the vault root (walks every content
@@ -85,7 +85,7 @@ If the path is already canonical, this step is a no-op.
 #### 3b. Pre-process
 
 ```bash
-python <wiki>/.scripts/ingest_source.py --wiki <wiki> --source <raw-file> --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/ingest_source.py" --wiki <wiki> --source <raw-file> --json
 ```
 
 Keep the returned JSON brief — it carries `title_guess`, `word_count`,
@@ -130,7 +130,7 @@ If no match, continue.
 ### 5. Pre-screen for relevance and quality
 
 ```bash
-python <wiki>/.scripts/pre_screen.py --wiki <wiki> --source <raw-file> --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/pre_screen.py" --wiki <wiki> --source <raw-file> --json
 ```
 
 The script checks `source_tags` overlap with the wiki's tag vocabulary,
@@ -176,7 +176,7 @@ author watchlist. Verdict drives flow:
 After writing the stub:
 
 ```bash
-python <wiki>/.scripts/append_log.py note --title "skipped: <slug>" --note "reason: <reason>" --wiki <wiki>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note --title "skipped: <slug>" --note "reason: <reason>" --wiki <wiki>
 ```
 
 Exit without dispatching.
@@ -233,7 +233,7 @@ The `--queries-json` flag takes a **file path** or `-` for stdin — it does not
 ```bash
 TMP=$(mktemp --suffix=.json)
 echo '["<theme1>","<theme2>","<theme3>"]' > "$TMP"
-python <wiki>/.scripts/hybrid_search.py <wiki> --queries-json "$TMP" --top-k 5
+python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json "$TMP" --top-k 5
 rm "$TMP"
 ```
 
@@ -317,7 +317,7 @@ Do not proceed unless the user explicitly tells you to override.
 Run the deterministic stdlib scanner against the source file:
 
 ```bash
-python wiki/.scripts/check_secrets.py --wiki wiki "<source-path>"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/check_secrets.py" --wiki wiki "<source-path>"
 ```
 
 Pure stdlib regex; no model dependency. Output is JSON with a `findings`
@@ -350,7 +350,7 @@ vault in the first place.
 
 Sidecar config: `wiki/.meta/secret-patterns.json` (optional) extends the
 built-in pattern set; documented in the `check_secrets.py` module
-docstring (`python wiki/.scripts/check_secrets.py --help`).
+docstring (`python "${CLAUDE_PLUGIN_ROOT}/scripts/check_secrets.py" --help`).
 
 ### 11. Present takeaways and WAIT for free-form approval
 
@@ -561,7 +561,7 @@ Notes on the prompt shape:
 
 Parse two blocks from the Agent tool's return and write one row to
 `<wiki>/.meta/ingest_log.jsonl`. Schema in the `append_ingest_log.py`
-module docstring (`python wiki/.scripts/append_ingest_log.py --help`).
+module docstring (`python "${CLAUDE_PLUGIN_ROOT}/scripts/append_ingest_log.py" --help`).
 
 **Block A — `<usage>` metadata** the Agent tool appends after the report:
 
@@ -612,7 +612,7 @@ Carry forward from earlier steps:
 Append the row:
 
 ```bash
-python <wiki>/.scripts/append_ingest_log.py --wiki <wiki> \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_ingest_log.py" --wiki <wiki> \
   --source-path "<source_path>" \
   --source-type <source_type> \
   --source-word-count <N> \

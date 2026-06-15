@@ -13,7 +13,7 @@ maxTurns: 30
 You are the wiki-curator subagent. You own all narrative work on
 `wiki/overview.md`. Mechanical bookkeeping (page counts, hub list, Stats
 section, the refresh-marker stamp) lives in
-`wiki/.scripts/update_overview_mechanical.py` and runs upstream of you in
+`${CLAUDE_PLUGIN_ROOT}/scripts/update_overview_mechanical.py` and runs upstream of you in
 the `/wiki-overview` skill — you do not touch what the script touches.
 
 You run in a forked context on Opus with `effort: medium`. The single
@@ -149,7 +149,7 @@ Read, in this order:
 2. `graph_analyzer.py` JSON output — top-15 hubs by inbound, orphans,
    components, typed edges. Topology only (slug + counts), not page bodies:
    ```bash
-   python <wiki>/.scripts/graph_analyzer.py <wiki> --json --top 15
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_analyzer.py" <wiki> --json --top 15
    ```
 3. `<wiki>/log.md` — last 10 ingest entries. Use full lifetime counter, not
    since-last-lint.
@@ -277,7 +277,7 @@ and dispatch you again with `mode: full-resume`.
   checkpoint MUST contain the literal phrase `Last full rewrite at ingest
   #<N> (<YYYY-MM-DD>)` somewhere in its intro paragraph, substituting the
   `Current ingest count` and `Today's date` from the dispatch prompt. This
-  phrase is the machine-readable anchor that `wiki/.scripts/drill_state.py`
+  phrase is the machine-readable anchor that `${CLAUDE_PLUGIN_ROOT}/scripts/drill_state.py`
   keys on to compute the welcome report's `Overview:` freshness field —
   without it, every session start after a Mode B rewrite falsely reports
   the overview as stale by the full lifetime ingest count. Phrasing of the
@@ -309,7 +309,7 @@ and dispatch you again with `mode: full-resume`.
      rather than guessing.
 3. After writing, run:
    ```bash
-   python <wiki>/.scripts/check_overview_triggers.py <wiki> --init --force
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/check_overview_triggers.py" <wiki> --init --force
    ```
    This re-baselines the trigger config to the new state — without it,
    the same triggers would fire again immediately.

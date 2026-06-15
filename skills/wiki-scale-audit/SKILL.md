@@ -55,7 +55,7 @@ user, suggest `/wiki-init`, stop.
 ### 2. Trigger verdict
 
 ```bash
-python wiki/.scripts/scale_audit_probes.py wiki --check-triggers
+python "${CLAUDE_PLUGIN_ROOT}/scripts/scale_audit_probes.py" wiki --check-triggers
 ```
 
 Exit 1 = at least one trigger fired; exit 0 = none. The stdout shows the
@@ -70,7 +70,7 @@ trigger fired** (user-invoked out-of-cycle); say so in the doc if that's the cas
 ### 3. Gather the mechanical probes
 
 ```bash
-python wiki/.scripts/scale_audit_probes.py wiki --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/scale_audit_probes.py" wiki --json
 ```
 
 This returns `{probes, triggers, thresholds}`. Probes 1 (inbound distribution),
@@ -154,7 +154,7 @@ Run `--init --force` with the approved forward thresholds, so the welcome banner
 reflects the new baseline (and stops firing on the just-latched triggers):
 
 ```bash
-python wiki/.scripts/scale_audit_probes.py wiki --init --force \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/scale_audit_probes.py" wiki --init --force \
   --total-pages <N> --verify-queue <N> --needs-verification <N> \
   --broken-links <N> --ratio-floor <X> --top-concept-hub-words <N> \
   --audit-date <YYYY-MM-DD> --audit-doc dev/<YYYY-MM-DD>-mode7-audit.md
@@ -162,7 +162,7 @@ python wiki/.scripts/scale_audit_probes.py wiki --init --force \
 
 Omit any flag whose threshold is unchanged from the default (it'll keep the
 default); pass every flag whose value the audit decided, to be explicit. Confirm
-afterward that `python wiki/.scripts/run_drill.py wiki` reports
+afterward that `python "${CLAUDE_PLUGIN_ROOT}/scripts/run_drill.py" wiki` reports
 `scale_audit.should_audit: false` (unless a trigger genuinely still fires under
 the new baseline — e.g. a biting sub-problem the user wants to keep surfaced).
 

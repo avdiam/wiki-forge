@@ -55,7 +55,7 @@ informational path.
 Run `list_unresolved_hubs.py` for the target slug:
 
 ```bash
-python wiki/.scripts/list_unresolved_hubs.py wiki --slug <slug>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/list_unresolved_hubs.py" wiki --slug <slug>
 ```
 
 The script returns JSON:
@@ -301,7 +301,7 @@ Invoked with no slug, just `--list`. Surfaces the stub-candidate queue.
 Run:
 
 ```bash
-python wiki/.scripts/list_unresolved_hubs.py wiki --list
+python "${CLAUDE_PLUGIN_ROOT}/scripts/list_unresolved_hubs.py" wiki --list
 ```
 
 Render the result as a markdown table for the user:
@@ -315,7 +315,7 @@ Stub candidates (slugs with ≥10 unresolved inbound wikilinks):
 | ... | ... | ... |
 
 To create a hub stub: `/wiki-stub <slug>`
-To list at a different threshold: `python wiki/.scripts/list_unresolved_hubs.py wiki --list --threshold N`
+To list at a different threshold: `python "${CLAUDE_PLUGIN_ROOT}/scripts/list_unresolved_hubs.py" wiki --list --threshold N`
 ```
 
 If `count: 0`, tell the user no candidates exceed the threshold and stop.
@@ -332,7 +332,7 @@ After the page is written:
 #### 4a. Regenerate indexes
 
 ```bash
-python wiki/.scripts/update_index.py wiki
+python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" wiki
 ```
 
 #### 4b. Commit
@@ -357,7 +357,7 @@ Example messages:
 #### 4c. Append to `log.md`
 
 ```bash
-python wiki/.scripts/append_log.py stub --title "<title>" \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" stub --title "<title>" \
     --created "<type>/<slug>.md" \
     --commit <short-hash> \
     --note "<pattern>-pattern: <context>" \

@@ -30,7 +30,7 @@ Context for this run:
 - Wiki root: <absolute path to wiki/>
 
 Run the three-pass workflow:
-  Pass A: Mechanical (wiki/.scripts/lint_wiki.py --json)
+  Pass A: Mechanical (${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py --json)
   Pass B: Semantic (read flagged pages, detect real contradictions and stale facts)
   Pass C: Human-readable report with prioritized fix offer
 
@@ -79,7 +79,7 @@ Treat `Fixes committed: none` as empty-string `--commit` (the script omits
 the commit line when blank):
 
 ```bash
-python <wiki>/.scripts/append_log.py lint \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" lint \
   --title "<Verdict-summary from footer>" \
   --commit "<short-hash if Fixes committed != 'none', else ''>" \
   --wiki <wiki>
@@ -88,7 +88,7 @@ python <wiki>/.scripts/append_log.py lint \
 **Append the `lint_log.jsonl` row** — always:
 
 ```bash
-python <wiki>/.scripts/append_lint_log.py \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_lint_log.py" \
   --wiki <wiki> \
   --lint-type full \
   --ingest-count-at-run <Ingests at run from footer> \

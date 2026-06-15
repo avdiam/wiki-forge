@@ -33,7 +33,7 @@ Parse the invocation as a flat cascade:
 1. `--check` → run `check_overview_triggers.py` only, report verdict, stop.
 2. `--full` → Mode B (skip the trigger check).
 3. `--soft` → Mode A.
-4. No flag → peek `python wiki/.scripts/check_overview_triggers.py wiki`. If `should_rewrite: true` AND the call is not chained from lint, surface the reasons and ask whether the user wants `--soft` (skip the structural realignment) or `--full` (do it now); default to `--soft` on silence. Otherwise → Mode A.
+4. No flag → peek `python "${CLAUDE_PLUGIN_ROOT}/scripts/check_overview_triggers.py" wiki`. If `should_rewrite: true` AND the call is not chained from lint, surface the reasons and ask whether the user wants `--soft` (skip the structural realignment) or `--full` (do it now); default to `--soft` on silence. Otherwise → Mode A.
 5. Anything else → reject with usage hint.
 
 Mode B's approval gate is non-skippable, so silent-default-to-soft is not a recovery hazard.
@@ -74,9 +74,9 @@ reuse of step 5's snapshot:
 
 ```bash
 if [ -f /tmp/wiki-graph.json ]; then
-    python wiki/.scripts/update_overview_mechanical.py wiki --graph-json /tmp/wiki-graph.json
+    python "${CLAUDE_PLUGIN_ROOT}/scripts/update_overview_mechanical.py" wiki --graph-json /tmp/wiki-graph.json
 else
-    python wiki/.scripts/update_overview_mechanical.py wiki
+    python "${CLAUDE_PLUGIN_ROOT}/scripts/update_overview_mechanical.py" wiki
 fi
 ```
 
@@ -104,7 +104,7 @@ date, created/updated page lists) and `<SYNTHESIS>` + `<SECTION-TITLE>`
 placeholders left for the curator:
 
 ```bash
-python wiki/.scripts/emit_recent_ingests_skeleton.py \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/emit_recent_ingests_skeleton.py" \
   --wiki wiki --from $((prev_n + 1)) --to $curr_n
 ```
 
@@ -176,7 +176,7 @@ the commit.
 ### 6A. Append to log.md
 
 ```bash
-python wiki/.scripts/append_log.py note \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note \
   --title "overview soft-refresh at ingest #<curr_n>" \
   --note "ingests <prev_n+1>–<curr_n> summarized; mechanical stats refreshed" \
   --wiki wiki
@@ -193,7 +193,7 @@ tool_uses, duration_ms}`, run `<field>:\s*(\d+)` against the
 skipped because the diff was empty.
 
 ```bash
-python wiki/.scripts/append_overview_log.py --wiki wiki \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
   --mode soft \
   --ingest-count-at-run <curr_n> \
   --status <applied|no_changes> \
@@ -257,7 +257,7 @@ today=$(date +%Y-%m-%d)
 `ingest_n` is the lifetime ingest count; `today` is the rewrite date.
 Both go into the literal phrase `Last full rewrite at ingest #<N>
 (<YYYY-MM-DD>)` the curator embeds in the rewritten intro paragraph —
-that phrase is what `wiki/.scripts/drill_state.py` parses to compute the
+that phrase is what `${CLAUDE_PLUGIN_ROOT}/scripts/drill_state.py` parses to compute the
 welcome report's `Overview:` freshness field after Mode B runs.
 
 Use the Agent tool:
@@ -364,7 +364,7 @@ deleted by the curator.
 ### 6B. Append to log.md
 
 ```bash
-python wiki/.scripts/append_log.py note \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note \
   --title "overview full rewrite (Mode B)" \
   --note "<curator's result string>" \
   --wiki wiki
@@ -382,7 +382,7 @@ across the two passes; `duration_ms` sums the two passes' wall-clocks.
 Pass 2 returned status `cancelled` (skip the commit entirely).
 
 ```bash
-python wiki/.scripts/append_overview_log.py --wiki wiki \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
   --mode full \
   --trigger "<reasons string OR user-invoked>" \
   --ingest-count-at-run <N> \

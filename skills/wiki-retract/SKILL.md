@@ -111,7 +111,7 @@ For each wiki page whose `sources:` frontmatter lists the retracted source:
 
 ### 5. Update indexes
 
-Run `python <wiki>/.scripts/update_index.py <wiki>` to refresh indexes
+Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>` to refresh indexes
 with updated confidence values.
 
 ### 6. Author watchlist (optional)
@@ -150,7 +150,7 @@ git commit -m "retract: <source-slug> — <short reason>"
 ### 8. Log and report
 
 ```bash
-python <wiki>/.scripts/append_log.py note \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note \
   --title "retract: <source-slug>" \
   --note "<reason>. Affected: <N> sole-source, <M> multi-source pages." \
   --wiki <wiki>

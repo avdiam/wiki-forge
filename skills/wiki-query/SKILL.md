@@ -32,7 +32,7 @@ Path B uses it as a fallback if the Agent tool's `<usage>` is malformed.
 Run the threshold check:
 
 ```bash
-python <wiki>/.scripts/hybrid_search.py <wiki> --check-threshold
+python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --check-threshold
 ```
 
 This prints `INDEX_READABLE <tokens> <pages>` or `SEARCH_NEEDED <tokens> <pages>`.
@@ -69,7 +69,7 @@ This avoids the token cost of spawning a subagent for small wikis.
 
 2. **Run hybrid search** with the original question plus variations as a JSON array. Use a quoted heredoc so the JSON survives shell quoting unmolested even if the user's question contains apostrophes, double-quotes, dollar signs, or backticks:
    ```bash
-   python <wiki>/.scripts/hybrid_search.py <wiki> --queries-json - <<'JSON'
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json - <<'JSON'
    ["<original question>","<variation 1>","<variation 2>","<variation 3>"]
    JSON
    ```
@@ -159,17 +159,17 @@ so good answers compound.
 If yes (and handling inline):
 
 1. Create `syntheses/<slug>.md` using the synthesis template.
-2. Run `python <wiki>/.scripts/update_index.py <wiki>`
+2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>`
 3. If git repo: `git add . && git commit -m "query-filed: <slug>"`
-4. Log: `python <wiki>/.scripts/append_log.py query-filed --title "..." --created "syntheses/<slug>" --commit "<hash>" --wiki <wiki>`
+4. Log: `python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" query-filed --title "..." --created "syntheses/<slug>" --commit "<hash>" --wiki <wiki>`
 
 If the librarian was dispatched, relay the filing question and decision.
 
 ### 6. Log query telemetry (before relay)
 
 Write one row to `wiki/.meta/query_log.jsonl`. Schema documented in the
-[`append_query_log.py`](../../../wiki/.scripts/append_query_log.py)
-module docstring (`python wiki/.scripts/append_query_log.py --help`).
+[`append_query_log.py`](../../scripts/append_query_log.py)
+module docstring (`python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --help`).
 Field values depend on which path handled the query:
 
 **Path A (inline — small wiki):**
@@ -212,7 +212,7 @@ Field values depend on which path handled the query:
 Then append:
 
 ```bash
-python <wiki>/.scripts/append_query_log.py --wiki <wiki> \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --query "<raw query string>" \
   --search-mode <inline|hybrid|hybrid_zvec|bm25_only> \
   --pages-consulted "<comma-sep slugs>" \

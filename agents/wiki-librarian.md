@@ -167,14 +167,14 @@ If the user says yes:
 
 1. Create `pages/syntheses/<slug>.md` using the synthesis template from
    AGENTS.md. Fill `summary:` with a one-sentence hook.
-2. Run `python <wiki>/.scripts/update_index.py <wiki>` to add it to the index.
+2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>` to add it to the index.
 3. If the wiki is a git repo, commit:
    ```bash
    git add . && git commit -m "query-filed: <question slug>"
    ```
 4. Log the operation:
    ```bash
-   python <wiki>/.scripts/append_log.py query-filed \
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" query-filed \
      --title "<question>" \
      --created "pages/syntheses/<slug>" \
      --commit "<short-hash>" \
@@ -223,7 +223,7 @@ If the user says yes (**create or overwrite** — re-run convention is overwrite
    `coverage_anchor_slug:` is the `Coverage anchor slug` from the dispatch
    prompt — set on Shape A, `null` on Shape B. Use `Write` (not `Edit`) so
    re-runs overwrite cleanly.
-2. Run `python <wiki>/.scripts/update_index.py <wiki>`.
+2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>`.
 3. If git repo, commit:
    ```bash
    git add . && git commit -m "survey-filed: <slug>-coverage"
@@ -232,7 +232,7 @@ If the user says yes (**create or overwrite** — re-run convention is overwrite
    `-coverage` and `subtype: coverage-report` frontmatter make the survey
    distinguishable post-hoc without a new log-operation type):
    ```bash
-   python <wiki>/.scripts/append_log.py query-filed \
+   python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" query-filed \
      --title "<topic> — coverage report" \
      --created "pages/syntheses/<slug>-coverage" \
      --commit "<short-hash>" \
@@ -256,7 +256,7 @@ otherwise the bare `<slug>.md` shape.
 **Parser contract — do not reformat.** The dispatching skill (`/wiki-query`
 or `/wiki-summarize`) parses these two footer lines to write a telemetry
 row to `.meta/query_log.jsonl` (schema in the
-[`append_query_log.py`](../../wiki/.scripts/append_query_log.py) module
+[`append_query_log.py`](../scripts/append_query_log.py) module
 docstring; run `--help` for usage). Specifically:
 
 - `pages_consulted` — extracted via regex `\[\[([^\]]+)\]\]` over the

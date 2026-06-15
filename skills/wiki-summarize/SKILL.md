@@ -17,8 +17,8 @@ material on a topic:
 
 **Two-shape retrieval.** Shape A (slug-anchored): when `<topic>` resolves to an
 existing page slug, retrieval = the anchor page + its depth-1 wikilink neighbors
-(via `wiki/.scripts/graph_query.py`). Shape B (fuzzy): otherwise, retrieval =
-top-25 hybrid-search results (via `wiki/.scripts/hybrid_search.py`). Auto-detect.
+(via `${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py`). Shape B (fuzzy): otherwise, retrieval =
+top-25 hybrid-search results (via `${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py`). Auto-detect.
 
 **Always dispatches the librarian** (no inline path). Surveys benefit from
 synthesis regardless of wiki size — the five-section shape is non-trivial to
@@ -118,7 +118,7 @@ in the relay (rare; signals graph drift) but proceed with the resolved pages.
   precision). Use the `--queries-json` heredoc form `/wiki-query` Path B
   established — survives quotes/backslashes/special chars in the topic safely:
   ```bash
-  python <wiki>/.scripts/hybrid_search.py <wiki> --queries-json - --top-k 25 <<'JSON'
+  python "${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.py" <wiki> --queries-json - --top-k 25 <<'JSON'
   ["<topic-json-escaped>"]
   JSON
   ```
@@ -213,7 +213,7 @@ Write one row to `wiki/.meta/query_log.jsonl`. Field values:
 - `--query-variations ""` — `/wiki-summarize` does not expand queries (single-topic surveys).
 
 ```bash
-python <wiki>/.scripts/append_query_log.py --wiki <wiki> \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --query-skill summarize \
   --query "<raw topic>" \
   --search-mode <slug-anchored|hybrid> \

@@ -39,7 +39,7 @@ The dispatching skill puts these in your prompt verbatim:
   - New categories proposed
 - `User emphasis / skip hints:` — free-form guidance the user added on approval, or "none"
 - `Verify-clearing decisions:` — one line per EDIT page that the takeaway gate's `### verify: true re-evaluation` block surfaced, in the form `<slug> — <Y | N | P: "<narrowed callout text>">`. Or `"none"` if no flagged pages were in scope this ingest. Step 3b applies these per-page after writing the EDIT.
-- `Source brief:` — JSON from `wiki/.scripts/ingest_source.py` (carries `title_guess`, `word_count`, `sha256_short`, `merge_mode`, `existing_summary`, `suggested_slug`, `preview`)
+- `Source brief:` — JSON from `${CLAUDE_PLUGIN_ROOT}/scripts/ingest_source.py` (carries `title_guess`, `word_count`, `sha256_short`, `merge_mode`, `existing_summary`, `suggested_slug`, `preview`)
 
 If the dispatch prompt is missing the `Approved plan:` block, halt and
 return — your dispatcher is misconfigured. Do not synthesize a plan from
@@ -133,10 +133,10 @@ file; carry them into step 3):
 - **Existing stubs to avoid wikilinking.** Names of entities, people, or
   concepts the source mentions that **do not** have a corresponding wiki
   page. Mechanically determine this list by running
-  `wiki/.scripts/check_wikilinks.py` against every candidate slug:
+  `${CLAUDE_PLUGIN_ROOT}/scripts/check_wikilinks.py` against every candidate slug:
 
   ```bash
-  python <wiki>/.scripts/check_wikilinks.py <wiki> \
+  python "${CLAUDE_PLUGIN_ROOT}/scripts/check_wikilinks.py" <wiki> \
     --planned <comma-sep slugs from this plan's CREATE lines> \
     --json \
     candidate-slug-1 candidate-slug-2 candidate-slug-3
@@ -145,7 +145,7 @@ file; carry them into step 3):
   Or pipe candidates via stdin if the list is long:
 
   ```bash
-  echo 'slug-1 slug-2 slug-3' | python <wiki>/.scripts/check_wikilinks.py <wiki> \
+  echo 'slug-1 slug-2 slug-3' | python "${CLAUDE_PLUGIN_ROOT}/scripts/check_wikilinks.py" <wiki> \
     --stdin --json --planned <comma-sep>
   ```
 
@@ -329,7 +329,7 @@ Two thresholds:
 ### 4. Regenerate the index
 
 ```bash
-python <wiki>/.scripts/update_index.py <wiki>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>
 ```
 
 This rebuilds the split index files in `pages/indexes/` deterministically from
@@ -356,7 +356,7 @@ is a no-op — safe to always include.
 Capture the short commit hash. Then append the operation log:
 
 ```bash
-python <wiki>/.scripts/append_log.py ingest \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" ingest \
   --title "<source title>" \
   --created "<comma-separated slugs>" \
   --updated "<comma-separated slugs>" \
@@ -370,7 +370,7 @@ audit-visible), stamp the decision on the most-recent matching
 `corroborate_log.jsonl` row:
 
 ```bash
-python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> --backfill-ingest \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_corroborate_log.py" --wiki <wiki> --backfill-ingest \
   --page-slug <slug> --decision <Y|P|N>
 ```
 
@@ -396,7 +396,7 @@ audit-visible), stamp the outcome on the most-recent matching
 `contradiction_log.jsonl` row:
 
 ```bash
-python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> --backfill-ingest \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_contradiction_log.py" --wiki <wiki> --backfill-ingest \
   --pair-key "<slug-a>|<slug-b>" --outcome <a_wins|b_wins|both_stand|defer>
 ```
 
@@ -422,7 +422,7 @@ entirely when no contradiction-resolution decisions fired in this ingest.
 Run the post-commit mechanical lint as a sanity check:
 
 ```bash
-python <wiki>/.scripts/lint_wiki.py <wiki> --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" <wiki> --json
 ```
 
 Parse the JSON. If any of `broken_links`, `orphans`, `index_drift`,
@@ -433,7 +433,7 @@ or defer. Do not auto-fix.
 Record the run in `<wiki>/.meta/lint_log.jsonl`:
 
 ```bash
-python <wiki>/.scripts/append_lint_log.py \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_lint_log.py" \
   --wiki <wiki> \
   --lint-type mechanical \
   --semantic-pass-ran false \

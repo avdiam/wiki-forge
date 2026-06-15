@@ -22,7 +22,7 @@ and skip decisions, user approves and adjusts, skill writes the handoff file.
 ### 1. Run the triage scanner
 
 ```bash
-python <wiki>/.scripts/triage_backlog.py --wiki <wiki> --vault <vault> --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/triage_backlog.py" --wiki <wiki> --vault <vault> --json
 ```
 
 This returns a JSON report with:
@@ -118,7 +118,7 @@ source_tags: <from original>
 EOF
 
 # Log it
-python <wiki>/.scripts/append_log.py note \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note \
   --title "skipped: <slug>" \
   --note "reason: <reason> (triage)" \
   --wiki <wiki>
@@ -200,7 +200,7 @@ When all checkboxes are ticked:
 ## Provenance
 
 Triaged in session <N> (<date>) via /wiki-triage.
-Pre-screened by wiki/.scripts/triage_backlog.py + wiki/.scripts/pre_screen.py.
+Pre-screened by ${CLAUDE_PLUGIN_ROOT}/scripts/triage_backlog.py + ${CLAUDE_PLUGIN_ROOT}/scripts/pre_screen.py.
 ```
 
 ### 7. Regenerate the vault URL index
@@ -210,7 +210,7 @@ have just written new skip stubs in step 5) — exactly the moment the
 clipper-side URL dedup index can be authoritatively refreshed:
 
 ```bash
-python <wiki>/.scripts/regen_vault_index.py --vault <vault>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/regen_vault_index.py" --vault <vault>
 ```
 
 This overwrites `vault/_indexes/url-index.json` from a full vault scan,

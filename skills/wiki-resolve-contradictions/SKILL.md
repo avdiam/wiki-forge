@@ -59,7 +59,7 @@ The argument grammar is small but explicit — three input shapes plus one flag:
 Run `list_contradictions.py`; capture stdout as JSON:
 
 ```bash
-python <wiki>/.scripts/list_contradictions.py --wiki <wiki> <PAIR_ARGS>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/list_contradictions.py" --wiki <wiki> <PAIR_ARGS>
 ```
 
 Where `<PAIR_ARGS>` is `--single <pair-key>` / `--batch X-Y` / `--all` /
@@ -104,7 +104,7 @@ skill is main-session only, so the harness emits no `<usage>` block; the
 transcript is the cost surface, read after the fact.
 
 ```bash
-python <wiki>/.scripts/session_cost_probe.py --emit-marker
+python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost_probe.py" --emit-marker
 ```
 
 Capture `start_line` and `batch_id`; hold both for steps 4.6 and 4.7. (If the
@@ -278,7 +278,7 @@ On `N` or silence, proceed to § 4.6. Skip when `total == 0`.
 #### 4.6 — Append a telemetry row
 
 ```bash
-python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_contradiction_log.py" --wiki <wiki> \
   --pair-key "<key>" \
   --pair-a-slug "<a>" --pair-a-type "<type-a>" \
   --pair-b-slug "<b>" --pair-b-type "<type-b>" \
@@ -309,7 +309,7 @@ Run **once**, after the per-pair loop (skip if step 3.5 was skipped). Probe the
 window opened at 3.5, then stamp the invocation cost onto every row of this batch:
 
 ```bash
-python <wiki>/.scripts/session_cost_probe.py --since-line <start_line>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost_probe.py" --since-line <start_line>
 ```
 
 Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
@@ -317,7 +317,7 @@ Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
 `output_tokens_pass` from the JSON, then:
 
 ```bash
-python <wiki>/.scripts/append_contradiction_log.py --wiki <wiki> --backfill-cost \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_contradiction_log.py" --wiki <wiki> --backfill-cost \
   --batch-id "<batch_id>" \
   --total-tokens <total_tokens> --tool-uses <tool_uses> \
   --duration-ms <duration_ms> --websearch-calls <websearch_calls> \

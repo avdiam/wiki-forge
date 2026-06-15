@@ -31,7 +31,7 @@ report, and offer fixes. Never silently mutate pages.
 Run the mechanical linter:
 
 ```bash
-python <wiki>/.scripts/lint_wiki.py <wiki> --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" <wiki> --json
 ```
 
 This returns JSON with these categories:
@@ -53,7 +53,7 @@ Then run the graph analyzer for structural topology, **stashing the
 output to `/tmp/wiki-graph.json` for downstream reuse**:
 
 ```bash
-python <wiki>/.scripts/graph_analyzer.py <wiki> --json | tee /tmp/wiki-graph.json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_analyzer.py" <wiki> --json | tee /tmp/wiki-graph.json
 ```
 
 This returns: total pages/edges, top hubs (outbound and inbound), orphans,

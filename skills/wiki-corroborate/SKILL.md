@@ -48,7 +48,7 @@ The argument grammar is small but explicit — three input shapes plus one flag:
 Run `list_verify_flags.py`; capture stdout as JSON:
 
 ```bash
-python <wiki>/.scripts/list_verify_flags.py --wiki <wiki> <FLAG_ARGS>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/list_verify_flags.py" --wiki <wiki> <FLAG_ARGS>
 ```
 
 Where `<FLAG_ARGS>` is `--single <slug>` / `--batch X-Y` / `--all` / nothing
@@ -84,7 +84,7 @@ shape" entry). `/wiki-corroborate` is main-session only, so the harness emits no
 `<usage>` block; the transcript is the only cost surface, read after the fact.
 
 ```bash
-python <wiki>/.scripts/session_cost_probe.py --emit-marker
+python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost_probe.py" --emit-marker
 ```
 
 Capture `start_line` and `batch_id` from the JSON. Hold both for steps 4.6 and
@@ -266,7 +266,7 @@ domain in the filtered set:
 3. Collect the user's choice verbatim; never assume.
 
 After all domains have been classified, write the accepted entries to
-`wiki/.scripts/url_classifier_lists.json` in one atomic edit (tier_1 /
+the plugin's canonical `${CLAUDE_PLUGIN_ROOT}/scripts/url_classifier_lists.json` (locate via Glob `**/scripts/url_classifier_lists.json` for the Edit) in one atomic edit (tier_1 /
 tier_2 / tier_3 entries go into the corresponding seed list; `denylist`
 entries go into the denylist; `skip` entries are NOT persisted — they
 re-surface on the next `/wiki-corroborate` invocation that retrieves
@@ -304,7 +304,7 @@ gate ship.
 #### 4.6 — Append a telemetry row
 
 ```bash
-python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_corroborate_log.py" --wiki <wiki> \
   --page-slug "<slug>" --page-type "<type>" --page-bucket "<A|B|C>" \
   --callout-text "<callout, JSON-quoted if needed>" \
   --candidates-returned <N filtered candidates> \
@@ -344,7 +344,7 @@ Probe the transcript window opened at step 3.5, then stamp the invocation-level
 cost onto every row of this batch:
 
 ```bash
-python <wiki>/.scripts/session_cost_probe.py --since-line <start_line>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost_probe.py" --since-line <start_line>
 ```
 
 Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
@@ -352,7 +352,7 @@ Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
 `output_tokens_pass` from the JSON, then:
 
 ```bash
-python <wiki>/.scripts/append_corroborate_log.py --wiki <wiki> --backfill-cost \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/append_corroborate_log.py" --wiki <wiki> --backfill-cost \
   --batch-id "<batch_id>" \
   --total-tokens <total_tokens> --tool-uses <tool_uses> \
   --duration-ms <duration_ms> --websearch-calls <websearch_calls> \
@@ -426,7 +426,7 @@ HITL-mandatory and lives at the ingestor's gate.
   thin — `--include-tier-3` is the explicit user opt-in.
 - **Cascade-update on user confirmation.** When an `unclassified` candidate is
   the right one (vendor docs we don't have on the list yet), the user can
-  confirm the proposed tier; update `wiki/.scripts/url_classifier_lists.json`
+  confirm the proposed tier; update the plugin's canonical `${CLAUDE_PLUGIN_ROOT}/scripts/url_classifier_lists.json`
   on the next operation. Lists never grow silently — every addition is
   user-confirmed. Same shape as session 47's `auth_required` cascade.
 - **Re-running on the same flag is fine.** No filter cache — newly-published
