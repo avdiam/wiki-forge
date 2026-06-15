@@ -123,7 +123,7 @@ two placeholder tokens only.
 
 Use the Agent tool:
 
-- **subagent_type:** `"wiki-curator"`
+- **subagent_type:** `"wiki-forge:wiki-curator"`
 - **model:** `"opus"` (frontmatter default)
 - **description:** `"Wiki overview soft refresh"`
 - **prompt:**
@@ -262,7 +262,7 @@ welcome report's `Overview:` freshness field after Mode B runs.
 
 Use the Agent tool:
 
-- **subagent_type:** `"wiki-curator"`
+- **subagent_type:** `"wiki-forge:wiki-curator"`
 - **model:** `"opus"`
 - **description:** `"Wiki overview full rewrite — Pass 1"`
 - **prompt:**
@@ -318,7 +318,7 @@ content. Do not paraphrase.
 
 Use the Agent tool again:
 
-- **subagent_type:** `"wiki-curator"`
+- **subagent_type:** `"wiki-forge:wiki-curator"`
 - **model:** `"opus"`
 - **description:** `"Wiki overview full rewrite — Pass 2"`
 - **prompt:**

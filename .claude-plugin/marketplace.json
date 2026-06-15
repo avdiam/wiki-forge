@@ -1,0 +1,14 @@
+{
+  "name": "wiki-forge-local",
+  "owner": {
+    "name": "wiki-forge Contributors"
+  },
+  "description": "Single-plugin marketplace for wiki-forge, served directly from this repo. Lets a project consume the plugin in place (directory source) for dogfooding and reproducible, checked-in installs.",
+  "plugins": [
+    {
+      "name": "wiki-forge",
+      "source": "./",
+      "description": "Turn your AI agent into a knowledge compiler. Skills + subagents + scripts for building a persistent, cross-referenced wiki. Full description in plugin.json."
+    }
+  ]
+}

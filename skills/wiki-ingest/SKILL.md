@@ -502,7 +502,7 @@ Model selection (priority order — first match wins):
 
 Use the Agent tool:
 
-- **subagent_type:** `"wiki-ingestor"`
+- **subagent_type:** `"wiki-forge:wiki-ingestor"`
 - **model:** `"sonnet"` or `"opus"` per above
 - **description:** `"Wiki ingest — <source title>"`
 - **prompt:**
