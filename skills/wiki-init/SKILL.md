@@ -1,6 +1,6 @@
 ---
 name: wiki-init
-description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs the schema files (CLAUDE.md, AGENTS.md, README.md, CATEGORIES.md) with custom domain categories injected into CATEGORIES.md, copies helper scripts to wiki/.scripts/, seeds pages/indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
+description: Bootstrap a new LLM Wiki vault in the current directory. Creates the wiki/ and vault/ folder structure, installs the schema files (CLAUDE.md, AGENTS.md, README.md, CATEGORIES.md) with custom domain categories injected into CATEGORIES.md, seeds pages/indexes/log/overview, optionally sets up semantic search, and optionally sets up git. Helper scripts and subagents ship with the wiki-forge plugin and are NOT copied into the project (pure-consumption model). Pass --dual-claude to additionally install the wiki-side identity files and SessionStart hook for a dual-Claude (wiki + clipper) project shape. Use when the user runs /wiki-init or asks to "set up a new wiki", "start an LLM wiki", or "create a knowledge base" in a project.
 argument-hint: "[--dual-claude]"
 disable-model-invocation: true
 ---
@@ -136,8 +136,9 @@ git config user.email
 - `wiki/pages/comparisons/`
 - `wiki/pages/syntheses/`
 - `wiki/pages/indexes/`
-- `wiki/.scripts/`
 - `wiki/.meta/`
+
+(No `wiki/.scripts/` — helper scripts ship with the wiki-forge plugin and run from `${CLAUDE_PLUGIN_ROOT}/scripts/`, not from inside the project.)
 
 ### 3. Install the Schema and Workflows
 
@@ -178,49 +179,30 @@ cp $TEMPLATES/CLAUDE.md $TEMPLATES/AGENTS.md $TEMPLATES/README.md $TEMPLATES/WOR
   See `wiki/CATEGORIES.md` for the authoritative category taxonomy.
   See `wiki/README.md` for human orientation and architecture.
   See `wiki/WORKFLOWS.md` for step-by-step manual operations.
-  Helper scripts are in `wiki/.scripts/` — run them via terminal.
+  Helper scripts ship with the wiki-forge plugin — run them via the `/wiki-*` skills.
   ```
 
-### 4. Install helper scripts
+### 4. Helper scripts — provided by the plugin (nothing to install)
 
-**Find the scripts directory:** Run Glob for `**/wiki-init/templates/scripts/*.py`
-to locate the templates folder. The scripts are verbatim copies — no
-customization happens at install time — so use a single Bash `cp` rather
-than Read+Write per file:
+Under the wiki-forge plugin model, the ~45 helper scripts are **not** copied
+into the project. They ship with the plugin and the `/wiki-*` skills invoke them
+as `python "${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py" <wiki-root> …`. Every
+script takes the wiki root as an argument, so one plugin copy serves every wiki
+on the machine — there is no `wiki/.scripts/` directory and no copy step.
 
-```bash
-cp <path-to-templates>/scripts/*.py wiki/.scripts/
-```
+This is the A1 "pure consumption" model from the Phase-1 collapse: one source of
+truth for the machinery, zero mirror tax. The schema/content files (Step 3) and
+navigation files (Step 6) are still written per-project because they are
+per-wiki content — only the *machinery* (scripts, agents) lives in the plugin.
 
-This is instant and silent compared to looping Read+Write across each
-script (which produces visible "Writing X..." steps and burns tokens for
-no benefit). Claude Code runs Git Bash on Windows per the project shell
-contract, so `cp` works cross-platform; if a future PowerShell-only
-environment ever needs to be supported, fall back to
-`python -c "import shutil, glob, pathlib; [shutil.copy(p, 'wiki/.scripts/') for p in glob.glob('<path>/scripts/*.py')]"`.
-
-The scripts installed:
-
-- `frontmatter.py` — shared YAML frontmatter parser (imported by other scripts)
-- `update_index.py` — regenerates split index files from page frontmatter
-- `append_log.py` — structured log-entry writer
-- `lint_wiki.py` — mechanical lint checks (orphans, broken links, stale, etc.)
-- `hybrid_search.py` — conditional BM25 + ONNX semantic search
-- `setup_search.py` — downloads ONNX model for semantic search (optional)
-- `ingest_source.py` — source pre-processing (metadata extraction, merge detection)
-- `graph_analyzer.py` — wikilink graph topology analysis (hubs, sinks, components)
-
-The core scripts are pure stdlib Python 3. `hybrid_search.py` gracefully
-degrades to BM25-only if ONNX dependencies are not installed.
-
-**Reserve Read+Write for files that get customized at install** — currently just `CATEGORIES.md` (seed-category find-and-replace, per Step 3). Verbatim files — `CLAUDE.md`, `AGENTS.md`, `README.md`, `WORKFLOWS.md`, every Python script — go through `cp`.
+**Reserve Read+Write for files that get customized at install** — currently just `CATEGORIES.md` (seed-category find-and-replace, per Step 3). The other schema files — `CLAUDE.md`, `AGENTS.md`, `README.md`, `WORKFLOWS.md` — are verbatim and go through `cp` (Step 3).
 
 ### 5. Optional: Semantic search setup
 
 First, check if semantic search is already configured:
 
 ```bash
-python wiki/.scripts/setup_search.py --check
+python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --check
 ```
 
 - If output is `installed`: skip this step entirely. Note "semantic search:
@@ -233,14 +215,14 @@ python wiki/.scripts/setup_search.py --check
 
   Ask: "Install semantic search dependencies now?"
 
-  If yes: run `python wiki/.scripts/setup_search.py --yes --wiki <wiki-root>`
+  If yes: run `python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py" --yes --wiki <wiki-root>`
 
   If the installation fails (pip errors, network issues), use WebSearch to
   look up current troubleshooting for the specific failing package and
   present the results to the user.
 
   If no: skip. Note in the report that they can add it later by running
-  `python wiki/.scripts/setup_search.py`.
+  `python "${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py"`.
 
 Do NOT ask about `zvec` during init — it's only relevant for very large
 wikis (2000+ pages). Mention it briefly in the final report as a future
@@ -295,9 +277,7 @@ The clipper-side implementation is **not** scaffolded by this step — only the 
 {
   "permissions": {
     "allow": [
-      "Bash(python wiki/.scripts/archive_mailbox.py:*)",
-      "Bash(python wiki/.scripts/drill_state.py:*)",
-      "Bash(python wiki/.scripts/format_graph_snapshot.py:*)"
+      "Bash(python:*)"
     ]
   }
 }
@@ -340,13 +320,7 @@ Tell the user:
   {
     "permissions": {
       "allow": [
-        "Bash(python wiki/.scripts/update_index.py:*)",
-        "Bash(python wiki/.scripts/append_log.py:*)",
-        "Bash(python wiki/.scripts/lint_wiki.py:*)",
-        "Bash(python wiki/.scripts/hybrid_search.py:*)",
-        "Bash(python wiki/.scripts/graph_analyzer.py:*)",
-        "Bash(python wiki/.scripts/ingest_source.py:*)",
-        "Bash(python wiki/.scripts/setup_search.py:*)"
+        "Bash(python:*)"
       ]
     }
   }
@@ -364,6 +338,6 @@ Tell the user:
 
 - Never overwrite an existing `wiki/` without explicit user confirmation
 - Always install the schema files — `CLAUDE.md` + `AGENTS.md` + `README.md` + `CATEGORIES.md` collectively ARE the schema; none optional
-- Always install the helper scripts — the subagents depend on them
+- Helper scripts and subagents ship with the wiki-forge plugin — NOT installed per-project; the `/wiki-*` skills invoke scripts via `${CLAUDE_PLUGIN_ROOT}/scripts/`
 - All navigation files (master index, sub-indices, log, overview) must exist
 - The seed categories in `CATEGORIES.md` should match the user's domain — don't force AI defaults
