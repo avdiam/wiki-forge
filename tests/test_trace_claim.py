@@ -69,6 +69,42 @@ class PureHelperTests(unittest.TestCase):
         self.assertFalse(tc.is_excluded(Path("Clippings/y.md")))
 
 
+class NormalizeReformatTests(unittest.TestCase):
+    """normalize() closes a class of verbatim-trace misses where the wiki compiler
+    cosmetically reformats a directly-EXTRACTED claim: it backticks code spans,
+    bolds labels, inserts `→` flow arrows, and rewrites number-words as digits in
+    tables ("three" -> "3"). Because the same normalization runs on both the query
+    and every vault paragraph, the EXTRACTED claim survives these edits and still
+    resolves to its verbatim source span instead of dropping to the fuzzy tier
+    (surfaced by the session-107 /wiki-trace demand-exercise, scenarios S2 + S4a)."""
+
+    def test_strips_backticks(self):
+        self.assertEqual(tc.normalize("the `-p` flag"), "the -p flag")
+
+    def test_strips_bold_markers(self):
+        self.assertEqual(tc.normalize("**Cost:** roughly free"), "cost: roughly free")
+
+    def test_strips_flow_arrow(self):
+        self.assertEqual(tc.normalize("GPT drafts → Claude audits"), "gpt drafts claude audits")
+
+    def test_folds_number_word_to_digit(self):
+        self.assertEqual(tc.normalize("flagged three real bugs"), "flagged 3 real bugs")
+        self.assertEqual(tc.normalize("flagged 3 real bugs"), "flagged 3 real bugs")
+
+    def test_folds_teens_and_tens(self):
+        self.assertEqual(tc.normalize("nineteen and ninety"), "19 and 90")
+
+    def test_number_fold_respects_word_boundaries(self):
+        # 'one'/'ten' embedded in 'someone'/'zone'/'often' must NOT be folded.
+        self.assertEqual(tc.normalize("someone in the zone often"), "someone in the zone often")
+
+    def test_single_asterisk_preserved(self):
+        # Only **bold** (double) is stripped; a lone '*' (glob, emphasis, math) is
+        # kept so a query like '*.md' doesn't degenerate into a substring of every
+        # '.md' file path in the vault.
+        self.assertEqual(tc.normalize("files match *.md"), "files match *.md")
+
+
 class ExtractClaimSentenceTests(unittest.TestCase):
     """A2: pull the claim sentence ending at a `{#claim-id}` anchor."""
 
@@ -264,6 +300,28 @@ class TraceTests(unittest.TestCase):
             self.assertEqual(set(hit), {"file", "slug", "line", "paragraph"})
         self.assertIn("duration_ms", r)
         self.assertEqual(r["files_searched"], 7)
+
+    def test_backtick_reformatted_claim_resolves_verbatim(self):
+        """S4a: the wiki backticks a code span the raw source leaves plain; the
+        claim must still resolve verbatim, not drop to fuzzy."""
+        self._drop(
+            "Web Articles/cost.md",
+            "\n**Cost:** ~$0.02 per /codex:rescue call at GPT-5.4 pricing.\n",
+        )
+        r = tc.trace(self.vault, "~$0.02 per `/codex:rescue` call at GPT-5.4 pricing")
+        self.assertEqual(r["match_type"], "verbatim")
+        self.assertEqual(r["results"][0]["file"], "Web Articles/cost.md")
+
+    def test_digit_word_reformatted_claim_resolves_verbatim(self):
+        """S2: the wiki renders the count as '3', the raw source wrote 'three'; the
+        claim must still resolve verbatim, not drop to fuzzy."""
+        self._drop(
+            "Web Articles/bugs.md",
+            "\nAfter review, Codex flagged three real bugs in the code.\n",
+        )
+        r = tc.trace(self.vault, "Codex flagged 3 real bugs")
+        self.assertEqual(r["match_type"], "verbatim")
+        self.assertEqual(r["results"][0]["file"], "Web Articles/bugs.md")
 
 
 class MainCliTests(unittest.TestCase):

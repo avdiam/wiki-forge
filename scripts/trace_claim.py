@@ -48,6 +48,30 @@ if hasattr(sys.stdout, "reconfigure"):
 _WS = re.compile(r"\s+")
 _WORD = re.compile(r"[a-z0-9]+")
 
+# Inline-markdown noise the wiki compiler adds when rendering a directly-EXTRACTED
+# claim — backtick code spans and **bold** labels — plus the `→` flow arrow it
+# inserts in pipelines. Stripped symmetrically on the query and every vault
+# paragraph so a cosmetically-reformatted claim still resolves verbatim instead of
+# dropping to the fuzzy tier. A lone `*` (glob, emphasis, multiplication) is
+# deliberately NOT stripped — only the `**` bold pair — to avoid degenerate
+# matches like `*.md` becoming a substring of every `.md` path in the vault.
+_MD_NOISE = re.compile(r"`|\*\*")
+_ARROW = re.compile(r"\s*→\s*")
+# Small number-words 0–19 + tens 20–90 → canonical digit form, so a claim the
+# compiler tabularized as "3" still matches a source that wrote "three". Bounded
+# and word-boundary-anchored (no compositional hundreds/thousands; `one` inside
+# `someone`, `ten` inside `often` are left alone) to keep the fold conservative.
+_NUM_WORDS = {
+    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13",
+    "fourteen": "14", "fifteen": "15", "sixteen": "16", "seventeen": "17",
+    "eighteen": "18", "nineteen": "19", "twenty": "20", "thirty": "30",
+    "forty": "40", "fifty": "50", "sixty": "60", "seventy": "70",
+    "eighty": "80", "ninety": "90",
+}
+_NUM_RE = re.compile(r"\b(" + "|".join(_NUM_WORDS) + r")\b")
+
 # A2 (claim-ID anchors). `[[page-slug#claim-<slug>]]` query form → resolve the
 # claim text on the wiki page, then trace that text into the vault. The body
 # anchor is `{#claim-<slug>}` placed after a claim's terminal punctuation.
@@ -60,8 +84,20 @@ _LEAD_BULLET_RE = re.compile(r"^(?:[-*+]\s+|\d+\.\s+)")
 
 
 def normalize(text: str) -> str:
-    """Lowercase + collapse all whitespace runs to single spaces, stripped."""
-    return _WS.sub(" ", text).strip().lower()
+    """Lowercase, strip inline-markdown noise, fold small number-words to digits,
+    and collapse whitespace runs to single spaces, stripped.
+
+    Beyond the original lowercase+whitespace pass, this strips backticks / **bold**
+    / `→` arrows and folds number-words (`three` → `3`). Run symmetrically on the
+    query and every vault paragraph, it lets a directly-EXTRACTED claim survive the
+    cosmetic reformatting the wiki compiler applies (code-span backticks, bolded
+    labels, digit-vs-word tables) and still resolve to its verbatim source span —
+    closing the reformat-miss class the session-107 trace-exercise surfaced (S2/S4a).
+    """
+    t = _MD_NOISE.sub("", text.lower())
+    t = _ARROW.sub(" ", t)
+    t = _NUM_RE.sub(lambda m: _NUM_WORDS[m.group(0)], t)
+    return _WS.sub(" ", t).strip()
 
 
 def content_words(text: str) -> set[str]:
