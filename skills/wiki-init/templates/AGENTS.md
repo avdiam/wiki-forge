@@ -264,6 +264,17 @@ stale: false
   precisely on a multi-source page (without it, a synthesized multi-source
   claim is reported as unattributable rather than guessed).
 
+  **Crystallization writes these markers too.** `/wiki-crystallize <synthesis-slug>`
+  is the 4th canonical operation (Ingest → Query → Summarize → **Crystallize** →
+  Lint): it lifts the atomic facts a synthesis page surfaced and merges each into
+  the existing concept/entity page that should own it, tagged + anchored by the
+  conventions above. A fact that verbatim-traces to a cited source merges *untagged*
+  (implicit EXTRACTED) with `sources:` pinned to that source; a synthesized fact
+  merges `*[INFERRED]*` against the synthesis's underlying sources. Every
+  crystallized fact gets a `{#claim-id}` so the cascade tracks it. Merge-only
+  (homeless facts are reported, never auto-created) and human-gated (a fan-out
+  approval table before any write). See `skills/wiki-crystallize/SKILL.md`.
+
 #### Typed cross-reference fields (optional, any page type)
 
 These three fields surface structured cross-page relationships in

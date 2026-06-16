@@ -27,7 +27,7 @@ from datetime import datetime
 from _log_writer import resolve_wiki_root
 
 
-VALID_OPS = {"ingest", "capture", "query-filed", "lint", "init", "note", "stub"}
+VALID_OPS = {"ingest", "capture", "query-filed", "lint", "init", "note", "stub", "crystallize"}
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
