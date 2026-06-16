@@ -26,6 +26,7 @@ Checks:
     - unresolved_link_hubs    slugs with >=10 incoming wikilinks but no page (stub candidates)
     - drifted_stubs           pages with stub-prose markers but no verify:true (shape drift)
     - cascade_review          at-risk anchored claims + their evidence-chain blast radius (A3)
+    - schema_doc_consistency  AGENTS.md version banner vs newest SCHEMA_CHANGELOG.md entry + CLAUDE.md @-include pointer integrity
 
 Sidecar config (optional) — `<wiki>/.meta/lint-config.json`:
     Gates the `artifact_presence` check. The check flags pages that lack
@@ -911,6 +912,76 @@ def check_cascade(pages: dict, vault_dir: Path) -> list[dict]:
     return issues
 
 
+# Schema-doc consistency — the descendant of the never-built `schema_sync` check.
+# Version lives as a prose banner in AGENTS.md; CLAUDE.md is an @-include pointer;
+# SCHEMA_CHANGELOG.md records one entry per bump (newest first).
+SCHEMA_BANNER_RE = re.compile(r"\*\*Schema version:\*\*\s*(\d+)")
+CHANGELOG_VERSION_RE = re.compile(r"^- \*\*v(\d+)\b", re.MULTILINE)
+CLAUDE_POINTER_RE = re.compile(r"^@AGENTS\.md\s*$", re.MULTILINE)
+
+
+def check_schema_doc_consistency(wiki_root: Path) -> list[dict]:
+    """Flag drift among the schema-version source-of-truth docs.
+
+    The wiki's schema version is a single prose banner — `> **Schema version:**
+    N` — at the top of `AGENTS.md`. `CLAUDE.md` is a one-line `@AGENTS.md`
+    @-include pointer (so Claude Code auto-loads the schema), and
+    `SCHEMA_CHANGELOG.md` records one entry per bump, newest first. This check
+    is the descendant of the never-built `schema_sync` check: the original
+    byte-identical CLAUDE/AGENTS guard was made obsolete by the dual-file
+    @-include shape, but the integrity need remained — and the gap let
+    `CATEGORIES.md`'s stamp and this changelog's own preamble silently drift two
+    bumps out of date (found by hand, 2026-06-16). Two invariants:
+
+    A. The `AGENTS.md` banner version == the newest `SCHEMA_CHANGELOG.md` entry
+       version. Catches "bumped the banner, forgot the changelog" (and inverse).
+    B. `CLAUDE.md` is the `@AGENTS.md` pointer. Catches a broken or duplicated
+       schema anchor.
+
+    Each issue is ``{"kind": <str>, "detail": <str>}``. A missing file is itself
+    an issue — the trio is load-bearing. Soft-warning severity; never blocking.
+    """
+    issues: list[dict] = []
+    agents = wiki_root / "AGENTS.md"
+    claude = wiki_root / "CLAUDE.md"
+    changelog = wiki_root / "SCHEMA_CHANGELOG.md"
+
+    # A — banner (AGENTS.md) vs newest changelog entry
+    banner_ver: int | None = None
+    if not agents.is_file():
+        issues.append({"kind": "missing_file", "detail": "AGENTS.md not found"})
+    else:
+        m = SCHEMA_BANNER_RE.search(agents.read_text(encoding="utf-8"))
+        if not m:
+            issues.append({"kind": "missing_banner", "detail": "no '**Schema version:** N' banner in AGENTS.md"})
+        else:
+            banner_ver = int(m.group(1))
+
+    changelog_ver: int | None = None
+    if not changelog.is_file():
+        issues.append({"kind": "missing_file", "detail": "SCHEMA_CHANGELOG.md not found"})
+    else:
+        m = CHANGELOG_VERSION_RE.search(changelog.read_text(encoding="utf-8"))
+        if not m:
+            issues.append({"kind": "missing_changelog_entry", "detail": "no '- **vN' entry in SCHEMA_CHANGELOG.md"})
+        else:
+            changelog_ver = int(m.group(1))
+
+    if banner_ver is not None and changelog_ver is not None and banner_ver != changelog_ver:
+        issues.append({
+            "kind": "version_mismatch",
+            "detail": f"AGENTS.md banner v{banner_ver} != newest SCHEMA_CHANGELOG.md entry v{changelog_ver}",
+        })
+
+    # B — CLAUDE.md @-include pointer integrity
+    if not claude.is_file():
+        issues.append({"kind": "missing_file", "detail": "CLAUDE.md not found"})
+    elif not CLAUDE_POINTER_RE.search(claude.read_text(encoding="utf-8")):
+        issues.append({"kind": "broken_pointer", "detail": "CLAUDE.md is not the '@AGENTS.md' @-include pointer"})
+
+    return issues
+
+
 # === ORCHESTRATION & CLI ===
 def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
     if vault_dir is None:
@@ -948,6 +1019,7 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "unresolved_link_hubs": check_unresolved_link_hubs(pages),
         "drifted_stubs": check_drifted_stubs(pages),
         "cascade_review": check_cascade(pages, vault_dir),
+        "schema_doc_consistency": check_schema_doc_consistency(wiki_root),
     }
 
 
@@ -981,6 +1053,7 @@ def render_human(report: dict) -> str:
         f"Unresolved link hubs: {len(report.get('unresolved_link_hubs', []))}",
         f"Drifted stubs:        {len(report.get('drifted_stubs', []))}",
         f"Cascade review:       {len(report.get('cascade_review', []))}",
+        f"Schema-doc drift:     {len(report.get('schema_doc_consistency', []))}",
     ]
     drift = report["index_drift"]
     if drift.get("missing_index"):
@@ -1096,6 +1169,12 @@ def render_human(report: dict) -> str:
                     else ""
                 )
                 lines.append(f"      depends: {dep['page']} [{anchored or 'page-level'}{nudge}]")
+
+    if report.get("schema_doc_consistency"):
+        lines.append("")
+        lines.append("Schema-doc drift (AGENTS.md banner ↔ SCHEMA_CHANGELOG.md ↔ CLAUDE.md pointer):")
+        for item in report["schema_doc_consistency"][:20]:
+            lines.append(f"  {item['kind']}: {item['detail']}")
 
     return "\n".join(lines)
 

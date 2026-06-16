@@ -1,5 +1,4 @@
 ---
-schema_version: 2
 not_a_source: true
 last_updated: 2026-05-24
 ---

@@ -1,10 +1,10 @@
 # Schema changelog
 
-One-line entry per `schema_version:` bump. Newest first. The version field lives at the top of [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md) (must match — `lint_wiki.py`'s `schema_sync` check enforces byte-identical content).
+One-line entry per schema-version bump. Newest first. The version is a prose banner — `> **Schema version:** N` — at the top of [`AGENTS.md`](AGENTS.md) (the canonical schema content). [`CLAUDE.md`](CLAUDE.md) is a one-line `@AGENTS.md` @-include pointer so Claude Code auto-loads the schema; the two are **not** byte-identical. `lint_wiki.py`'s `schema_doc_consistency` check guards the trio: the `AGENTS.md` banner must match the newest entry below, and `CLAUDE.md` must stay the `@AGENTS.md` pointer.
 
-**Bump on breaking changes:** new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change. **Don't bump on:** seed-category additions, template tweaks, rule clarifications, prose edits to existing rules, helper-script changes, agent/skill playbook edits.
+**Bump on breaking changes:** new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** (the list is enumerated and lint-enforced). **Don't bump on:** template tweaks, rule clarifications, prose edits to existing rules, helper-script changes, agent/skill playbook edits.
 
-When you bump, also update the version line in both `CLAUDE.md` and `AGENTS.md`, and add the new entry below.
+When you bump, also update the `> **Schema version:**` banner in `AGENTS.md`, and add the new entry below.
 
 ---
 
