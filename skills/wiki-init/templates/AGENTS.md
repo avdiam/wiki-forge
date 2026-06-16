@@ -236,7 +236,7 @@ stale: false
   `{#claim-<slug>}` (slug = lowercase `[a-z0-9-]+`) immediately after its
   terminal punctuation — after any `*[TAG]*` marker, separated by one space.
   Add an ID **by judgment**, only to a claim worth referencing directly (one
-  likely to be traced, cited across pages, or subject to a future contradiction
+  likely to be traced, cited across pages, or subject to a contradiction
   cascade) — **not** to every sentence, exactly like the flag-as-exception
   philosophy of the tag markers. Applies to EXTRACTED and tagged claims alike.
   Forward-only: legacy claims are not retroactively anchored, and absence is
@@ -250,6 +250,19 @@ stale: false
   skill resolves it to the claim text, then traces that into the raw vault.
   `lint_wiki.py`'s `claim_id_issues` check enforces per-page uniqueness (so the
   reference resolves to a single claim) and well-formed slugs.
+
+  Anchored claims also feed `lint_wiki.py`'s `cascade_review` check (the
+  evidence-chain cascade): for an anchored claim that is *at risk* (page
+  `verify: true`, the claim tagged AMBIGUOUS/INFERRED, or the page
+  contradicted), the lint reports its **blast radius** — the other claims/pages
+  resting on the *same source* — so a refuted source surfaces every dependent
+  claim, not just the one being contradicted. The claim's source is pinned by
+  precedence: **inline attribution** (an adjacent quote blockquote ending
+  `— [[source-slug]]`) → verbatim trace → single-source page. So when a claim
+  is uncertain, attaching its supporting quote with a `— [[source]]` wikilink
+  isn't just good citation — it's what lets the cascade attribute that claim
+  precisely on a multi-source page (without it, a synthesized multi-source
+  claim is reported as unattributable rather than guessed).
 
 #### Typed cross-reference fields (optional, any page type)
 

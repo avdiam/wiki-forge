@@ -25,6 +25,7 @@ Checks:
     - artifact_presence       opted-in pages lacking any structural artifact (code/table/procedure/quote/deflist)
     - unresolved_link_hubs    slugs with >=10 incoming wikilinks but no page (stub candidates)
     - drifted_stubs           pages with stub-prose markers but no verify:true (shape drift)
+    - cascade_review          at-risk anchored claims + their evidence-chain blast radius (A3)
 
 Sidecar config (optional) — `<wiki>/.meta/lint-config.json`:
     Gates the `artifact_presence` check. The check flags pages that lack
@@ -58,6 +59,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import cascade_claim
 from constants import PAGE_TYPES
 from frontmatter import parse_frontmatter
 from source_backlog import compute_backlog
@@ -874,6 +876,41 @@ def check_overview_staleness(wiki_root: Path) -> dict | None:
     return None
 
 
+def check_cascade(pages: dict, vault_dir: Path) -> list[dict]:
+    """Evidence-chain cascade review queue (A3).
+
+    For each anchored `{#claim-<slug>}` on an *at-risk* page (verify: true,
+    claim tagged AMBIGUOUS/INFERRED, or page contradicted), report the blast
+    radius — the other pages/claims resting on the *same source* the at-risk
+    claim rests on. Delegates the attribution + reverse-index to
+    `cascade_claim.cascade`; see that module for the precedence rules and the
+    S5 false-positive guard (a page citing a different source is never pulled
+    in just because it wikilinks the at-risk page).
+
+    Sparse by construction — gated on opt-in anchors AND an at-risk signal, so
+    this is a focused review queue (like `needs_verification`), not a report.
+    Each row: `{page, claim_id, at_risk, provenance, sources, dependents}`,
+    where `dependents` is the per-source list of `{page, anchored_claims,
+    unanchored_ambiguous}`.
+    """
+    vault_root = vault_dir if vault_dir and vault_dir.is_dir() else None
+    issues: list[dict] = []
+    for row in cascade_claim.cascade(pages, vault_root):
+        issues.append(
+            {
+                "page": row["page"],
+                "claim_id": row["claim_id"],
+                "at_risk": row["at_risk"],
+                "provenance": row["provenance"],
+                "sources": row["sources"],
+                "dependents": [
+                    dep for b in row["blast_radius"] for dep in b["dependents"]
+                ],
+            }
+        )
+    return issues
+
+
 # === ORCHESTRATION & CLI ===
 def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
     if vault_dir is None:
@@ -910,6 +947,7 @@ def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
         "artifact_presence": check_artifact_presence(pages, config),
         "unresolved_link_hubs": check_unresolved_link_hubs(pages),
         "drifted_stubs": check_drifted_stubs(pages),
+        "cascade_review": check_cascade(pages, vault_dir),
     }
 
 
@@ -942,6 +980,7 @@ def render_human(report: dict) -> str:
         f"Artifact presence:    {len(report['artifact_presence'])}",
         f"Unresolved link hubs: {len(report.get('unresolved_link_hubs', []))}",
         f"Drifted stubs:        {len(report.get('drifted_stubs', []))}",
+        f"Cascade review:       {len(report.get('cascade_review', []))}",
     ]
     drift = report["index_drift"]
     if drift.get("missing_index"):
@@ -1039,6 +1078,24 @@ def render_human(report: dict) -> str:
         lines.append("Claim-ID anchor issues (duplicate or malformed {#claim-<slug>}):")
         for item in report["claim_id_issues"][:20]:
             lines.append(f"  {item['page']}: {item['claim_id']} — {item['reason']}")
+
+    if report.get("cascade_review"):
+        lines.append("")
+        lines.append("Cascade review (at-risk anchored claims → evidence-chain blast radius):")
+        for item in report["cascade_review"][:20]:
+            src = ", ".join(item["sources"]) or "unattributable"
+            lines.append(
+                f"  {item['page']} {{#{item['claim_id']}}} — {', '.join(item['at_risk'])}"
+            )
+            lines.append(f"    source ({item['provenance']}): {src}")
+            for dep in item["dependents"]:
+                anchored = ", ".join(f"{{#{c['claim_id']}}}" for c in dep["anchored_claims"])
+                nudge = (
+                    f"; +{dep['unanchored_ambiguous']} unanchored AMBIGUOUS (anchor for precise cascade)"
+                    if dep["unanchored_ambiguous"]
+                    else ""
+                )
+                lines.append(f"      depends: {dep['page']} [{anchored or 'page-level'}{nudge}]")
 
     return "\n".join(lines)
 
