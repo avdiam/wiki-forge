@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Append one row to wiki/.meta/query_log.jsonl.
 
-Called by `/wiki-query` (both paths), `/wiki-graph` (graph queries), and
-`/wiki-summarize` (topic-coverage reports). The `query_skill` field
-distinguishes the row's origin:
+Called by `/wiki-query` (both paths), `/wiki-graph` (graph queries),
+`/wiki-summarize` (topic-coverage reports), and `/wiki-ask` (the read-side
+router). The `query_skill` field distinguishes the row's origin:
 
   - `query_skill: "query"` — `/wiki-query` invocation. Path A (inline) leaves
     most cost fields null; Path B parses them from the librarian's <usage>.
@@ -17,6 +17,20 @@ distinguishes the row's origin:
     `<usage>` like query Path B. `search_mode` is `"slug-anchored"` for
     Shape A (topic resolves to an existing slug → graph_query.neighbors_within)
     or `"hybrid"` for Shape B (fuzzy fallback → hybrid_search.search).
+  - `query_skill: "ask"` — `/wiki-ask` router invocation. The router classifies
+    the query and dispatches to one of the three skills above; this is the
+    *router row* recording the classification decision. `search_mode` and all
+    cost fields are null (the router does ~no model work; the dispatched skill's
+    own row carries that skill's cost). `routed_to` is required (the dispatch
+    target); `routing_clarifications` counts clarifying questions the router
+    asked. `duration_ms` is the router's wall-clock. The dispatched skill writes
+    its own normal row in addition, tagged `routed_from: "ask"`.
+
+Routing fields (`routed_to` / `routed_from` / `routing_clarifications`) are
+present on every row for a uniform schema, null except where routing applies:
+`routed_to` + `routing_clarifications` are set on the `ask` router row;
+`routed_from: "ask"` is set on a dispatched skill's row when it was reached via
+the router; all three are null on a direct (un-routed) invocation.
 
 Row schema:
     {
@@ -31,6 +45,7 @@ Row schema:
       "total_tokens": null, "input_tokens": null,
       "cache_creation_input_tokens": null, "cache_read_input_tokens": null,
       "output_tokens": null, "tool_uses": null,
+      "routed_to": null, "routed_from": null, "routing_clarifications": null,
       "duration_ms": 8100
     }
 
@@ -77,6 +92,17 @@ Usage:
         --pages-consulted "rag,agentic-rag,..." \
         --filed-as "rag-coverage" \
         --total-tokens 18000 --tool-uses 14 --duration-ms 32000
+
+    # /wiki-ask router row (the dispatched skill writes its own row separately)
+    python append_query_log.py --wiki <wiki-root> --query-skill ask \
+        --query "what's near lethal-trifecta" \
+        --routed-to graph --routing-clarifications 0 --duration-ms 1200
+
+    # a graph row dispatched FROM the router (adds --routed-from to the normal call)
+    python append_query_log.py --wiki <wiki-root> --query-skill graph \
+        --query "neighbors lethal-trifecta --depth 1" \
+        --pages-consulted "agent-harness,prompt-injection,..." \
+        --routed-from ask --duration-ms 800
 """
 
 from __future__ import annotations
@@ -97,7 +123,9 @@ from _log_writer import (
 
 
 VALID_SEARCH_MODES = {"inline", "hybrid", "hybrid_zvec", "bm25_only", "slug-anchored"}
-VALID_QUERY_SKILLS = {"query", "graph", "summarize"}
+VALID_QUERY_SKILLS = {"query", "graph", "summarize", "ask"}
+# /wiki-ask dispatch targets — the router never routes to itself.
+VALID_ROUTE_TARGETS = {"query", "graph", "summarize"}
 
 
 def optional_str_list(raw: str) -> "list[str] | None":
@@ -162,6 +190,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="Phase 2: JSON array of paraphrase variations beyond the canonical query, or null",
     )
+    p.add_argument(
+        "--routed-to",
+        default=None,
+        choices=sorted(VALID_ROUTE_TARGETS),
+        help="Router (/wiki-ask) dispatch target. Required for query_skill=ask; null otherwise.",
+    )
+    p.add_argument(
+        "--routed-from",
+        default=None,
+        choices=["ask"],
+        help="Set to 'ask' on a dispatched skill's row when it was reached via /wiki-ask.",
+    )
+    p.add_argument(
+        "--routing-clarifications",
+        type=optional_int,
+        default=None,
+        help="Count of clarifying questions the router asked (0 normally). Null on non-router rows.",
+    )
     return p.parse_args(argv)
 
 
@@ -181,6 +227,9 @@ def build_row(args: argparse.Namespace) -> dict:
         "cache_read_input_tokens": args.cache_read_input_tokens,
         "output_tokens": args.output_tokens,
         "tool_uses": args.tool_uses,
+        "routed_to": args.routed_to,
+        "routed_from": args.routed_from,
+        "routing_clarifications": args.routing_clarifications,
         "duration_ms": args.duration_ms,
     }
 
@@ -205,6 +254,15 @@ def main(argv: list[str]) -> int:
     elif args.query_skill == "graph":
         # search_mode is null for graph rows; ignore any value passed
         args.search_mode = None
+    elif args.query_skill == "ask":
+        # Router row: no model work → search_mode + cost fields null; routed_to required.
+        args.search_mode = None
+        if not args.routed_to:
+            print(
+                "error: --routed-to is required when --query-skill=ask",
+                file=sys.stderr,
+            )
+            return 2
 
     wiki_root = resolve_wiki_root(args.wiki)
     if wiki_root is None:

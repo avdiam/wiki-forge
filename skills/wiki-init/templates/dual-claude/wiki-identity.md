@@ -49,6 +49,7 @@ Discipline: ingest liberally at the clipper layer, filter ruthlessly at the wiki
 | `/wiki-capture` | Save raw material into `vault/`, chain into ingest. |
 | `/wiki-ingest` | Compile a `vault/` file into wiki pages. Dispatches `wiki-ingestor`. |
 | `/wiki-query` | Answer a question with citations. |
+| `/wiki-ask` | Natural-language read entry — classifies a question and routes to query/graph/summarize. |
 | `/wiki-lint` | Three-pass health check. Dispatches `wiki-linter`. |
 | `/wiki-log` | Show recent operation log entries. |
 | `/wiki-init` | Bootstrap a new wiki — already done here. |

@@ -40,7 +40,7 @@ import check_manifest as cm  # noqa: E402
 # Real on-disk inventory (bare names, wiki- prefix stripped) — the fixtures below
 # mirror this shape so a clean fixture genuinely exercises the equality path.
 _SKILLS = [
-    "capture", "ingest", "crystallize", "query", "graph", "summarize", "trace",
+    "ask", "capture", "ingest", "crystallize", "query", "graph", "summarize", "trace",
     "corroborate", "resolve-contradictions", "lint", "scale-audit", "log",
     "overview", "triage", "retract", "stub", "init",
 ]
@@ -102,7 +102,7 @@ class WordToIntTests(unittest.TestCase):
 
 class CheckManifestTests(unittest.TestCase):
     def test_consistent_manifest_clean(self):
-        root = _forge(_description("seventeen", _SKILLS, "four", _SUBAGENTS), _SKILLS, _SUBAGENTS)
+        root = _forge(_description("eighteen", _SKILLS, "four", _SUBAGENTS), _SKILLS, _SUBAGENTS)
         self.assertEqual(cm.check_manifest(root), [])
 
     def test_wiki_prefix_stripped_on_disk(self):
@@ -112,14 +112,14 @@ class CheckManifestTests(unittest.TestCase):
         self.assertEqual(cm.check_manifest(root), [])
 
     def test_skills_count_word_disagrees_with_list(self):
-        # Word says sixteen, list has 17 → count mismatch (and counts still match disk set).
+        # Word says sixteen, list has 18 → count mismatch (and counts still match disk set).
         root = _forge(_description("sixteen", _SKILLS, "four", _SUBAGENTS), _SKILLS, _SUBAGENTS)
         self.assertEqual(_kinds(cm.check_manifest(root)), ["skills_count_mismatch"])
 
     def test_skill_on_disk_not_advertised(self):
         # The real session-114 failure: a skill shipped to disk un-listed.
-        advertised = _SKILLS[:-1]  # drop "init" from the manifest, keep it on disk
-        root = _forge(_description("sixteen", advertised, "four", _SUBAGENTS), _SKILLS, _SUBAGENTS)
+        advertised = _SKILLS[:-1]  # drop "init" from the manifest (17 advertised), keep it on disk (18)
+        root = _forge(_description("seventeen", advertised, "four", _SUBAGENTS), _SKILLS, _SUBAGENTS)
         issues = cm.check_manifest(root)
         self.assertEqual(_kinds(issues), ["skills_disk_mismatch"])
         self.assertIn("init", issues[0]["detail"])
@@ -128,18 +128,18 @@ class CheckManifestTests(unittest.TestCase):
     def test_skill_advertised_not_on_disk(self):
         # Inverse: manifest lists a skill that doesn't exist on disk.
         advertised = _SKILLS + ["ghost"]
-        root = _forge(_description("eighteen", advertised, "four", _SUBAGENTS), _SKILLS, _SUBAGENTS)
+        root = _forge(_description("nineteen", advertised, "four", _SUBAGENTS), _SKILLS, _SUBAGENTS)
         issues = cm.check_manifest(root)
         self.assertEqual(_kinds(issues), ["skills_disk_mismatch"])
         self.assertIn("ghost", issues[0]["detail"])
         self.assertIn("not on disk", issues[0]["detail"])
 
     def test_subagent_disk_mismatch(self):
-        root = _forge(_description("seventeen", _SKILLS, "three", _SUBAGENTS[:3]), _SKILLS, _SUBAGENTS)
+        root = _forge(_description("eighteen", _SKILLS, "three", _SUBAGENTS[:3]), _SKILLS, _SUBAGENTS)
         self.assertEqual(_kinds(cm.check_manifest(root)), ["subagents_disk_mismatch"])
 
     def test_subagent_count_mismatch(self):
-        root = _forge(_description("seventeen", _SKILLS, "five", _SUBAGENTS), _SKILLS, _SUBAGENTS)
+        root = _forge(_description("eighteen", _SKILLS, "five", _SUBAGENTS), _SKILLS, _SUBAGENTS)
         self.assertEqual(_kinds(cm.check_manifest(root)), ["subagents_count_mismatch"])
 
     def test_both_clauses_accumulate(self):

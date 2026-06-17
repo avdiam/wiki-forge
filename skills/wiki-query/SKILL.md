@@ -8,6 +8,8 @@ argument-hint: "<question>"
 
 *Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 3 for large wikis; small wikis stay inline — Option C shape) per `_template-complex/SKILL.md`.*
 
+> Direct invocation. For a natural-language entry point that auto-routes between this, `/wiki-graph`, and `/wiki-summarize`, see `/wiki-ask`.
+
 Handles query answering with conditional dispatch. Runs page discovery
 (search or index reading) in the main session to minimize subagent cost.
 
@@ -227,6 +229,8 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --duration-ms <N> \
   --query-variations '<JSON array string or "">'
 ```
+
+If this invocation was routed from `/wiki-ask`, add `--routed-from ask` to the command above.
 
 Telemetry is observational — if the appender exits non-zero, mention it
 briefly in the relay but do NOT retry and do NOT fail the query.

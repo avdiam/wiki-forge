@@ -16,6 +16,8 @@ Walks the **wikilink graph only** (page-body `[[wikilinks]]`); typed-edge frontm
 
 *Architecturally: Option C (inline tool-orchestration) per `_template-simple/SKILL.md`. No subagent dispatch.*
 
+> Direct invocation. For a natural-language entry point that auto-routes between this, `/wiki-query`, and `/wiki-summarize`, see `/wiki-ask`.
+
 ## Workflow
 
 ### 1. Locate the wiki
@@ -74,6 +76,7 @@ Notes:
 - `--search-mode` is omitted (graph rows are null on that field).
 - All cost fields (`--total-tokens`, `--tool-uses`, etc.) are omitted (no model call).
 - `--duration-ms` comes from the script's `duration_ms` field in `--json` output, OR a main-session wall-clock measurement if running without `--json`.
+- If this invocation was routed from `/wiki-ask`, add `--routed-from ask`.
 
 ## Rules
 

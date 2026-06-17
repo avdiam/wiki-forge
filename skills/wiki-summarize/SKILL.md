@@ -15,6 +15,8 @@ material on a topic:
 - **Coverage gaps** — single-source pages (`verify: true`), low-confidence pages (`confidence < 0.7`), and pages stale relative to newer adjacent ingests.
 - **Structural footprint** — page count, hub status (inbound count of the anchor page if it's a hub), connected-component placement.
 
+> Direct invocation. For a natural-language entry point that auto-routes between this, `/wiki-query`, and `/wiki-graph`, see `/wiki-ask`.
+
 **Two-shape retrieval.** Shape A (slug-anchored): when `<topic>` resolves to an
 existing page slug, retrieval = the anchor page + its depth-1 wikilink neighbors
 (via `${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py`). Shape B (fuzzy): otherwise, retrieval =
@@ -211,6 +213,7 @@ Write one row to `wiki/.meta/query_log.jsonl`. Field values:
 - Cost fields — parse independently from the `<usage>` block via `<field>:\s*(\d+)`. Pass `""` for any field that doesn't match. If the block is missing, pass `""` for all and fall back to main-session wall-clock for `duration_ms`.
 - `--duration-ms` — `<usage>` block's value, or main-session wall-clock fallback.
 - `--query-variations ""` — `/wiki-summarize` does not expand queries (single-topic surveys).
+- If this invocation was routed from `/wiki-ask`, add `--routed-from ask`.
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
