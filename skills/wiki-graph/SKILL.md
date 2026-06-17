@@ -72,7 +72,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
 Notes:
 - `--query-skill graph` distinguishes this row from `/wiki-query` rows.
 - `--query` is the raw subcommand + args (e.g., `"neighbors lethal-trifecta --depth 2"`), not a question.
-- `--pages-consulted` is the result set: path slugs for `path`; all neighbor slugs for `neighbors`; all subgraph nodes for `subgraph`.
+- `--pages-consulted` is the result set: path slugs for `path`; all neighbor slugs for `neighbors`. **For `subgraph`, cap the logged set** — pass the anchor slug plus at most the first 40 member slugs, and append a `+<N>-more` sentinel token when the component is larger (e.g. `--pages-consulted "rag,agent-harness,…,+632-more"`). A `subgraph` anchored in the giant component returns essentially the whole wiki (a `rag` anchor reaches 672 pages / 4403 edges), and writing all ~672 slugs bloats `query_log.jsonl` with a near-useless full-graph dump. The 40-node cap mirrors the >40-edge display truncation in step 4; the sentinel preserves the total count for any later analysis.
 - `--search-mode` is omitted (graph rows are null on that field).
 - All cost fields (`--total-tokens`, `--tool-uses`, etc.) are omitted (no model call).
 - `--duration-ms` comes from the script's `duration_ms` field in `--json` output, OR a main-session wall-clock measurement if running without `--json`.
