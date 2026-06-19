@@ -125,7 +125,7 @@ from _log_writer import (
 VALID_SEARCH_MODES = {"inline", "hybrid", "hybrid_zvec", "bm25_only", "slug-anchored"}
 VALID_QUERY_SKILLS = {"query", "graph", "summarize", "ask"}
 # /wiki-ask dispatch targets — the router never routes to itself.
-VALID_ROUTE_TARGETS = {"query", "graph", "summarize"}
+VALID_ROUTE_TARGETS = {"query", "graph", "summarize", "trace"}
 
 
 def optional_str_list(raw: str) -> "list[str] | None":

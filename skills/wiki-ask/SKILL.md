@@ -1,6 +1,6 @@
 ---
 name: wiki-ask
-description: Natural-language entry point for read-side wiki queries. Classifies a plain-English question and routes it to the right read skill — /wiki-graph (structural traversal), /wiki-summarize (topic-coverage audit), or /wiki-query (prose synthesis, the default). Use when the user runs /wiki-ask, or asks a read question without naming which skill they want ("what's near X", "how does X connect to Y", "what does the wiki know about X", "explain X"). For a specific operation, invoke that skill directly; /wiki-ask is the router that picks for you.
+description: Natural-language entry point for read-side wiki queries. Classifies a plain-English question and routes it to the right read skill — /wiki-graph (structural traversal), /wiki-trace (claim provenance), /wiki-summarize (topic-coverage audit), or /wiki-query (prose synthesis, the default). Use when the user runs /wiki-ask, or asks a read question without naming which skill they want ("what's near X", "how does X connect to Y", "where did this claim come from", "what does the wiki know about X", "explain X"). For a specific operation, invoke that skill directly; /wiki-ask is the router that picks for you.
 argument-hint: "<natural-language question>"
 ---
 
@@ -10,6 +10,7 @@ Single user-facing entry point for read-side queries. Classifies the user's plai
 
 Dispatch targets:
 - **`/wiki-graph`** — structural traversal (`path` / `neighbors` / `subgraph`). Deterministic stdlib, ~no token cost.
+- **`/wiki-trace`** — claim provenance: a *specific* quote/claim/anchor → its raw-vault source span. Deterministic stdlib, ~no token cost.
 - **`/wiki-summarize`** — topic-coverage audit (five-section report). Always dispatches the librarian.
 - **`/wiki-query`** — prose-synthesis Q&A. The fall-through default for vague or open-ended reads.
 
@@ -36,8 +37,11 @@ Match the query against these patterns, in order. The first match wins; nothing 
 | **Path** | "how does X connect to Y", "path between X and Y", "what links X and Y" | `/wiki-graph path X Y` |
 | **Neighborhood** | "what's near X", "neighbors of X", "N-hop around X" | `/wiki-graph neighbors X [--depth N]` (default 1; explicit "N-hop" overrides) |
 | **Subgraph** | "subgraph around X", "cluster around X", "everything connected to X" | `/wiki-graph subgraph X` |
+| **Provenance** | "where did this claim come from", "trace this quote", "source span for '<quote>'", or a `[[page-slug#claim-id]]` anchor — keyed on a *specific* quote/claim/anchor to locate | `/wiki-trace "<quote \| [[page-slug#claim-id]]>"` |
 | **Coverage** | "summarize X", "what does the wiki know about X", "coverage of X" | `/wiki-summarize X` |
 | **Default** | a prose-synthesis question, or anything that matches nothing above | `/wiki-query <question>` |
+
+> **Provenance vs. Coverage — the discriminator is specificity.** Route to `/wiki-trace` only when the request names a *specific* claim, quoted span, or `[[page#claim-id]]` anchor to locate. A *topic-level* provenance question ("what sources cover X", "where does the wiki's info on X come from" with no specific quote) is **not** a trace — it's Coverage or Default, because trace resolves a single span, not a topic's source set. Extract the quote/anchor from the natural-language request and pass it verbatim to `/wiki-trace`.
 
 ### 4. Resolve slugs + apply the three-class ambiguity policy
 Read queries are cheap and reversible, so the HITL bar is deliberately lower than for write operations — default-and-surface rather than interrogate. Handle ambiguity by *kind*:
@@ -67,6 +71,8 @@ Because the target runs inline in this same session, it knows it was reached via
 
 Then dispatch `/wiki-query <original question>` via the Skill tool as in the normal flow. This re-route is **router-only**: a *direct* `/wiki-graph` call is an explicit structural request, so erroring there stays the honest response — the `/wiki-graph` skill is unchanged. The re-route fires only on the slug-not-found signal (exit 2 / "slug(s) not found"); any other `/wiki-graph` failure is surfaced normally. Only one re-route per invocation — `/wiki-query` is the terminal fall-through and never bounces onward.
 
+**Trace is a clean terminal route — no fall-through.** Unlike the graph case, `/wiki-trace` never hard-errors: a synthesized claim with no verbatim span returns a valid "None / it's synthesized — see the page's `sources:`" answer, not an error. So a trace dispatch is terminal; do **not** re-route it to `/wiki-query`. If the user wanted a synthesized explanation of *how* the claim was derived rather than its source span, surface the Class-B escape line (`For a synthesized explanation instead, re-ask: /wiki-query '...'`) — but the trace answer stands on its own.
+
 ### 7. Log the router telemetry row
 After dispatch, write one router row to `wiki/.meta/query_log.jsonl` recording the classification decision:
 
@@ -74,7 +80,7 @@ After dispatch, write one router row to `wiki/.meta/query_log.jsonl` recording t
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --query-skill ask \
   --query "<raw user query>" \
-  --routed-to <query|graph|summarize> \
+  --routed-to <query|graph|summarize|trace> \
   --routing-clarifications <N> \
   --duration-ms <router_wall_clock_ms>
 ```
@@ -89,6 +95,8 @@ Notes:
 
 The result is two rows per `/wiki-ask` call: the router row (classification telemetry, for tuning the classifier) and the dispatched skill's normal row tagged `routed_from: ask` (operation telemetry, for per-skill cost analysis). Direct invocations of the underlying skills write only their own row.
 
+**Exception — trace routes write only the router row.** `/wiki-trace`'s own `query_log` telemetry is still deferred (it's deterministic stdlib with no model/librarian cost to track — see the wiki-trace skill's telemetry rule), so a `routed_to: trace` call produces just the one router row. That's sufficient: the router row carries the classification signal this route exists to provide, and there is no per-skill cost to analyse. Wire trace's own dispatched row only if/when trace gains a measurable cost.
+
 ## Rules
 
 - **Read-only.** The router never writes wiki pages and never dispatches a write skill.
@@ -96,6 +104,7 @@ The result is two rows per `/wiki-ask` call: the router row (classification tele
 - **One clarifying question max.** Only on Class A slug ambiguity; never on intent ambiguity (Class B) or vagueness (Class C); never chain.
 - **Default to the cheap dispatch on intent ambiguity, with an escape line.** The cheap result plus an opt-up beats an interruption that exposes the architecture.
 - **Fall through to `/wiki-query` when nothing matches.** It's the general-purpose default; don't force a structural skill on a prose question.
+- **Route to `/wiki-trace` only on a specific claim/quote/anchor.** Provenance of a *named* span → trace; a *topic-level* "what sources cover X" → Coverage/Default. Trace is a clean terminal route (its None/synthesized result is a valid answer, not an error) — never re-route it onward.
 - **Re-route a failed graph dispatch to `/wiki-query`, don't error.** When a `path`/`neighbors`/`subgraph` route hits `slug(s) not found` (exit 2), the named concept lives inside another page rather than as its own slug — fuzzy prose retrieval answers it; graph traversal can't. Surface the one-liner and re-dispatch the original query. Router-only; direct `/wiki-graph` still errors. `routed_to` records the final destination.
 - **Dispatch through the skill, not the script.** Go through `/wiki-graph` / `/wiki-summarize` / `/wiki-query` so their own rules and telemetry apply; the dispatched skill tags its row `routed_from: ask`.
 - **Classifier-tuning signal.** `routing_clarifications` is telemetry: if its average climbs above ~0.3 per query, the classifier needs tuning, not the user. Don't paper over a bad classification with more questions.
