@@ -5,6 +5,11 @@ Pins the two-tier match contract:
   provenance; wins outright over any fuzzy candidate.
 - FUZZY: stdlib token-containment fallback, only when no verbatim span exists
   anywhere; surfaces paraphrase candidates, never presented as proof.
+- FUZZY TIERS (trace v1.2): candidates are score-tiered — score >= strong-score
+  (default 0.75) = `likely_verbatim_home` (a mangled-verbatim outlier: the claim
+  probably IS extracted, reformatted past what normalize() folds), below =
+  `topical_noise` (flat vocabulary overlap, consistent with a synthesized
+  claim). Verbatim payloads carry no tier fields.
 - EXCLUSION: files under `.`/`_` first-segment paths are never searched (the
   canonical ingest-exclusion rule — a verbatim string hiding in `.skipped/`
   must not surface).
@@ -322,6 +327,126 @@ class TraceTests(unittest.TestCase):
         r = tc.trace(self.vault, "Codex flagged 3 real bugs")
         self.assertEqual(r["match_type"], "verbatim")
         self.assertEqual(r["results"][0]["file"], "Web Articles/bugs.md")
+
+
+class FuzzyTierTests(unittest.TestCase):
+    """Trace v1.2: the fuzzy score-tier split. A high-containment outlier is a
+    likely (reformatted) verbatim home; flat scores near the 0.5 floor are
+    topical noise. Fixture scores are exact: the 8-content-word query scores
+    1.0 against the reordered home and 0.5 against the topical paragraph."""
+
+    QUERY = "agents rewrite themselves continuously under noisy production loads"
+    # All 8 content words present, but reordered → fuzzy 1.0, not verbatim.
+    STRONG_PARA = "Under noisy production loads, agents will continuously rewrite themselves.\n"
+    # Exactly 4 of 8 content words present → fuzzy 0.5.
+    TOPICAL_PARA = "Noisy agents are common in production, and loads of them fail.\n"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+        (self.vault / "Web Articles").mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _drop(self, relpath: str, text: str) -> None:
+        p = self.vault / relpath
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+
+    def test_strong_candidate_tiered_likely_verbatim_home(self):
+        self._drop("Web Articles/strong.md", "\n" + self.STRONG_PARA)
+        r = tc.trace(self.vault, self.QUERY)
+        self.assertEqual(r["match_type"], "fuzzy")
+        self.assertEqual(r["results"][0]["score"], 1.0)
+        self.assertEqual(r["results"][0]["tier"], "likely_verbatim_home")
+
+    def test_flat_candidate_tiered_topical_noise(self):
+        self._drop("Web Articles/topical.md", "\n" + self.TOPICAL_PARA)
+        r = tc.trace(self.vault, self.QUERY)
+        self.assertEqual(r["match_type"], "fuzzy")
+        self.assertEqual(r["results"][0]["score"], 0.5)
+        self.assertEqual(r["results"][0]["tier"], "topical_noise")
+
+    def test_mixed_tiers_summary_and_order(self):
+        """Strong outlier sorts first; the payload summarizes both tiers."""
+        self._drop("Web Articles/strong.md", "\n" + self.STRONG_PARA)
+        self._drop("Web Articles/topical.md", "\n" + self.TOPICAL_PARA)
+        r = tc.trace(self.vault, self.QUERY)
+        self.assertEqual(
+            [x["tier"] for x in r["results"]],
+            ["likely_verbatim_home", "topical_noise"],
+        )
+        self.assertEqual(
+            r["fuzzy_tiers"], {"likely_verbatim_home": 1, "topical_noise": 1}
+        )
+        self.assertEqual(r["strong_score"], tc.STRONG_SCORE_DEFAULT)
+        # Fuzzy result shape now includes the tier.
+        for hit in r["results"]:
+            self.assertEqual(
+                set(hit), {"file", "slug", "line", "score", "paragraph", "tier"}
+            )
+
+    def test_boundary_score_is_strong_and_flag_reclassifies(self):
+        """score == strong_score tiers strong; raising the bar demotes it."""
+        # 3 of the query's 4 content words → exactly 0.75.
+        self._drop("Web Articles/b.md", "\nThe harness beats the model.\n")
+        query = "harness quality beats model"
+        r = tc.trace(self.vault, query)
+        self.assertEqual(r["results"][0]["score"], 0.75)
+        self.assertEqual(r["results"][0]["tier"], "likely_verbatim_home")
+        r2 = tc.trace(self.vault, query, strong_score=0.8)
+        self.assertEqual(r2["results"][0]["tier"], "topical_noise")
+        self.assertEqual(r2["strong_score"], 0.8)
+
+    def test_verbatim_payload_carries_no_tier_fields(self):
+        self._drop("Web Articles/v.md", "\nThe harness matters more than the model.\n")
+        r = tc.trace(self.vault, "harness matters more than the model")
+        self.assertEqual(r["match_type"], "verbatim")
+        self.assertNotIn("fuzzy_tiers", r)
+        self.assertNotIn("strong_score", r)
+        self.assertNotIn("tier", r["results"][0])
+
+    def _run(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            rc = tc.main(argv)
+        return rc, out.getvalue()
+
+    def test_human_render_splits_sections(self):
+        self._drop("Web Articles/strong.md", "\n" + self.STRONG_PARA)
+        self._drop("Web Articles/topical.md", "\n" + self.TOPICAL_PARA)
+        rc, out = self._run([str(self.vault), self.QUERY])
+        self.assertEqual(rc, 0)
+        self.assertIn("Likely reformatted verbatim home(s)", out)
+        self.assertIn("Topical candidates (vocabulary overlap only", out)
+        # The strong hit is listed before the topical one.
+        self.assertLess(out.index("strong.md"), out.index("topical.md"))
+
+    def test_human_render_topical_only_signals_synthesized(self):
+        self._drop("Web Articles/topical.md", "\n" + self.TOPICAL_PARA)
+        rc, out = self._run([str(self.vault), self.QUERY])
+        self.assertEqual(rc, 0)
+        self.assertIn("Topical candidates only", out)
+        self.assertIn("synthesized", out)
+        self.assertNotIn("Likely reformatted verbatim home(s)", out)
+
+    def test_json_and_strong_score_flag(self):
+        import json
+
+        self._drop("Web Articles/b.md", "\nThe harness beats the model.\n")
+        rc, out = self._run(
+            [str(self.vault), "harness quality beats model", "--json",
+             "--strong-score", "0.9"]
+        )
+        self.assertEqual(rc, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["match_type"], "fuzzy")
+        self.assertEqual(payload["strong_score"], 0.9)
+        self.assertEqual(payload["results"][0]["tier"], "topical_noise")
+        self.assertEqual(
+            payload["fuzzy_tiers"], {"likely_verbatim_home": 0, "topical_noise": 1}
+        )
 
 
 class MainCliTests(unittest.TestCase):

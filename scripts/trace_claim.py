@@ -15,8 +15,13 @@ Two-tier match, paragraph granularity:
      token-containment: fraction of the query's content words (len >= 3) present
      in a paragraph. Surfaces the closest paraphrase candidates for INFERRED /
      AMBIGUOUS claims that have no verbatim home. NOT exact provenance — labeled
-     as such. (Semantic fallback over a vault-side embedding index is a deferred
-     A2+ enhancement; hybrid_search.py indexes the wiki, not the vault.)
+     as such. Candidates are score-tiered (trace v1.2): a high-containment
+     outlier (score >= --strong-score, default 0.75) is a LIKELY VERBATIM HOME —
+     the claim was probably EXTRACTED and the compiler reformatted it past what
+     normalize() folds — while flat scores near the 0.5 floor are TOPICAL NOISE,
+     consistent with a genuinely synthesized claim. (Semantic fallback over a
+     vault-side embedding index is a deferred A2+ enhancement; hybrid_search.py
+     indexes the wiki, not the vault.)
 
 Searches `vault/`, excluding any file whose first vault-relative path segment
 starts with `.` or `_` (the canonical ingest-exclusion rule — auto-skips
@@ -71,6 +76,19 @@ _NUM_WORDS = {
     "eighty": "80", "ninety": "90",
 }
 _NUM_RE = re.compile(r"\b(" + "|".join(_NUM_WORDS) + r")\b")
+
+# Fuzzy score-tier boundary (trace v1.2). Without it the fuzzy tier is "two
+# tools under one label": a high-containment outlier signals a *mangled verbatim
+# home* (the claim IS extracted; the compiler reformatted it past what
+# normalize() folds), while flat scores near the 0.5 floor are topical
+# vocabulary overlap — consistent with a genuinely synthesized (INFERRED /
+# AMBIGUOUS) claim. The boundary is absolute, not top-vs-rest gap-based: the
+# vault holds near-duplicate clips of the same article, and a gap rule would
+# mislabel twin verbatim homes as noise precisely when the evidence is
+# strongest. Empirical anchors (session-107 trace exercise + the live
+# kaitai-dong claim): mangled verbatim homes scored 1.0 and 0.778; synthesized
+# claims produced flat 0.5.
+STRONG_SCORE_DEFAULT = 0.75
 
 # A2 (claim-ID anchors). `[[page-slug#claim-<slug>]]` query form → resolve the
 # claim text on the wiki page, then trace that text into the vault. The body
@@ -227,14 +245,19 @@ def trace(
     max_results: int = 5,
     min_score: float = 0.5,
     max_chars: int = 600,
+    strong_score: float = STRONG_SCORE_DEFAULT,
 ) -> dict:
     """Resolve a quote/claim to its vault provenance.
 
     Returns a result dict (also the `--json` payload):
       {query, match_type: verbatim|fuzzy|none, files_searched, results: [...],
        duration_ms}
-    where each result is {file, slug, line, paragraph, score?}. `score` is
-    present only for fuzzy results.
+    where each result is {file, slug, line, paragraph, score?, tier?}. `score`
+    and `tier` are present only for fuzzy results: `tier` is
+    `likely_verbatim_home` (score >= strong_score — the claim probably IS
+    extracted, reformatted past what normalize() folds) or `topical_noise`
+    (vocabulary overlap, not provenance). Fuzzy payloads additionally carry
+    `strong_score` and a `fuzzy_tiers` count summary over the returned results.
     """
     t0 = time.monotonic()
     q_norm = normalize(query)
@@ -288,11 +311,17 @@ def trace(
         match_type = "fuzzy"
         fuzzy.sort(key=lambda r: (-r["score"], r["file"], r["line"]))
         results = fuzzy[:max_results]
+        for r in results:
+            r["tier"] = (
+                "likely_verbatim_home"
+                if r["score"] >= strong_score
+                else "topical_noise"
+            )
     else:
         match_type = "none"
         results = []
 
-    return {
+    out = {
         "query": query,
         "match_type": match_type,
         "files_searched": files_searched,
@@ -300,6 +329,17 @@ def trace(
         "results": results,
         "duration_ms": int((time.monotonic() - t0) * 1000),
     }
+    if match_type == "fuzzy":
+        out["strong_score"] = strong_score
+        out["fuzzy_tiers"] = {
+            "likely_verbatim_home": sum(
+                1 for r in results if r["tier"] == "likely_verbatim_home"
+            ),
+            "topical_noise": sum(
+                1 for r in results if r["tier"] == "topical_noise"
+            ),
+        }
+    return out
 
 
 def render_human(result: dict) -> str:
@@ -325,16 +365,40 @@ def render_human(result: dict) -> str:
             lines.append(_indent(r["paragraph"]))
             lines.append("")
     elif mt == "fuzzy":
+        strong = [r for r in result["results"] if r.get("tier") == "likely_verbatim_home"]
+        topical = [r for r in result["results"] if r.get("tier") != "likely_verbatim_home"]
+        boundary = result.get("strong_score", STRONG_SCORE_DEFAULT)
         lines.append(f'No verbatim match for: "{q}".')
-        lines.append(
-            "Closest paraphrase candidates "
-            "(stdlib token-overlap — not exact provenance):"
-        )
-        lines.append("")
-        for r in result["results"]:
-            lines.append(f"`{r['file']}` (line {r['line']}, score {r['score']})")
-            lines.append(_indent(r["paragraph"]))
+        if strong:
+            lines.append(
+                f"Likely reformatted verbatim home(s) (score >= {boundary} — "
+                "nearly all of the claim's content words in one paragraph; the "
+                "claim may be EXTRACTED, reformatted past what normalize() folds "
+                "— read the span to confirm):"
+            )
             lines.append("")
+            for r in strong:
+                lines.append(f"`{r['file']}` (line {r['line']}, score {r['score']})")
+                lines.append(_indent(r["paragraph"]))
+                lines.append("")
+        if topical:
+            if strong:
+                lines.append(
+                    "Topical candidates (vocabulary overlap only — not provenance):"
+                )
+            else:
+                lines.append(
+                    f"Topical candidates only — no score outlier >= {boundary} "
+                    "(stdlib token-overlap, not provenance; a flat list near the "
+                    "score floor is consistent with a genuinely synthesized "
+                    "INFERRED/AMBIGUOUS claim — check the page's `sources:` "
+                    "frontmatter):"
+                )
+            lines.append("")
+            for r in topical:
+                lines.append(f"`{r['file']}` (line {r['line']}, score {r['score']})")
+                lines.append(_indent(r["paragraph"]))
+                lines.append("")
     else:
         lines.append(f'No source span found for: "{q}".')
         lines.append(
@@ -375,6 +439,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0.5,
         help="Min fuzzy token-containment score to surface a candidate (default 0.5)",
     )
+    p.add_argument(
+        "--strong-score",
+        type=float,
+        default=STRONG_SCORE_DEFAULT,
+        help="Fuzzy score at or above which a candidate is tiered as a likely "
+        f"(reformatted) verbatim home rather than topical noise "
+        f"(default {STRONG_SCORE_DEFAULT})",
+    )
     p.add_argument("--json", action="store_true", help="Emit JSON instead of human format")
     return p.parse_args(argv)
 
@@ -413,6 +485,7 @@ def main(argv: list[str]) -> int:
             res["claim_text"],
             max_results=args.max_results,
             min_score=args.min_score,
+            strong_score=args.strong_score,
         )
         result["input_kind"] = "anchor"
         result["anchor"] = {"page_slug": page_slug, "claim_id": claim_id}
@@ -427,6 +500,7 @@ def main(argv: list[str]) -> int:
             query,
             max_results=args.max_results,
             min_score=args.min_score,
+            strong_score=args.strong_score,
         )
         result["input_kind"] = "quote"
 
