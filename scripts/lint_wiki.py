@@ -326,7 +326,7 @@ def check_excessive_ambiguous(pages: dict, threshold: int = 3) -> list[str]:
 
     Concept / entity / comparison / synthesis pages only — source pages
     are exempt by convention (source fidelity carried by source_type).
-    Per wiki/AGENTS.md "claim-tag inline markers" rule.
+    Per wiki/AGENTS.md "Claim-tag markers" rule.
     """
     flagged = []
     for info in pages.values():
@@ -348,7 +348,7 @@ def check_claim_ids(pages: dict) -> list[dict]:
         (uppercase, underscore, or a space after `#`). Silently unresolvable
         otherwise — the strict matcher skips it.
 
-    Per wiki/AGENTS.md "claim-tag inline markers" → "Claim-ID anchors" rule.
+    Per wiki/AGENTS.md "Claim-ID anchors" rule.
     Opt-in convention: absence of any anchor is never an issue.
     """
     issues: list[dict] = []
@@ -744,8 +744,8 @@ def check_drifted_stubs(pages: dict) -> list[dict]:
     drifted off the codified stub contract — surface for backfill.
 
     Codified by dev/archive/2026-05-13-wiki-stub-design.md. Predicate is verbatim
-    string match against the four contracts in wiki/AGENTS.md § Stub callout
-    templates. The codex shape-drift bug the lint exists to catch is closed
+    string match against the four contracts in skills/wiki-stub/SKILL.md (stub callout
+    templates; AGENTS.md keeps the single-source one). The codex shape-drift bug the lint exists to catch is closed
     inline (pages/entities/codex.md gains the verbatim callout + verify:true), so
     expected hit count post-fix is 0; check is a forward sentinel for future
     drift.

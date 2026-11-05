@@ -39,7 +39,7 @@ config for the authoritative values):
 2. **verify-queue composite** — `needs_verification >= 100` sustained across 3 lint runs AND latest `needs_verification + single_source_unverified >= 250`.
 3. **`broken_links > 5`** sustained over 5 lint runs (structural cascade-completeness failure).
 4. **updated/created ratio inversion** — Q4 `< 1.5` floor OR Q4 `< Q1`.
-5. **top concept hub `>= 25_000` words** — Read-limit proxy; concept hubs only (entities have a `supersedes:`/version-sub-page pressure valve).
+5. **top concept hub `>= 25_000` words** — Read-limit proxy; concept hubs only (entities have a `supersedes:`/version-sub-page pressure valve). When a verdict calls for decomposing the hub, follow [`references/hub-decomposition.md`](references/hub-decomposition.md) (extract → digest → pointer).
 
 ## Workflow
 

@@ -11,7 +11,9 @@ disable-model-invocation: true
 The codified path for creating low-confidence placeholder pages. Three
 patterns under one skill — `hub`, `single-source`, `planned`. All write
 `verify: true` + `stub_origin: <pattern>` + a verbatim callout per the
-schema's "Stub callout templates" contract.
+"Stub callout templates" contract (the canonical
+callout text lives in this skill; `wiki/AGENTS.md` keeps only the
+single-source callout the ingestor writes in-band).
 
 The skill never silently writes — every pattern surfaces a confirmation
 prompt before touching `wiki/`. The user can abort at the prompt.

@@ -8,11 +8,11 @@ This file is the human-facing orientation. The operational rules and templates t
 
 | File | Purpose |
 |---|---|
-| [`AGENTS.md`](AGENTS.md) | Operational rules, page types, frontmatter schema, cross-reference rules, page templates. Auto-loaded into the agent's context. |
+| [`AGENTS.md`](AGENTS.md) | Operational rules, page types, frontmatter schema, cross-reference rules, page templates. Read directly by the agents that write pages. |
 | [`CATEGORIES.md`](CATEGORIES.md) | The authoritative category taxonomy + procedure for adding a new category. `lint_wiki.py` reads this file at runtime. |
 | [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) | Schema change history. |
 | [`WORKFLOWS.md`](WORKFLOWS.md) | Manual-execution playbook for AI platforms without native `/skills` support. |
-| `CLAUDE.md` | Auto-load anchor for Claude Code; `@-includes` `AGENTS.md`. |
+| `CLAUDE.md` | `@AGENTS.md` pointer for tools that look for `CLAUDE.md`. Claude Code does not expand nested @-includes, so agents Read `AGENTS.md` directly. |
 
 ## Architecture: three layers
 
@@ -22,7 +22,38 @@ This file is the human-facing orientation. The operational rules and templates t
 
 ## Tooling compatibility
 
-If your AI platform (Cursor, Windsurf, Gemini, etc.) does not natively support Claude Code's `/skills` commands or subagent dispatch, refer to [`WORKFLOWS.md`](WORKFLOWS.md) for step-by-step manual execution instructions. All operations can be performed using standard terminal commands and the helper scripts in `.scripts/`.
+The schema lives in `AGENTS.md` (canonical content); `CLAUDE.md` is a one-line `@AGENTS.md` pointer. The dual-file shape lets tools that look for `AGENTS.md` by convention (Codex CLI, Cursor, Antigravity, Gemini CLI, OpenCode) and tools that look for `CLAUDE.md` both find the schema. Edit `AGENTS.md` only.
+
+If your AI platform does not natively support Claude Code's `/skills` commands or subagent dispatch, refer to [`WORKFLOWS.md`](WORKFLOWS.md) for step-by-step manual execution instructions. All operations can be performed using standard terminal commands and the helper scripts shipped in the wiki-forge plugin's `scripts/` directory.
+
+## Special files
+
+All three are maintained by scripts or agents; never hand-edit them.
+
+- **`pages/indexes/index.md`** — the master index, pointing to one sub-index per page type (`index-concepts.md`, `index-entities.md`, …). Within each sub-index, pages are grouped by category, one line each, with aliases and tags visible to both the LLM and search:
+
+  ```text
+  - [[slug]] — one-line description `[aka: alt-name, acronym | tags: topic, domain, technique]` _(confidence: 0.8, sources: 3)_
+  ```
+
+  The `aka:` and `tags:` fields make pages discoverable by alternate vocabulary: a query for "kv-cache" finds "Prompt Caching" because the tag is in the index line. Regenerated on every operation by `update_index.py`.
+- **`log.md`** — append-only operation log, written by `append_log.py`:
+
+  ```markdown
+  ## [2026-04-15 14:30] ingest | Karpathy LLM Wiki gist
+  - Created: pages/sources/2026-04-15-karpathy-llm-wiki.md
+  - Updated: pages/concepts/rag.md (added contradiction section)
+  - Commit: a1b2c3d
+  ```
+- **`overview.md`** — one page of prose on the wiki's current state: major themes, recent additions, unresolved questions, interesting connections. Refreshed every 10 ingests by `/wiki-overview --soft`; a full rewrite (`/wiki-overview --full`) is trigger-detected by `check_overview_triggers.py` or user-invoked, with a section-by-section approval gate. The `wiki-curator` agent owns the writes.
+
+## Script-API reference
+
+Each script in the wiki-forge plugin's `scripts/` directory documents its own contract via module docstring + argparse `--help` (`python ${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py --help`). Specifically:
+
+- Telemetry JSONL row schemas live in their owner `append_*_log.py` (`append_ingest_log.py`, `append_query_log.py`, `append_lint_log.py`, `append_overview_log.py`, `append_freshness_log.py`, `append_corroborate_log.py`).
+- `.meta/lint-config.json` schema lives in `lint_wiki.py`; `.meta/secret-patterns.json` in `check_secrets.py`.
+- `hybrid_search.py` and `graph_analyzer.py` document their modes at the top of each script.
 
 ## Directory layout
 
@@ -30,16 +61,14 @@ If your AI platform (Cursor, Windsurf, Gemini, etc.) does not natively support C
 vault/                  # Immutable sources; filename: YYYY-MM-DD-slug.md
 wiki/
 ├── README.md           # This file — human orientation
-├── CLAUDE.md           # Auto-load anchor for Claude Code (@-includes AGENTS.md)
-├── AGENTS.md           # Operational rules + page templates
+├── CLAUDE.md           # @AGENTS.md pointer (for tools that look for CLAUDE.md)
+├── AGENTS.md           # Operational rules + page templates (the schema)
 ├── CATEGORIES.md       # Authoritative category taxonomy (runtime-read by lint_wiki.py)
 ├── SCHEMA_CHANGELOG.md # Schema change history
 ├── WORKFLOWS.md        # Manual-execution playbook for non-Claude-Code tools
 ├── log.md              # Append-only chronological operation log
 ├── overview.md         # Evolving big-picture synthesis (refreshed via /wiki-overview — every 10 ingests soft; full rewrite trigger-detected or user-invoked)
 ├── .meta/              # Sidecar data (index stats, embedding cache, telemetry logs)
-├── .scripts/           # Helper scripts (update_index, lint, search, etc.)
-│   └── models/         # ONNX model for semantic search (optional)
 └── pages/              # Knowledge content (separated from project/schema files above)
     ├── indexes/
     │   ├── index.md        # Master index — TOC pointing to sub-indices
