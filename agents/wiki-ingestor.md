@@ -384,8 +384,8 @@ still close the loop. The script always sets `flag_decision_at_ingest`;
 on Y it additionally stamps `flag_cleared_at_ingest` with the current
 timestamp. P and N leave `flag_cleared_at_ingest` null but the decision
 field captures the action so per-decision telemetry analysis is possible.
-Same shape as the `commit_hash` repair pattern in `vault/.wiki-identity.md`
-§ Telemetry repair. If no matching row exists (e.g., the user never ran
+Same shape as a telemetry repair: a row written before its fact was
+known gets stamped afterwards, never by amending a commit. If no matching row exists (e.g., the user never ran
 `/wiki-corroborate` on this slug — the source surfaced via the normal
 ingest queue), the script returns non-zero — note in the report and
 continue. Telemetry is observational, not a contract; firing post-commit
@@ -455,7 +455,8 @@ commit.
 
 If this ingest's post-log count (the awk counter + 1) is a multiple of 10,
 also remind the user in the final report that a full `/wiki-lint` is due
-per the cadence rule in `vault/.wiki-identity.md`.
+(cadence: a full three-pass lint every 10 ingests, chained to
+`/wiki-overview --soft`).
 
 ### 7. Structured report
 

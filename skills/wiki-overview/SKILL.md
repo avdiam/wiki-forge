@@ -364,8 +364,8 @@ Wait for both passes' `<usage>` blocks (same rule as 6A — a background
 dispatch surfaces `<usage>` in its completion notification, not the
 launch ack). Mode B emits two `<usage>` blocks (one per pass). Parse each block
 per-field (same tolerant approach as Mode A) and **aggregate across
-passes** for the row's cost fields per the HITL contract in
-`vault/.wiki-identity.md` § Subagent HITL — sum every numeric field
+passes** for the row's cost fields (file-checkpoint two-pass rule:
+one telemetry row per operation) — sum every numeric field
 across the two passes; `duration_ms` sums the two passes' wall-clocks.
 `commit_hash` is `content_hash` from 5B (Pass 1 doesn't commit).
 `status` is `applied` if Pass 2 wrote and committed, `cancelled` if

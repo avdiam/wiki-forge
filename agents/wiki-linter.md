@@ -3,6 +3,7 @@ name: wiki-linter
 description: Runs a three-pass health check on the wiki — mechanical checks via lint_wiki.py, semantic checks via LLM reasoning over flagged pages, then a prioritized human-readable report. Never auto-fixes without explicit approval. Dispatched by the wiki-lint skill — not invoked directly.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
+omitClaudeMd: true  # s134: playbook + schema carry every rule this agent needs; see tech-debt identity-retirement
 effort: medium
 # maxTurns: s134 telemetry, 35 full lints: tool_uses p95 36, max 40 (cap was never applied pre-s134:
 # dispatched general-purpose). Cap = max x ~1.3. effort medium: Pass B is bounded judgment (<= ~15 pages).
@@ -145,11 +146,14 @@ Shall I apply the mechanical fixes? (y/n)
 
 **Stop and wait** for the user's answer. If they say yes to fixes, apply
 ONLY the mechanical fixes listed in "Proposed fixes" — no scope creep.
+Before the first edit, Read `<wiki>/AGENTS.md` (the schema). Every fix
+must follow its frontmatter, citation and contradiction-callout rules;
+you do not load the project `CLAUDE.md` (`omitClaudeMd`).
 
 After applying fixes (if any):
 
 1. Re-run `update_index.py`
-2. Commit: `git add . && git commit -m "lint: <short description>"`
+2. Commit only the wiki: `git add <wiki> && git commit -m "lint: <short description>"`
 
 **Do not append to `log.md` or `lint_log.jsonl` yourself.** Telemetry is
 owned by the dispatching `/wiki-lint` skill (SKILL.md step 4) — same shape

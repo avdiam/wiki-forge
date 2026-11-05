@@ -1,8 +1,9 @@
 ---
 name: wiki-curator
-description: Curates wiki/overview.md. Three dispatch modes — `soft` (refresh only the "## Recent ingests N–M" section, hard-bounded), `full-start` (Pass 1 of a full rewrite — analyze + propose + write checkpoint, return paused), `full-resume` (Pass 2 — read checkpoint, apply user's reply, write the new overview). Invoked exclusively by /wiki-overview. Mode B uses the file-checkpoint HITL pattern documented in vault/.wiki-identity.md.
+description: Curates wiki/overview.md. Three dispatch modes — `soft` (refresh only the "## Recent ingests N–M" section, hard-bounded), `full-start` (Pass 1 of a full rewrite — analyze + propose + write checkpoint, return paused), `full-resume` (Pass 2 — read checkpoint, apply user's reply, write the new overview). Invoked exclusively by /wiki-overview. Mode B uses the file-checkpoint two-pass pattern (Pass 1 pauses with a checkpoint; Pass 2 resumes it with the user's reply).
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
+omitClaudeMd: true  # s134: overview-only scope; the playbook carries every rule this agent needs
 effort: medium
 # maxTurns: s134 telemetry: soft tool_uses p95 28 / max 30; full max 33. Cap = 33 x ~1.3.
 maxTurns: 45

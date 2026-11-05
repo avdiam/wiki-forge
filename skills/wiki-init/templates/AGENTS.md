@@ -8,7 +8,7 @@ Content lives in `pages/sources/`, `pages/concepts/`, `pages/entities/`, `pages/
 
 ## Page types
 
-- **Source summary** (`pages/sources/`) — one per vault file. Captures what the source says, without cross-source synthesis. Filename: same slug as the vault file (`2026-04-15-karpathy-llm-wiki.md`).
+- **Source summary** (`pages/sources/`) — one per vault file. Captures what the source says, without cross-source synthesis. Filename: same slug as the vault file (`2026-04-15-karpathy-llm-wiki.md`). **What counts as a source:** any file in a `vault/` content folder, except paths whose top-level segment under `vault/` starts with `.` or `_` (protocol files, Obsidian internals) and files with `not_a_source: true` in frontmatter.
 - **Concept** (`pages/concepts/`) — an idea, pattern, method or theory. Accumulates evidence from multiple sources; most retrieval happens here. Filename: kebab-case (`rag.md`, `prompt-caching.md`).
 - **Entity** (`pages/entities/`) — a specific named thing: person, tool, service, organization, product, model family. Filename: kebab-case (`claude-code.md`, `andrej-karpathy.md`).
 - **Comparison** (`pages/comparisons/`) — two competing approaches side by side. Filename: `a-vs-b.md` (`rag-vs-llm-wiki.md`). **Create whenever two entities or concepts occupy the same decision space, even if no single source contrasts them.** After adding or editing an entity/concept page, check whether its natural counterpart exists; if it does and no comparison page exists, create one. Also create one when a source explicitly compares, or surfaces competing claims.
@@ -170,6 +170,11 @@ Use Obsidian `[[wikilinks]]` for every internal reference. Targets resolve by sl
    conflict list to the user and ask whether this is paradigm-shifting
    material that deserves discussion before being absorbed. Do not try to
    reconcile silently.
+10. **Temporal facts are not contradictions.** A changed number, version or
+    count is a dated snapshot: keep both values with their dates
+    (`[2026-04] 12K stars → [2026-09] 30K stars`) instead of a contradiction callout.
+11. **Listicles and surveys:** write the source page and the taxonomy concepts
+    they organize; don't spawn thin entity stubs for every item listed.
 
 ## Templates
 
