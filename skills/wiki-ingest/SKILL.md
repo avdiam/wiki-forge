@@ -560,24 +560,26 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_ingest_log.py" --wiki <wiki> \
 If the appender exits non-zero, mention it briefly in the relay and move
 on. Do NOT retry; do NOT fail the ingest on telemetry failure.
 
-**Fold telemetry into the agent's commit (when the appender succeeded).**
+**Commit the telemetry separately — never amend the agent's commit.**
 The appender writes to `wiki/.meta/ingest_log.jsonl` AFTER the agent's
 commit — left as-is, the row stays dirty until a later session backfills
-it, misattributing ingest N's telemetry to ingest N+1's commit. Amend
-the agent's commit to fold the row in:
+it, misattributing ingest N's telemetry to ingest N+1's commit. Folding
+it in with `git commit --amend` is wrong too: the amend rewrites the
+agent's commit hash, so the row's `commit_hash` points at an orphaned
+pre-amend commit (most `ingest_log` hashes through ingest #321 did —
+session 132). Give the row its own commit:
 
 ```bash
 if ! git diff --quiet wiki/.meta/ingest_log.jsonl wiki/log.md wiki/.meta/lint_log.jsonl; then
     git add wiki/.meta/ingest_log.jsonl wiki/log.md wiki/.meta/lint_log.jsonl
-    git commit --amend --no-edit
+    git commit -m "ingest: telemetry for <commit_hash>"
 fi
 ```
 
 The diff-quiet gate is defensive (no-op when the appender failed or when
-nothing actually changed). HEAD at this point is the agent's commit, or
-the most-recent fix-up commit when the README-ingest pattern produced one
-(per step 8 of the ingestor playbook) — both are correct amend targets.
-Personal-repo amend policy applies (see `vault/.wiki-identity.md` Obsidian commit policy).
+nothing actually changed). `<commit_hash>` is the agent's reported hash —
+the last commit of the ingest when the README-ingest pattern produced a
+fix-up commit (per step 8 of the ingestor playbook).
 
 ### 13.5. Tick the triage batch checkbox (when this source came from a triage batch)
 

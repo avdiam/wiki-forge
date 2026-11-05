@@ -112,23 +112,25 @@ placeholder values. A missed row is recoverable; a misclassified one is
 not (session 75, 2026-05-22 — a `note`-tagged line broke the lint
 counter for the wake-up drill until hand-corrected).
 
-### 5. Commit telemetry — amend the fix-commit OR create a fresh telemetry commit
+### 5. Commit telemetry — always a separate commit, never an amend
 
 After step 4 the working tree has dirty entries in `wiki/log.md` (the
 `lint` entry this skill appended) and `wiki/.meta/lint_log.jsonl` (the
 row this skill appended). The agent does NOT commit telemetry itself —
-this skill owns it.
+this skill owns it. Never amend the linter's fix-commit to fold these in:
+the row records that commit's hash, and an amend would rewrite it,
+orphaning the recorded hash (session 132 — same bug as `/wiki-ingest`
+step 13 and `/wiki-overview` step 6A had).
 
 Branch on the agent's trailing footer line `Fixes committed: <hash or "none">`:
 
 (a) **Fixes committed** (hash present). HEAD is the linter's `lint: ...`
-fix-commit (per agent playbook Pass C). Fold the telemetry into it —
-same pattern as `/wiki-ingest` step 13's amend recipe:
+fix-commit (per agent playbook Pass C). Commit the telemetry on top of it:
 
 ```bash
 if ! git diff --quiet wiki/log.md wiki/.meta/lint_log.jsonl; then
     git add wiki/log.md wiki/.meta/lint_log.jsonl
-    git commit --amend --no-edit
+    git commit -m "lint: telemetry for <fix-commit hash>"
 fi
 ```
 
@@ -149,8 +151,6 @@ and `<total-pages>` (Total pages).
 
 The diff-quiet gate is defensive in both branches — covers the case
 where the agent's appenders failed and produced no telemetry rows.
-Personal-repo amend policy applies for branch (a) (see
-`vault/.wiki-identity.md` Obsidian commit policy).
 
 ### 6. Chain to /wiki-overview --soft (when due)
 
