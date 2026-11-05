@@ -14,7 +14,7 @@ User-facing graph traversal over the wiki's wikilink topology. Three subcommands
 
 Walks the **wikilink graph only** (page-body `[[wikilinks]]`); typed-edge frontmatter (`contradicts:` / `supersedes:` / `superseded_by:`) is excluded by default. Pure script output — no librarian, no synthesis, no token cost beyond this skill's prompt.
 
-*Architecturally: Option C (inline tool-orchestration) per `_template-simple/SKILL.md`. No subagent dispatch.*
+*Architecturally: inline tool-orchestration. No subagent dispatch.*
 
 > Direct invocation. For a natural-language entry point that auto-routes between this, `/wiki-query`, and `/wiki-summarize`, see `/wiki-ask`.
 

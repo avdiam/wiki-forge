@@ -6,7 +6,7 @@ argument-hint: "<question>"
 
 # wiki-query (smart dispatcher)
 
-*Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 3 for large wikis; small wikis stay inline — Option C shape) per `_template-complex/SKILL.md`.*
+*Architecturally: inline orchestration with Agent-tool dispatch at step 3 for large wikis; small wikis stay inline.*
 
 > Direct invocation. For a natural-language entry point that auto-routes between this, `/wiki-graph`, and `/wiki-summarize`, see `/wiki-ask`.
 
@@ -84,14 +84,11 @@ This avoids the token cost of spawning a subagent for small wikis.
 **If top score >= 0.3** (good search results):
 
 Use the Agent tool to spawn the wiki-librarian:
-- **model:** `"sonnet"`
+- **subagent_type:** `"wiki-forge:wiki-librarian"`
 - **description:** `"Wiki query — <short question summary>"`
 - **prompt:**
 
 ```text
-You are the wiki-librarian subagent. Find your full playbook by running
-Glob for '**/agents/wiki-librarian.md' and read it in full before starting.
-
 Context for this run:
 - Question: <the question>
 - Wiki root: <absolute path to wiki/>
@@ -111,14 +108,11 @@ citations and confidence notes, and offer to save as a synthesis page.
 **If top score < 0.3** (weak search results — possible vocabulary mismatch):
 
 Use the Agent tool to spawn the wiki-librarian in fallback mode:
-- **model:** `"sonnet"`
+- **subagent_type:** `"wiki-forge:wiki-librarian"`
 - **description:** `"Wiki query (fallback) — <short question summary>"`
 - **prompt:**
 
 ```text
-You are the wiki-librarian subagent. Find your full playbook by running
-Glob for '**/agents/wiki-librarian.md' and read it in full before starting.
-
 Context for this run:
 - Question: <the question>
 - Wiki root: <absolute path to wiki/>

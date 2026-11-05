@@ -6,7 +6,7 @@ argument-hint: "<vault-path-or-all-new>"
 
 # wiki-ingest (orchestrator + analyzer + approval gate)
 
-*Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 12) per `_template-complex/SKILL.md`.*
+*Architecturally: inline orchestration with Agent-tool dispatch at step 12.*
 
 This skill is the **single entry point** to the wiki-ingestor agent. It
 owns everything that happens before the writes: pre-flight scripts,
@@ -436,9 +436,6 @@ Use the Agent tool:
 - **prompt:**
 
 ```text
-You are the wiki-ingestor subagent. Find your full playbook by running
-Glob for '**/agents/wiki-ingestor.md' and read it in full before starting.
-
 Source: <raw vault path>
 Wiki root: <absolute path to wiki/>
 

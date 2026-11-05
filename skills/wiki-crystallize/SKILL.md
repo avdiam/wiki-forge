@@ -12,7 +12,7 @@ with trace-determined provenance and a `{#claim-id}` anchor. A `/wiki-query`
 synthesis is a new leaf node; crystallization makes it a *write-side reinforcer*
 of the prior knowledge graph (Ghumare's framing — [[rohit-ghumare]] Stream 10).
 
-*Architecturally: Option B (inline orchestration — the model lifts + routes the
+*Architecturally: (inline orchestration — the model lifts + routes the
 facts, `crystallize.py` mechanizes provenance/dedup/anchors, the main session
 applies the approved merges inline per Path 1 of the subagent-HITL doc). v1 of
 Phase-2 build-set stream #2; design `dev/2026-06-16-crystallization-v1-design.md`.*

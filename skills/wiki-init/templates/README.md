@@ -12,7 +12,7 @@ This file is the human-facing orientation. The operational rules and templates t
 | [`CATEGORIES.md`](CATEGORIES.md) | The authoritative category taxonomy + procedure for adding a new category. `lint_wiki.py` reads this file at runtime. |
 | [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) | Schema change history. |
 | [`WORKFLOWS.md`](WORKFLOWS.md) | Manual-execution playbook for AI platforms without native `/skills` support. |
-| `CLAUDE.md` | `@AGENTS.md` pointer for tools that look for `CLAUDE.md`. Claude Code does not expand nested @-includes, so agents Read `AGENTS.md` directly. |
+| `CLAUDE.md` | `@AGENTS.md` pointer for tools that look for `CLAUDE.md`. Nested `CLAUDE.md` files load only on demand, so agents that write pages Read `AGENTS.md` directly. |
 
 ## Architecture: three layers
 

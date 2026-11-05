@@ -5,7 +5,9 @@ description: >-
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 effort: medium
-maxTurns: 20
+# maxTurns: s134 telemetry: /wiki-query tool_uses max 26; /wiki-summarize max 45 (slug-anchored 44-45).
+# The old cap of 20 was never applied (general-purpose dispatch) and would have truncated both. Cap = 45 x ~1.3.
+maxTurns: 60
 ---
 
 # wiki-librarian

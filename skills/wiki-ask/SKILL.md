@@ -14,7 +14,7 @@ Dispatch targets:
 - **`/wiki-summarize`** — topic-coverage audit (five-section report). Always dispatches the librarian.
 - **`/wiki-query`** — prose-synthesis Q&A. The fall-through default for vague or open-ended reads.
 
-*Architecturally: Option C (inline tool-orchestration) per `_template-simple/SKILL.md`. No subagent dispatch — the router runs inline and invokes the target skill via the Skill tool.*
+*Architecturally: inline tool-orchestration. No subagent dispatch — the router runs inline and invokes the target skill via the Skill tool.*
 
 ## Inputs
 

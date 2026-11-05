@@ -26,7 +26,7 @@ top-25 hybrid-search results (via `${CLAUDE_PLUGIN_ROOT}/scripts/hybrid_search.p
 synthesis regardless of wiki size — the five-section shape is non-trivial to
 produce inline.
 
-*Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 4) per `_template-complex/SKILL.md`.*
+*Architecturally: inline orchestration with Agent-tool dispatch at step 4.*
 
 ## Workflow
 
@@ -140,14 +140,11 @@ in the relay (rare; signals graph drift) but proceed with the resolved pages.
 ### 4. Dispatch wiki-librarian (survey mode)
 
 Use the Agent tool to spawn the wiki-librarian:
-- **model:** `"sonnet"`
+- **subagent_type:** `"wiki-forge:wiki-librarian"`
 - **description:** `"Wiki survey — <topic>"`
 - **prompt:**
 
 ```text
-You are the wiki-librarian subagent. Find your full playbook by running
-Glob for '**/agents/wiki-librarian.md' and read it in full before starting.
-
 Survey mode: true
 
 Context for this run:

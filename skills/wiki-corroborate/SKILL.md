@@ -21,7 +21,7 @@ stops. The user picks a candidate (or skips). `/wiki-capture` writes the vault
 file. `/wiki-ingest` chains in and surfaces the verify-clearing gate at the
 takeaway approval step. The flag clears only on user Y at that gate.
 
-*Architecturally: Option C (inline tool-orchestration) per `_template-simple/SKILL.md`.
+*Architecturally: inline tool-orchestration.
 Main-session only — no subagent dispatch, no librarian, no token cost beyond
 this skill's prompt + WebSearch round-trips.*
 

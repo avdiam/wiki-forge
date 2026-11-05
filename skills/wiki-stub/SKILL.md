@@ -18,8 +18,7 @@ single-source callout the ingestor writes in-band).
 The skill never silently writes — every pattern surfaces a confirmation
 prompt before touching `wiki/`. The user can abort at the prompt.
 
-*Architecturally: Option C (inline tool-orchestration) per
-`_template-simple/SKILL.md`. Main-session only — no subagent dispatch.
+*Architecturally: inline tool-orchestration. Main-session only — no subagent dispatch.
 The skill calls `list_unresolved_hubs.py` for inbound counts and writes
 the page inline.*
 

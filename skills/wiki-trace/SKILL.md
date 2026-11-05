@@ -16,7 +16,7 @@ Two-tier match (paragraph granularity, over `vault/`):
 
 Searches the raw vault, excluding any path whose first segment starts with `.` or `_` (the canonical ingest-exclusion rule). Pure script output — no librarian, no synthesis, no token cost beyond this skill's prompt.
 
-*Architecturally: Option C (inline tool-orchestration) per `_template-simple/SKILL.md`. No subagent dispatch. Slices A1+A2 of the claim-provenance bundle — input is a literal quote (A1) or a `[[page-slug#claim-id]]` anchor (A2: the skill resolves the anchor to the claim text on the page, then traces that into the vault). Claim→source mapping + the dependency-graph cascade are A3.*
+*Architecturally: inline tool-orchestration. No subagent dispatch. Slices A1+A2 of the claim-provenance bundle — input is a literal quote (A1) or a `[[page-slug#claim-id]]` anchor (A2: the skill resolves the anchor to the claim text on the page, then traces that into the vault). Claim→source mapping + the dependency-graph cascade are A3.*
 
 ## Workflow
 

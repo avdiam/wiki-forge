@@ -6,7 +6,7 @@ argument-hint: "[--soft|--full|--check]"
 
 # wiki-overview (orchestrator)
 
-*Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 4A for `--soft` and steps 2B + 4B for `--full`'s file-checkpoint two-pass) per `_template-complex/SKILL.md`.*
+*Architecturally: inline orchestration with Agent-tool dispatch at step 4A for `--soft` and steps 2B + 4B for `--full`'s file-checkpoint two-pass.*
 
 This skill is the **single entry point** to the `wiki-curator` agent. It
 owns mode selection, the mechanical refresh script invocation (Mode A
@@ -125,14 +125,10 @@ Note the dispatch time — it is the `--duration-ms` fallback in 6A if no
 `<usage>` block ever surfaces. Use the Agent tool:
 
 - **subagent_type:** `"wiki-forge:wiki-curator"`
-- **model:** `"opus"` (frontmatter default)
 - **description:** `"Wiki overview soft refresh"`
 - **prompt:**
 
 ```text
-You are the wiki-curator subagent. Find your full playbook by running
-Glob for '**/agents/wiki-curator.md' and read it in full before starting.
-
 Mode: soft
 Wiki root: <absolute path to wiki/>
 Last refreshed at ingest: <prev_n>
@@ -268,14 +264,10 @@ welcome report's `Overview:` freshness field after Mode B runs.
 Use the Agent tool:
 
 - **subagent_type:** `"wiki-forge:wiki-curator"`
-- **model:** `"opus"`
 - **description:** `"Wiki overview full rewrite — Pass 1"`
 - **prompt:**
 
 ```text
-You are the wiki-curator subagent. Find your full playbook by running
-Glob for '**/agents/wiki-curator.md' and read it in full before starting.
-
 Mode: full-start
 Wiki root: <absolute path to wiki/>
 Trigger: <reasons string OR "user-invoked">
@@ -324,14 +316,10 @@ content. Do not paraphrase.
 Use the Agent tool again:
 
 - **subagent_type:** `"wiki-forge:wiki-curator"`
-- **model:** `"opus"`
 - **description:** `"Wiki overview full rewrite — Pass 2"`
 - **prompt:**
 
 ```text
-You are the wiki-curator subagent. Find your full playbook by running
-Glob for '**/agents/wiki-curator.md' and read it in full before starting.
-
 Mode: full-resume
 Wiki root: <absolute path to wiki/>
 Checkpoint file: .claude/tmp/wiki-curator-checkpoint.json

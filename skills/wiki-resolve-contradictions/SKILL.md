@@ -24,7 +24,7 @@ the takeaway approval step. The `contradicts:` edge is removed only on
 the user's verbatim outcome decision at that gate (or via manual edit —
 wiki pages are editable per project discipline; vault is not).
 
-*Architecturally: Option C (inline tool-orchestration) per `_template-simple/SKILL.md`.
+*Architecturally: inline tool-orchestration.
 Main-session only — no subagent dispatch, no librarian, no token cost beyond
 this skill's prompt + WebSearch round-trips.*
 

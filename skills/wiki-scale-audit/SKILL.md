@@ -6,7 +6,7 @@ argument-hint: "[--check]"
 
 # wiki-scale-audit (main-session guided)
 
-*Architecturally: Option A (inline main-session procedure, no subagent dispatch) per `_template-complex/SKILL.md`. Both prior audits (2026-05-08, 2026-06-06) ran this way — probe 5 needs a user screenshot and the verdict is judgment, neither of which a fork can do alone, and the writeup is rare enough (gated, ~half-day) that fork isolation buys nothing.*
+*Architecturally: inline main-session procedure, no subagent dispatch. Both prior audits (2026-05-08, 2026-06-06) ran this way — probe 5 needs a user screenshot and the verdict is judgment, neither of which a fork can do alone, and the writeup is rare enough (gated, ~half-day) that fork isolation buys nothing.*
 
 This skill is the **promotion** of the Mode 7 audit from a hand-run procedure
 to a codified one. It owns the orchestration of `scale_audit_probes.py`, the two

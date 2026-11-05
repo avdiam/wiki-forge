@@ -4,6 +4,8 @@ description: Pure executor for wiki ingestion. Receives a complete approved plan
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 effort: low
+# maxTurns: s134 telemetry, 297 ingests: tool_uses p95 56, p99 72 (one 176 outlier). 100 >= p99 x 1.3; kept.
+# model: opus is the fallback; /wiki-ingest passes sonnet|opus per dispatch (dispatch param wins).
 maxTurns: 100
 ---
 

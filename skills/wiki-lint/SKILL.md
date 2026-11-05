@@ -5,7 +5,7 @@ description: Health-check the wiki for contradictions, staleness, orphans, broke
 
 # wiki-lint (dispatcher)
 
-*Architecturally: Option B (inline orchestration with Agent-tool dispatch at step 2) per `_template-complex/SKILL.md`.*
+*Architecturally: inline orchestration with Agent-tool dispatch at step 2.*
 
 Thin skill that dispatches to the `wiki-linter` subagent.
 
@@ -18,14 +18,11 @@ Thin skill that dispatches to the `wiki-linter` subagent.
 ### 2. Dispatch to wiki-linter
 
 Use the Agent tool to spawn a subagent:
-- **model:** `"opus"`
+- **subagent_type:** `"wiki-forge:wiki-linter"`
 - **description:** `"Wiki lint health check"`
 - **prompt:**
 
 ```text
-You are the wiki-linter subagent. Find your full playbook by running
-Glob for '**/agents/wiki-linter.md' and read it in full before starting.
-
 Context for this run:
 - Wiki root: <absolute path to wiki/>
 
@@ -177,5 +174,5 @@ The chain always passes `--soft`; structural realignment (Mode B / full
 rewrite) is a separate user decision and never auto-fires.
 
 ## Rules
-- Dispatch via the Agent tool (model: opus); don't run the lint in the main session (it reads many files)
+- Dispatch via the Agent tool (`subagent_type: "wiki-forge:wiki-linter"`; model, effort and turn cap come from the agent's frontmatter); don't run the lint in the main session (it reads many files)
 - Reports first, never silently fixes

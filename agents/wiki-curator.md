@@ -4,7 +4,8 @@ description: Curates wiki/overview.md. Three dispatch modes — `soft` (refresh 
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 effort: medium
-maxTurns: 30
+# maxTurns: s134 telemetry: soft tool_uses p95 28 / max 30; full max 33. Cap = 33 x ~1.3.
+maxTurns: 45
 ---
 
 # wiki-curator

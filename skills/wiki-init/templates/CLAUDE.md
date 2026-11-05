@@ -1,3 +1,3 @@
 @AGENTS.md
 
-<!-- 1-line @-include pointer. The schema content lives in AGENTS.md. Nested CLAUDE.md @-includes are not expanded on auto-load (observed s133/s134), so agents that write pages Read AGENTS.md directly. -->
+<!-- 1-line @-include pointer. The schema content lives in AGENTS.md. Agents that write pages Read AGENTS.md directly rather than relying on this nested include (it only loads on demand, when a file under wiki/ is read). -->

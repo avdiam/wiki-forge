@@ -73,7 +73,7 @@ Works for any domain — AI research, cooking, law, RPG campaigns. The
 
 ### 1. Install (one-time)
 
-**As a plugin** (recommended):
+**As a plugin:**
 
 ```bash
 # Clone the repo
@@ -85,16 +85,10 @@ claude --plugin-dir ./wiki-forge
 
 Once loaded, commands are namespaced: `/wiki-forge:init`, `/wiki-forge:ingest`, etc.
 
-**Standalone** (manual copy):
-
-```bash
-mkdir -p ~/.claude/skills ~/.claude/agents
-cp -r wiki-forge/skills/wiki-* ~/.claude/skills/
-cp wiki-forge/agents/wiki-*.md ~/.claude/agents/
-```
-
-> **Plugin vs standalone:** Plugin commands are namespaced (`/wiki-forge:init`).
-> Standalone commands are shorter (`/wiki-init`). Functionality is identical.
+> **Plugin install only.** Skills dispatch their subagents as `wiki-forge:<agent>`
+> and call helper scripts via `${CLAUDE_PLUGIN_ROOT}`. Both resolve only when
+> wiki-forge is loaded as a plugin, so a manual copy into `~/.claude/skills/` +
+> `~/.claude/agents/` is not supported.
 
 ### 2. Bootstrap a wiki in any project
 

@@ -3,7 +3,10 @@ name: wiki-linter
 description: Runs a three-pass health check on the wiki — mechanical checks via lint_wiki.py, semantic checks via LLM reasoning over flagged pages, then a prioritized human-readable report. Never auto-fixes without explicit approval. Dispatched by the wiki-lint skill — not invoked directly.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
-maxTurns: 40
+effort: medium
+# maxTurns: s134 telemetry, 35 full lints: tool_uses p95 36, max 40 (cap was never applied pre-s134:
+# dispatched general-purpose). Cap = max x ~1.3. effort medium: Pass B is bounded judgment (<= ~15 pages).
+maxTurns: 55
 ---
 
 # wiki-linter

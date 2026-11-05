@@ -2,7 +2,7 @@
 
 > **Schema version:** 4 — see [`SCHEMA_CHANGELOG.md`](SCHEMA_CHANGELOG.md) for change history. Bump on breaking changes (new required frontmatter field, renamed page type, removed operation, changed slug format, category-structure change, **category-list addition or removal** since the list is now enumerated and lint-enforced). Non-breaking changes (template tweaks, rule clarifications, prose edits) don't bump. [`CATEGORIES.md`](CATEGORIES.md) is a sibling schema file; see [`README.md`](README.md) for the full layout, special files and tooling notes.
 
-This file is the operational schema for writing pages in this wiki. Agents that write pages (the ingestor; the librarian when filing a synthesis) **Read this file directly**. `CLAUDE.md`'s `@AGENTS.md` include is a pointer for tools that look for `CLAUDE.md`; it is not relied on to expand when nested. Follow the rules and templates here exactly.
+This file is the operational schema for writing pages in this wiki. Agents that write pages (the ingestor; the librarian when filing a synthesis) **Read this file directly**. `CLAUDE.md`'s `@AGENTS.md` include is a pointer for tools that look for `CLAUDE.md`; it loads only on demand (nested `CLAUDE.md`), so it is not relied on. Follow the rules and templates here exactly.
 
 Content lives in `pages/sources/`, `pages/concepts/`, `pages/entities/`, `pages/comparisons/`, `pages/syntheses/`.
 
