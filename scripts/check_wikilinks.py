@@ -53,8 +53,8 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
-# Local copy so the script remains usable when invoked outside the wiki/.scripts
-# package context (subagent fork may set CWD to wiki root, not wiki/.scripts).
+# Local copy so the script remains usable when invoked outside the plugin scripts/
+# package context (subagent fork may set CWD to wiki root, not the scripts/ directory).
 PAGE_TYPES = ["sources", "concepts", "entities", "comparisons", "syntheses"]
 
 # Strip [[...]] wrappers, anchors (#section), and aliases (|display) from inputs.

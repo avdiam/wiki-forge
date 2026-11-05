@@ -17,10 +17,10 @@ agreement-checking and visual assessment stay manual.
 Pure stdlib — matches the project's no-PyYAML/no-requests discipline.
 
 Usage:
-    python wiki/.scripts/scale_audit_probes.py wiki
-    python wiki/.scripts/scale_audit_probes.py wiki --json
-    python wiki/.scripts/scale_audit_probes.py wiki --check-triggers
-    python wiki/.scripts/scale_audit_probes.py wiki --init --force \
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/scale_audit_probes.py wiki
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/scale_audit_probes.py wiki --json
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/scale_audit_probes.py wiki --check-triggers
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/scale_audit_probes.py wiki --init --force \
         --total-pages 800 --verify-queue 250 --audit-doc dev/<date>-mode7-audit.md
 
 Trigger thresholds are config-driven: read from `.meta/scale-audit-config.json`

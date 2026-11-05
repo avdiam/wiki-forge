@@ -4,30 +4,30 @@ This file provides cross-LLM operational parity. If your platform (Gemini, Curso
 
 ## Architecture Guidelines
 
-- Helper scripts are stored in `wiki/.scripts/`. They are pure Python 3.9+.
+- Helper scripts ship in the wiki-forge plugin's `scripts/` directory, written `<scripts>` below (in Claude Code: `${CLAUDE_PLUGIN_ROOT}/scripts`). They are pure Python 3.9+.
 - Execute the scripts via terminal to perform heavy-lifting mechanical work (search, lint, indexing), and use your LLM judgment to read the outputs and perform synthesis.
 - Never overwrite existing manually maintained wiki pages carelessly.
 
 ## Core Operations
 
 ### 1. Ingest a Source
-1. **Pre-process:** Run `python wiki/.scripts/ingest_source.py --wiki wiki/ --source vault/<filename> --json`. Follow any structural warnings.
+1. **Pre-process:** Run `python <scripts>/ingest_source.py --wiki wiki/ --source vault/<filename> --json`. Follow any structural warnings.
 2. **Context Intake:** Use your native file reading capabilities to parse the source file entirely.
 3. **Draft Updates:** Use a generic terminal search (e.g., `grep -ril "<concept>" wiki/`) to intuitively discover existing semantic pages related to the text.
 4. **Authoring:** Create or append to pages in `wiki/pages/concepts/`, `wiki/pages/entities/`, etc. as outlined by the schema in `AGENTS.md`. Maintain the exact frontmatter specifications. Avoid creating highly redundant pages.
-5. **Update State:** When finished, run `python wiki/.scripts/update_index.py wiki/` to accurately reconstruct the hierarchical sub-indices.
-6. **Log:** Keep a permanent audit trail by running `python wiki/.scripts/append_log.py ingest --title "<Source_Title>" --wiki wiki/`.
+5. **Update State:** When finished, run `python <scripts>/update_index.py wiki/` to accurately reconstruct the hierarchical sub-indices.
+6. **Log:** Keep a permanent audit trail by running `python <scripts>/append_log.py ingest --title "<Source_Title>" --wiki wiki/`.
 7. **Commit:** If git is available, commit all changes with a descriptive message (e.g., `git add wiki/ && git commit -m "ingest: <Source_Title>"`). This creates an audit trail and enables easy rollback with `git revert`.
 
 ### 2. Query the Wiki
 1. **Check wiki size:** Count the total lines in `wiki/pages/indexes/` sub-indices. If the combined index is short (roughly under ~90 entries, ~6000 tokens), read the sub-indices directly and skip to step 3.
-2. **Search (large wikis only):** Run `python wiki/.scripts/hybrid_search.py wiki/ "<query>"` to find relevant pages.
+2. **Search (large wikis only):** Run `python <scripts>/hybrid_search.py wiki/ "<query>"` to find relevant pages.
 3. **Read and synthesize:** Read the returned pages (or index entries for small wikis). Synthesize a comprehensively accurate answer, citing wiki pages using `[[wikilink]]` format.
 4. **Offer to save:** Ask the user if the result warrants saving as a permanent synthesis page in `wiki/pages/syntheses/`.
 
 ### 3. Lint the Wiki
-1. **Mechanical Check:** Run `python wiki/.scripts/lint_wiki.py wiki/ --json`.
-2. **Topological Check:** Run `python wiki/.scripts/graph_analyzer.py wiki/ --json`.
+1. **Mechanical Check:** Run `python <scripts>/lint_wiki.py wiki/ --json`.
+2. **Topological Check:** Run `python <scripts>/graph_analyzer.py wiki/ --json`.
 3. Read and synthesize the final outputs. Using your semantic reasoning, review any files flagged for conflicting categorization or stale dependencies.
 4. Provide a structured review report to the user and immediately offer to execute fixes for orphans or broken links.
 5. **Commit:** If git is available and you made any fixes, commit `wiki/` with a descriptive message (e.g., `git add wiki/ && git commit -m "lint: fix broken links"`).

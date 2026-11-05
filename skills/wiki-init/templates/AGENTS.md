@@ -489,7 +489,7 @@ resolve by slug, not full path:
 
 Broken wikilinks (pointing to non-existent pages) are flagged by `wiki-lint`
 post-write. The wiki-ingestor agent also validates wikilinks **pre-write**
-via `wiki/.scripts/check_wikilinks.py` (a stdlib helper that takes a slug
+via `${CLAUDE_PLUGIN_ROOT}/scripts/check_wikilinks.py` (a stdlib helper that takes a slug
 list — bare or `[[bracketed]]` — plus an optional `--planned` set for slugs
 being created in the same ingest, and returns `ok | planned | broken` per
 slug). The pre-write validation is the load-bearing rule: do **not** write
@@ -546,7 +546,7 @@ Mechanically refreshed every 10 ingests via `/wiki-overview --soft` (Mode A); fu
 
 ## Script-API reference
 
-Each script in `.scripts/` documents its own contract via module docstring + argparse `--help`. Run `python wiki/.scripts/<script>.py --help` for usage; read the script's docstring for the schema of any sidecar config or JSONL row it owns. Specifically:
+Each script in the wiki-forge plugin's `scripts/` directory documents its own contract via module docstring + argparse `--help`. Run `python ${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py --help` for usage; read the script's docstring for the schema of any sidecar config or JSONL row it owns. Specifically:
 
 - Telemetry JSONL row schemas live in their owner `append_*_log.py` (six logs: `append_ingest_log.py`, `append_query_log.py`, `append_lint_log.py`, `append_overview_log.py`, `append_freshness_log.py`, `append_corroborate_log.py`).
 - `.meta/lint-config.json` schema lives in `lint_wiki.py`.

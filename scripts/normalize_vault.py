@@ -17,8 +17,8 @@ Rules:
     - Slug collisions halt the whole run with a clear error — no silent overwrite.
 
 Usage:
-    python wiki/.scripts/normalize_vault.py <vault>
-    python wiki/.scripts/normalize_vault.py <vault> --dry-run
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/normalize_vault.py <vault>
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/normalize_vault.py <vault> --dry-run
 """
 
 from __future__ import annotations

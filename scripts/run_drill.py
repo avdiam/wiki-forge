@@ -4,12 +4,12 @@
 Replaces the two-step sequence in vault/.wiki-identity-bootstrap.md steps 5-6:
 
     # Old (three commands):
-    python wiki/.scripts/graph_analyzer.py wiki --json > /tmp/wiki-graph.json
-    python wiki/.scripts/format_graph_snapshot.py /tmp/wiki-graph.json
-    python wiki/.scripts/drill_state.py wiki --graph-json /tmp/wiki-graph.json
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/graph_analyzer.py wiki --json > /tmp/wiki-graph.json
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/format_graph_snapshot.py /tmp/wiki-graph.json
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/drill_state.py wiki --graph-json /tmp/wiki-graph.json
 
     # New (one command):
-    python wiki/.scripts/run_drill.py wiki
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/run_drill.py wiki
 
 Builds the graph once and passes the result in-memory to both
 format_graph_snapshot and drill_state, avoiding a second full graph rebuild.
@@ -39,7 +39,7 @@ Output JSON shape:
   }
 
 Usage:
-    python wiki/.scripts/run_drill.py wiki
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/run_drill.py wiki
 """
 
 from __future__ import annotations

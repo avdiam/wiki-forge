@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Append one row to wiki/.meta/source_freshness.jsonl.
 
-Called by wiki/.scripts/check_source_freshness.py for each source-page
+Called by ${CLAUDE_PLUGIN_ROOT}/scripts/check_source_freshness.py for each source-page
 slug it polls. Each row records one HTTP poll attempt.
 
 Row schema:

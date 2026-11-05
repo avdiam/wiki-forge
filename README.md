@@ -208,7 +208,7 @@ Search features:
 
 ## Helper scripts
 
-Pure stdlib Python (except search deps). Installed into `wiki/.scripts/`:
+Pure stdlib Python (except search deps). Shipped in the plugin's `scripts/` directory (`${CLAUDE_PLUGIN_ROOT}/scripts/`), not copied into the project:
 
 | Script | Purpose |
 | --- | --- |
@@ -241,7 +241,7 @@ The wiki schema is installed as both `CLAUDE.md` and `AGENTS.md`:
 **Semantic search (optional, ~100MB):**
 ```bash
 pip install onnxruntime tokenizers numpy
-python wiki/.scripts/setup_search.py   # downloads 30MB ONNX model
+python ${CLAUDE_PLUGIN_ROOT}/scripts/setup_search.py   # downloads 30MB ONNX model
 ```
 
 **Fast ANN search (optional, +45MB — for large wikis):**

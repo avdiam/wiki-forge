@@ -36,7 +36,7 @@ Stdlib only — same discipline as extract_page_metadata.py (which it imports fo
 the classifier). No requests, no PyYAML.
 
 Run:
-    python wiki/.scripts/batch_capture.py <urls.txt> [--vault vault] [--json]
+    python ${CLAUDE_PLUGIN_ROOT}/scripts/batch_capture.py <urls.txt> [--vault vault] [--json]
 
 Exit codes:
   0 — ran (buckets printed); a non-empty `errored` bucket is not a failure
