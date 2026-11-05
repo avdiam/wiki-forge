@@ -57,8 +57,9 @@ TIMEOUT_SECONDS = 10
 MAX_RETRIES = 1
 USER_AGENT = "wiki-freshness-check/1.0 (+https://github.com/avdia/wiki)"
 
-# Domains that require clipper-side fetch (paywalled / login-gated).
-# Skip with reason='requires_clipper'; phase 3 wires those to clipper.
+# Domains that need the user's authenticated browser (paywalled / login-gated).
+# Skip with reason='requires_auth' (rows before 2026-11-05 carry the legacy
+# value 'requires_clipper' — same meaning).
 PAYWALL_DOMAINS = {
     "medium.com", "towardsdatascience.com",
     "towardsai.net", "generativeai.pub", "ai.gopubby.com",
@@ -226,7 +227,8 @@ def edit_source_page_for_drift(source_page: Path) -> bool:
     new_fm = fm_head + "\nsource_drifted: true\n---"
     callout = ("> [!WARNING] Source drift detected\n"
                "> Upstream content has changed since this source was captured. "
-               "Re-capture via clipper to refresh; the ingestor will rewrite "
+               "Re-capture (/wiki-capture, or the Web Clipper for login-walled "
+               "pages) to refresh; the ingestor will rewrite "
                "this page from the new vault file.\n")
     if "Source drift detected" in body:
         # Idempotent re-mark: callout already present, just inject the frontmatter field.
@@ -298,7 +300,7 @@ def poll_one(
 
     if is_paywalled(url):
         base_row["http_status"] = "skipped"
-        base_row["reason"] = "requires_clipper"
+        base_row["reason"] = "requires_auth"
         return base_row
 
     status, body, err = http_fetch(url)

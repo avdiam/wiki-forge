@@ -52,8 +52,8 @@ tell the user, suggest `/wiki-init`, stop.
 
 Before invoking `ingest_source.py`, verify the raw source path is canonical
 (`^\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md$`). Bulk Chrome-extension drops, manual
-drops, and any future capture path that bypasses `/wiki-capture` and the
-clipper can carry filenames with apostrophes, spaces, em-dashes, or
+drops (the Obsidian Web Clipper names files `<published-date>-<Title Case>.md`),
+and any future capture path that bypasses `/wiki-capture` can carry filenames with apostrophes, spaces, em-dashes, or
 non-ASCII. The wiki-side gate ensures the rest of the pipeline operates on
 a canonical name; the standalone `${CLAUDE_PLUGIN_ROOT}/scripts/normalize_vault.py` is the
 bulk pre-flight that handles the same case in batch.
@@ -170,7 +170,7 @@ author watchlist. Verdict drives flow:
 **Skip protocol (used here and in step 11).** Wiki-side skip stubs go in
 `vault/.skipped/<slug>.md`. Reasons accepted:
 
-- Clipper-upstream set: `paywall-fragment` / `404` / `spam` / `duplicate`
+- Capture-upstream set: `paywall-fragment` / `404` / `spam` / `duplicate`
 - Wiki-downstream additions: `off-domain` / `promotional` / `shallow` / `already-folded` (the last with a `folded_into: <wiki-page-slug>` field).
 
 After writing the stub:
@@ -329,10 +329,11 @@ prefixes — GitHub PATs, AWS keys, Stripe / OpenAI / Anthropic keys, etc.;
 **On `high` findings:** surface the redacted match list in the takeaway
 block under § Secrets scan with **HALT** semantics — the user must
 acknowledge each high finding (`accept all`, `accept N,M`, or describe
-how to redact in vault) before dispatch. The clipper rule for not
-storing third-party credentials (`vault/.clipper-rules.md`) is the
-upstream prevention; this scan is forward-insurance for when that rule
-fails.
+how to redact in vault) before dispatch. The upstream prevention is the
+capture-side rule: **never store third-party credentials** (API keys,
+tokens, session cookies, signed/tokenized URLs) in a vault file — strip
+them at capture time, whichever onramp wrote the file. This scan is
+forward-insurance for when that rule fails.
 
 **On `low` findings only:** include them in § Secrets scan as a soft
 warning — no halt; takeaway-gate proceeds normally. The user can opt to
@@ -345,7 +346,7 @@ all-clear.
 This is the parser-side application of [[lethal-trifecta]]'s
 "sanitize the untrusted-content leg" mitigation — categorically reliable
 for known credential prefixes (where regex is sufficient) but not a
-substitute for the clipper-side discipline that keeps secrets out of the
+substitute for the capture-side discipline that keeps secrets out of the
 vault in the first place.
 
 Sidecar config: `wiki/.meta/secret-patterns.json` (optional) extends the

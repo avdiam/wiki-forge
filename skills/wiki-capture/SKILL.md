@@ -70,14 +70,17 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/extract_page_metadata.py" "<url>"
 
 The script returns a JSON object with `classification`, `next_action`, `metadata`, `tag_source`, and (when applicable) `fetch_status` / `http_code` / `fetch_error`. Route on `next_action`:
 
-**`skip-redirect-to-clipper`** (`classification: auth_required`)
-The domain is on the auth-required list — `medium.com` and others known to require an authenticated browser session. WebFetch will return a paywalled stub or fail. **Don't fetch.** Tell the user:
+**`skip-redirect-to-browser`** (`classification: auth_required`)
+The domain is on the auth-required list — `medium.com` and others known to require an authenticated browser session. WebFetch will return a paywalled stub or a Cloudflare 403 challenge. **Don't fetch.** Tell the user:
 
-> "`<domain>` is known to require an authenticated browser session (paywall / Cloudflare / login wall). Two options:
-> 1. Use the clipper (Chrome browser session) — it's authenticated and can save the article via Obsidian REST API.
-> 2. Open the URL yourself, copy the article body, and paste it back here — I'll capture from the paste."
+> "`<domain>` is known to require an authenticated browser session (paywall / Cloudflare / login wall). Options:
+> 1. **Obsidian Web Clipper** (recommended) — open the page in your browser and clip it (1–2 clicks); it lands in `vault/Clippings/` with good metadata. I can open the tab for you if the Chrome extension is connected.
+> 2. **Chrome capture** (only when the claude-in-chrome extension is connected) — I read the article from your logged-in tab and write the vault file myself. Works, but costs ~20 tool calls for a ~1.5K-word article; see the recipe below.
+> 3. **Paste** — copy the article body here and I'll capture from the paste."
 
-Stop and wait for user direction. Do not write a stub.
+Stop and wait for user direction. Do not write a stub. If the user clips it, the new `vault/Clippings/` file goes straight to `/wiki-ingest` (the ingest normalization gate fixes the Web Clipper's title-cased filename).
+
+**Chrome-capture recipe (option 2).** Load the claude-in-chrome tools; open the URL in a new tab in the session's tab group. With `javascript_tool`: (a) read metadata from the page — `og:url` (canonical URL), `meta[name=description]` (falls back to `og:description`), `author`, `article:published_time`; (b) convert the `<article>` element to markdown in-page (headings, paragraphs with inline code/bold/links, `pre` → fenced blocks, lists, blockquotes, figures → `![alt](src)` + caption) and store it on `window`; strip UI noise (clap/listen/share counters, the author's follow/clap promo after the sources list). The JS tool truncates results at ~1K characters, so read the stored string back in ~900-char slices via one `browser_batch`. Write the file with the Web Clipper frontmatter shape (`title`, `url`, `author`, `published`, `clipped`, `description`, `source_domain`, `words` — word count of the article body only) to `vault/Clippings/<today>-<slug>.md`, then **verify** by hashing the same span in-page (`crypto.subtle.digest`) and on disk — they must match before handing off to ingest. Validated s130 (byte-identical body vs the Web Clipper's own clip of the same article).
 
 **`use-metadata-below`** (`classification: default`, `fetch_status: ok`)
 urllib reached the site. Use WebFetch to get the body (its preprocessor handles HTML→markdown cleanly). The `metadata` block in the script output is the source of truth for `source_tags:` — write those values into Step 5's frontmatter. Carry `tag_source:` forward (one of `arxiv-citation` / `page-meta` / `clippings-marker`).
@@ -87,7 +90,7 @@ urllib couldn't reach the site (4xx / 5xx / timeout). Try WebFetch with the cano
 
 > "urllib couldn't reach `<domain>` (`<fetch_error>`), but WebFetch returned the body and claimed metadata: `<list>`. This may be hallucinated — verify it looks correct. Options:
 > 1. Confirm the metadata is real → I'll write `source_tags: [...]` and propose adding `<domain>` to the `head_preserving` list (so future captures from this domain skip the verification gate).
-> 2. Reject the metadata → I'll write `source_tags: []` with the `[clippings]` marker, and propose adding `<domain>` to the `auth_required` list (so future captures redirect to clipper)."
+> 2. Reject the metadata → I'll write `source_tags: []` with the `[clippings]` marker, and propose adding `<domain>` to the `auth_required` list (so future captures redirect to the browser)."
 
 Wait for user choice. Apply their decision to the plugin's canonical `${CLAUDE_PLUGIN_ROOT}/scripts/url_classifier_lists.json` (locate via Glob `**/scripts/url_classifier_lists.json` for the Edit) only after confirmation. `tag_source: needs-verification` until confirmed; once confirmed, becomes `page-meta` (option 1) or `clippings-marker` (option 2).
 
@@ -143,8 +146,8 @@ rules); decisions about what to keep happen here, not later.
 Filename: `vault/<dest-dir>/<YYYY-MM-DD>-<slug>.md` (or `vault/<YYYY-MM-DD>-<slug>.md` at root for ad-hoc captures).
 
 - **Destination directory** — pick the folder that matches the source type. The vault is organized by source kind, not by topic; ingest discipline handles topic taxonomy on the wiki side. Current conventions:
-  - **`Web Articles/`** — URL captures of blog posts, news articles, Medium pieces, tutorials, vendor docs pages. Symmetric with the clipper's destination (clipper writes here too), so dedup-by-URL works across both onramps.
-  - **`Research Papers/`** — arxiv PDFs, conference proceedings, peer-reviewed papers. Convention to formalize on first paper capture; create the dir then if it doesn't exist. The two-step arxiv recipe (clipper-rules Step 7) lands here, not in `Web Articles/`.
+  - **`Web Articles/`** — URL captures of blog posts, news articles, tutorials, vendor docs pages fetched by this skill. (The Obsidian Web Clipper extension and the Chrome-capture recipe land in `Clippings/` instead; the URL index covers both, so dedup-by-URL works across onramps.)
+  - **`Research Papers/`** — arxiv PDFs, conference proceedings, peer-reviewed papers. Convention to formalize on first paper capture; create the dir then if it doesn't exist. For arxiv, capture the abstract page (`/abs/`) for its `citation_*` metadata and note the PDF URL; lands here, not in `Web Articles/`.
   - **Root `vault/`** — pasted text, conversation references, file-path captures, anything without a clean source-type bucket. Acceptable as a catch-all; don't agonize. The URL-index scan picks up root-level files alongside subdir files.
   - **Future dirs** — if a new source type recurs (transcripts, gists, notes), promote it to its own folder when the third instance arrives. Don't pre-create empty dirs.
 - **Date**: today's ISO date (the **capture date** — when this file lands in `vault/`). NOT the source's publication date, even if a publication date is plausibly inferable. Capture date is always knowable; publication date often isn't (gists, undated posts, preprint-vs-final, post-publication edits). The wiki schema records publication date separately as an optional `published:` field on the source-summary page if it's reliably knowable.
@@ -168,18 +171,15 @@ tag_source: page-meta | arxiv-citation | clippings-marker | needs-verification
 ---
 ```
 
-The `tags: [clippings]` line is a **minimal marker** matching the clipper
-convention in `vault/.clipper-rules.md` step 4 — both onramps produce
-identically-shaped vault frontmatter. It is deliberately *not* a real
+The `tags: [clippings]` line is a **minimal marker** for skill-written
+captures. It is deliberately *not* a real
 semantic tag list; the wiki ingestor compiles real tags from content
 during the takeaway pass. The marker silences a redundant
 "no-tags-in-frontmatter" warn reason from `pre_screen.py` so the
 load-bearing signal (topic-vocabulary overlap) stays the focus on warn
 flows.
 
-**`source_tags:` and `tag_source:` come from Step 3a.** Symmetric with the
-clipper-side `source_tags:` field (per `vault/.clipper-rules.md` step 2).
-For URL captures, populate both from the cascade output. For file-path /
+**`source_tags:` and `tag_source:` come from Step 3a.** For URL captures, populate both from the cascade output. For file-path /
 pasted-text / conversation captures (no live page to scrape), omit
 `source_tags:` and `tag_source:` — those fields are URL-only.
 
@@ -203,7 +203,8 @@ the user.
 ### 5b. Append to the vault URL index (best-effort)
 
 After the vault write succeeds, append the new file's URL entry to the
-precomputed dedup index used by the clipper. **Pass the vault-relative
+precomputed dedup index (`vault/_indexes/url-index.json`, read by batch
+mode's dedup). **Pass the vault-relative
 path you just wrote, verbatim** — the `--append` argument matches the
 file's location, so a `Web Articles/` capture passes `Web Articles/<name>`,
 a `Research Papers/` capture passes `Research Papers/<name>`, a root
@@ -254,8 +255,8 @@ articles to seed — `/wiki-capture --batch <file>` triages the list, then
 captures only the URLs the main session actually can.
 
 The list file is plain text: one URL per line, full-line `#` comments allowed
-(inline `#` is NOT stripped — URL fragments use it). It is **not** the same as a
-clipper task-list of article titles; it must be real URLs.
+(inline `#` is NOT stripped — URL fragments use it). It must be real URLs, not
+article titles.
 
 ### 1. Triage the list
 
@@ -269,9 +270,9 @@ buckets:
 
 - **`fetchable`** — `head_preserving` / `default` domains. The main session
   captures these (next step). Each carries `classification` + `next_action`.
-- **`redirect_to_clipper`** — `auth_required` domains (Medium, paywalls, login
-  walls). The main session **cannot** fetch these; only the authenticated
-  Chrome clipper can.
+- **`redirect_to_browser`** — `auth_required` domains (Medium, paywalls, login
+  walls). The main session **cannot** fetch these; only the user's
+  authenticated browser can (Obsidian Web Clipper).
 - **`already_in_vault`** — URL already in the index. Skip.
 - **`errored`** — not a parseable http(s) URL, or an intra-file duplicate.
 
@@ -282,32 +283,35 @@ owns only what's deterministic; the model owns the fetch.
 ### 2. Present the buckets
 
 Show the counts + per-bucket URLs as a short summary so the user sees the shape
-before anything happens — e.g. `40 → clipper, 3 fetchable, 4 already in vault,
+before anything happens — e.g. `40 → browser, 3 fetchable, 4 already in vault,
 1 bad URL`. Then the bucket lists. Do **not** WebFetch an `auth_required` URL;
 it returns a paywalled stub.
 
-### 3. Hand the `redirect_to_clipper` bucket to the clipper (draft → confirm → write)
+### 3. Hand the `redirect_to_browser` bucket to the user (clip handoff)
 
-If the bucket is non-empty, **draft** a mailbox message and show it to the user
-before writing — this is a real vault artifact, so it goes through a
-confirmation gate (and avoids preempting clipper coordination the user may be
-handling themselves). On approval, write it; if the user says they'll tell the
-clipper directly, skip the write and just leave the URLs listed.
+If the bucket is non-empty, hand it over for Obsidian Web Clipper capture via
+the shared handoff helper — the same rule every browser-only list uses (drift
+re-capture included):
 
-Assemble the message per [`vault/_mailbox/README.md`](../../../vault/_mailbox/README.md):
-- **Filename:** `wiki_message_<next-N>.md`. Compute `next-N` by scanning **both**
-  the top-level `vault/_mailbox/` *and* `vault/_mailbox/.archive/**/` for the
-  highest existing message number and adding 1 (archived messages still count).
-- **Frontmatter:** `from: wiki`, `to: clipper`, `date: <today>`, `status: open`,
-  `re: null`, `subject: "Batch clip request — <N> URLs (<YYYY-MM-DD>)"`.
-- **Body:** a one-line directive ("Please clip these <N> URLs into `vault/Web
-  Articles/` per `.clipper-rules.md`.") followed by the bullet list of
-  `redirect_to_clipper` URLs.
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/scripts/clip_handoff.py" --from-json <bucket.json> --title "Batch clip queue <YYYY-MM-DD>"
+```
 
-(If batch clip-requests become routine, consider formalizing a `[CLIP QUEUE]`
-subject prefix — symmetric to the existing `[DRIFT QUEUE]` wiki→clipper
-directive — in the `_mailbox/README.md` prefix table + `.clipper-rules.md`. Not
-done yet; free-form subject is fine until the shape recurs.)
+(`<bucket.json>` = the `redirect_to_browser` list from step 1's `--json`
+output, saved to `.claude/tmp/`; or pass the URLs as positional args.) Route on
+the returned `mode`:
+
+- **`open_tabs`** (≤ 15 URLs) — **offer** to open each URL as a Chrome tab
+  (claude-in-chrome `tabs_create_mcp` + `navigate`) so the user can clip them
+  one after another. Ask first; open only on a yes. If the extension isn't
+  connected, list the URLs instead.
+- **`html`** (> 15 URLs) — tell the user the checklist page is at
+  `html_path` (numbered links, each opens in a new tab, tick-off checkboxes)
+  and that the clips will land in `vault/Clippings/`. Don't open dozens of tabs.
+
+Either way, don't wait inside the batch for the clips — continue with step 4.
+The clipped files are picked up later like any other `vault/Clippings/`
+arrival (drill commit sweep → `/wiki-triage` / `/wiki-ingest`).
 
 ### 4. Capture loop over the `fetchable` bucket (run to exhaustion)
 
@@ -343,7 +347,7 @@ Pass the **list** of written vault paths to `/wiki-triage`, which batches them
 into ingest groups with the normal per-source approval gates — the right home
 for the expensive HITL phase, and how bulk ingests already work. (For a tiny
 batch — 1–2 files — chaining straight to `/wiki-ingest` per file is fine.) Then
-report the final tally: captured / clipper-queued / already-in-vault / failed /
+report the final tally: captured / handed-to-browser / already-in-vault / failed /
 deferred-verification.
 
 ## Rules

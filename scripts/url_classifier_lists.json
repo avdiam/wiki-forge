@@ -5,7 +5,7 @@
   "auth_required": [
     "medium.com"
   ],
-  "_auth_required_doc": "Domains known to require an authenticated browser session (Cloudflare bot-fight, paywalls, login walls). /wiki-capture skips fetch entirely and redirects user to clipper or paste workflow. Seed: medium.com (verified 2026-05-08 — returns 403 even with Mozilla User-Agent in stdlib urllib).",
+  "_auth_required_doc": "Domains known to require an authenticated browser session (Cloudflare bot-fight, paywalls, login walls). /wiki-capture skips fetch entirely and redirects the user to the Obsidian Web Clipper (or Chrome capture / paste). Seed: medium.com (verified 2026-05-08 — returns 403 even with Mozilla User-Agent in stdlib urllib).",
   "credibility_tier_1": [
     "*.edu",
     "*.gov",

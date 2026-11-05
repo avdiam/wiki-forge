@@ -73,8 +73,9 @@ step 3 still applies.
 **Drift-triggered re-ingest** — a specific shape of `merge_mode`. Check
 the existing source page's frontmatter: if `source_drifted: true` is
 present (set by `check_source_freshness.py` when upstream content shifted
-from the recorded baseline; cleared by clipper-side re-capture per Step 9
-of `vault/.clipper-rules.md`), this re-ingest is the closing leg of a
+from the recorded baseline; `compose_drift_queue.py` lists the re-capture
+work — `/wiki-capture` for fetchable URLs, a `clip_handoff.py` handoff to
+the user's Web Clipper for auth-required ones), this re-ingest is the closing leg of a
 drift cycle and needs three extras on top of the normal merge:
 
 - Title the new section `## Re-ingest <date> — drift re-capture` (not
@@ -203,10 +204,10 @@ In this order:
 
 Use the source-summary template from `wiki/AGENTS.md`. Frontmatter required:
 
-- `source_type:` — copy from the raw vault file's frontmatter (`source_type:` written by `/wiki-capture` or the clipper). Values: `article | paper | gist | blog | docs | transcript | notes | other`.
-- `captured:` — copy from the raw vault file's frontmatter (`captured:` from `/wiki-capture`, or `clipped:` from the clipper — accept either, write `captured:` on the source page). Fall back to the filename's `YYYY-MM-DD` prefix if neither field exists.
+- `source_type:` — copy from the raw vault file's frontmatter (`source_type:` written by `/wiki-capture`; Obsidian Web Clipper files usually lack it — infer from content, default `article`). Values: `article | paper | gist | blog | docs | transcript | notes | other`.
+- `captured:` — copy from the raw vault file's frontmatter (`captured:` from `/wiki-capture`, or `clipped:` from the Obsidian Web Clipper — accept either, write `captured:` on the source page). Fall back to the filename's `YYYY-MM-DD` prefix if neither field exists.
 - `source_hash:` — copy `sha256_short` from the source brief verbatim.
-- `source_tags:` — *optional, copy from raw vault frontmatter when present.* Author-attested page metadata (OG / JSON-LD / article:tag / citation_*) extracted by `/wiki-capture`'s URL cascade or the clipper. Carry forward verbatim onto the source-summary page; do **not** merge into the wiki-side `tags:` field, which is your synthesized cross-axis retrieval surface compiled from content during the takeaway pass. Author-attested and synthesized tags are two distinct surfaces — keep them separate.
+- `source_tags:` — *optional, copy from raw vault frontmatter when present.* Author-attested page metadata (OG / JSON-LD / article:tag / citation_*) extracted by `/wiki-capture`'s URL cascade (legacy clips may also carry it). Carry forward verbatim onto the source-summary page; do **not** merge into the wiki-side `tags:` field, which is your synthesized cross-axis retrieval surface compiled from content during the takeaway pass. Author-attested and synthesized tags are two distinct surfaces — keep them separate.
 - `tag_source:` — *optional, copy from raw vault frontmatter when present.* Provenance flag for `source_tags:` — one of `page-meta | arxiv-citation | clippings-marker | needs-verification`. Carry forward unchanged; don't reinterpret.
 - `last_updated:` — today's ISO date.
 
@@ -484,7 +485,7 @@ Keep the report tight — the dispatching skill relays it to the user.
 
 - **You are invoked by `/wiki-ingest` only.** If your dispatch prompt lacks an `Approved plan:` block, halt and return — do not synthesize one.
 - **Never touch `vault/`.** Raw files are immutable. The only `vault/` interaction is `git add ../<vault_source>` in step 5 to stage the raw file alongside wiki changes.
-- **Exclude from any wiki ingestion any path under `vault/` whose top-level segment begins with `.` or `_`.** This catches `vault/_mailbox/`, `vault/.skipped/`, `vault/.clipper-rules.md`, `vault/.wiki-identity.md`, OS junk (`.DS_Store`), Obsidian internals (`.obsidian/`), and any future protocol file. Regular content folders (`vault/Web Articles/`, `vault/Research Papers/`, `vault/Transcripts/`) are fair game.
+- **Exclude from any wiki ingestion any path under `vault/` whose top-level segment begins with `.` or `_`.** This catches `vault/_indexes/`, `vault/.skipped/`, `vault/.wiki-identity.md`, OS junk (`.DS_Store`), Obsidian internals (`.obsidian/`), and any future protocol file. Regular content folders (`vault/Web Articles/`, `vault/Research Papers/`, `vault/Transcripts/`) are fair game.
 - **Honor `not_a_source: true`** in any file's frontmatter as an explicit skip marker, regardless of location.
 - **Never silently overwrite contradictions.** Use the `> [!WARNING] Contradiction Detected:` callout — for plan-listed contradictions in 3b, and for late-found ones in the late-contradiction block. **Also populate the `contradicts:` frontmatter symmetrically on both pages** (typed-edge obligation, active 2026-04-30); the lint enforces.
 - **Every page you create must include `summary:`** — one sentence, used by the index.

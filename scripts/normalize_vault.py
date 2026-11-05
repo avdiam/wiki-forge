@@ -105,7 +105,7 @@ def iter_content_files(vault: Path):
     - **Leaf content dir** (e.g. `vault/Clippings/`): when the passed path itself
       holds loose `*.md` files, yield those directly.
 
-    A leaf dir under the vault root (e.g. `vault/Clippings` — the clipper's
+    A leaf dir under the vault root (e.g. `vault/Clippings` — the Web Clipper's
     current landing folder) has no child content dirs, so the root-shaped walk
     finds nothing and the old code reported "Nothing to do" while silently
     skipping every file. Yielding the passed dir's loose `*.md` first fixes that
@@ -121,7 +121,7 @@ def iter_content_files(vault: Path):
     The same exclusion applies to **files**: a `.`/`_`-prefixed `*.md` is never
     content. This matters most at the vault root, where the owner:wiki protocol
     files live (`.wiki-identity.md`, `.wiki-identity-bootstrap.md`,
-    `.clipper-rules.md`, `.clipper-identity.md`, `.author-watchlist.md`) —
+    `.author-watchlist.md`, …) —
     `Path.glob("*.md")` matches dotfiles, so without this filter a vault-root
     run would rename them to `YYYY-MM-DD-wiki-identity.md` etc., breaking the
     SessionStart bootstrap hook and every `@vault/.wiki-identity.md` include.

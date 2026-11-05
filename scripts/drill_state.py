@@ -36,9 +36,6 @@ Output JSON shape (keys are stable; downstream parsers depend on them):
     }
   }
 
-Mailbox state is not aggregated here — drill step 1 owns the read-and-flip
-sweep, which has side effects beyond JSON emission.
-
 Field-only mode for the statusline (which only needs the lint counter):
     python drill_state.py wiki --field lint_counter
 

@@ -207,7 +207,7 @@ Pre-screened by ${CLAUDE_PLUGIN_ROOT}/scripts/triage_backlog.py + ${CLAUDE_PLUGI
 
 Triage has just walked every content folder (`vault/Web Articles/`, `vault/Clippings/`, …) + `vault/.skipped/` (and may
 have just written new skip stubs in step 5) — exactly the moment the
-clipper-side URL dedup index can be authoritatively refreshed:
+URL dedup index can be authoritatively refreshed:
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/regen_vault_index.py" --vault <vault>
@@ -215,8 +215,8 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/regen_vault_index.py" --vault <vault>
 
 This overwrites `vault/_indexes/url-index.json` from a full vault scan,
 correcting any drift accumulated since the last regen (incremental appends
-from clipper PUTs and `/wiki-capture` are best-effort and may miss entries
-across REST race windows). Single pass — the vault walk has already
+from `/wiki-capture` are best-effort, and Web Clipper drops never append —
+this full regen is what picks them up). Single pass — the vault walk has already
 happened in step 1. Commit the index alongside the triage file.
 
 ### 8. Report

@@ -69,8 +69,8 @@ mechanical-refresh marker line).
 
 If `/tmp/wiki-graph.json` exists (the wake-up drill stashes it on every
 session start, and `/wiki-lint` re-stashes it during Pass A), pass it
-through to skip an inline graph rebuild — same pattern as drill step 6's
-reuse of step 5's snapshot:
+through to skip an inline graph rebuild — same pattern as the drill's graph step
+reusing its own snapshot:
 
 ```bash
 if [ -f /tmp/wiki-graph.json ]; then

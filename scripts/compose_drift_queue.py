@@ -1,29 +1,36 @@
 #!/usr/bin/env python3
-"""Compose the `[DRIFT QUEUE]` mailbox message body from source_freshness.jsonl.
+"""Compose the drift re-capture queue from source_freshness.jsonl.
 
 Reads `wiki/.meta/source_freshness.jsonl`, identifies slugs whose most-recent
 poll row shows `drifted: true` AND whose source page still has the
 `source_drifted: true` frontmatter flag (i.e., not yet cleared by a previous
-re-ingest), then emits either:
+re-ingest), then splits them into two re-capture buckets by URL class
+(`url_classifier_lists.json`, same classifier `/wiki-capture` uses):
 
-- The markdown body content (default) — for inline copy into a mailbox file.
-- A complete mailbox file at `vault/_mailbox/wiki_message_<N+1>.md` when
-  invoked with `--write`. Handles the global counter scan across top-level
-  AND the `.archive/` subdirectory per `vault/_mailbox/README.md`.
+- **recapture** — fetchable domains. Re-capture each with `/wiki-capture
+  <url>`; the chained `/wiki-ingest` sees `source_drifted: true` on the
+  existing source page and runs the drift-triggered re-ingest (clears the
+  flag, refreshes `source_hash:`).
+- **clip** — `auth_required` domains. Only the user's authenticated browser
+  can fetch these; they are handed over via `clip_handoff.py` (<= 15 URLs ->
+  offer to open them as Chrome tabs; more -> an HTML checklist). The user
+  clips with the Obsidian Web Clipper, then each new `vault/Clippings/` file
+  is ingested as the drift re-capture.
 
-Removes the failure mode where wiki-Claude composes the message manually
-and could misread the lint state into a 0-row mail. Per Step 9 of
-`vault/.clipper-rules.md` and Q5 of the lifecycle-subsystem design lock.
+(`check_source_freshness.py` skips auth_required domains when polling, so the
+clip bucket is normally empty — it fills only when a domain moves onto the
+auth_required list after its baseline was recorded.)
 
 Pure stdlib. No PyYAML, no requests.
 
 Usage:
-    python compose_drift_queue.py <wiki-root>                # print body to stdout
-    python compose_drift_queue.py <wiki-root> --write        # write mailbox file
-    python compose_drift_queue.py <wiki-root> --vault <path> # override vault location
+    python compose_drift_queue.py <wiki-root>                  # markdown report
+    python compose_drift_queue.py <wiki-root> --json           # bucket JSON
+    python compose_drift_queue.py <wiki-root> --handoff [--out PATH]
+        # JSON incl. the clip_handoff decision for the clip bucket
 
 Exit codes:
-    0 — message composed and printed (or `--write` succeeded)
+    0 — queue composed
     1 — no drift to queue (script ran cleanly, just nothing to do)
     2 — fatal: not a wiki root, no jsonl, etc.
 """
@@ -32,7 +39,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -44,9 +50,9 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).parent))
 from frontmatter import parse_frontmatter  # noqa: E402
+from extract_page_metadata import _load_lists, classify  # noqa: E402
+import clip_handoff  # noqa: E402
 
-
-COUNTER_RE = re.compile(r"^(?:wiki|chrome)_message_(\d+)\.md$")
 
 
 def collect_drifted(jsonl_path: Path) -> list[dict]:
@@ -103,8 +109,7 @@ def filter_uncleared(records: list[dict], wiki_root: Path) -> list[dict]:
         page = sources_dir / f"{rec['slug']}.md"
         if not page.is_file():
             # Source page missing — could be an in-flight rename. Surface it
-            # by including the record; the clipper's `vault_file_missing`
-            # edge case handles the actual file gracefully.
+            # by including the record rather than silently dropping it.
             out.append(rec)
             continue
         try:
@@ -117,81 +122,47 @@ def filter_uncleared(records: list[dict], wiki_root: Path) -> list[dict]:
     return out
 
 
-def render_body(records: list[dict]) -> str:
-    """Render the message body — the `## Drifted sources` table + framing."""
-    n = len(records)
-    lines = [
-        "Drift detected by `check_source_freshness.py` on the following source pages. Re-fetch each per Step 9 of `.clipper-rules.md`, overwrite `vault/Web Articles/<slug>.md`, and reply with per-slug status.",
-        "",
-        "## Drifted sources",
-        "",
-        "| Slug | URL | baseline_at | current_at |",
-        "|---|---|---|---|",
-    ]
+def split_buckets(records: list[dict]) -> dict[str, list[dict]]:
+    """Split drifted records into `recapture` (fetchable) and `clip` (auth_required)."""
+    head_preserving, auth_required = _load_lists()
+    buckets: dict[str, list[dict]] = {"recapture": [], "clip": []}
     for rec in records:
-        lines.append(
-            f"| {rec['slug']} | {rec['url']} | {rec['baseline_at']} | {rec['current_at']} |"
-        )
-    lines.append("")
+        cls, _host = classify(rec["url"], head_preserving, auth_required) if rec["url"] else ("default", "")
+        buckets["clip" if cls == "auth_required" else "recapture"].append(rec)
+    return buckets
+
+
+def render_body(buckets: dict[str, list[dict]]) -> str:
+    """Render the human-readable drift report."""
+    n = len(buckets["recapture"]) + len(buckets["clip"])
+    lines = [f"Drift detected by `check_source_freshness.py` on {n} source page{'s' if n != 1 else ''}.", ""]
+
+    def table(rows: list[dict]) -> list[str]:
+        out = ["| Slug | URL | baseline_at | current_at |", "|---|---|---|---|"]
+        out += [f"| {r['slug']} | {r['url']} | {r['baseline_at']} | {r['current_at']} |" for r in rows]
+        return out + [""]
+
+    if buckets["recapture"]:
+        lines += ["## Re-capture with `/wiki-capture` (fetchable)", ""] + table(buckets["recapture"])
+    if buckets["clip"]:
+        lines += ["## Clip in the browser (auth-required — hand over via `clip_handoff.py`)", ""] + table(buckets["clip"])
     lines.append(
-        f"`baseline_at` is the first-poll timestamp wiki recorded for the slug; "
-        f"`current_at` is the polling run that flagged the drift. Per-slug "
-        f"freshness check: if `vault/Web Articles/<slug>.md`'s `clipped:` is "
-        f"newer than `current_at`, you've already re-captured — record "
-        f"`already_fresh` and move on. Total drifted: {n}."
+        "`baseline_at` is the first-poll timestamp recorded for the slug; `current_at` is the "
+        "polling run that flagged the drift. Each re-capture lands as a new vault file; ingesting "
+        "it runs the drift-triggered re-ingest, which clears `source_drifted: true`."
     )
     return "\n".join(lines) + "\n"
 
 
-def next_message_counter(mailbox_dir: Path) -> int:
-    """Scan top-level + .archive/** for the highest *_message_NNN counter."""
-    if not mailbox_dir.is_dir():
-        return 1
-    max_n = 0
-    # Top-level
-    for p in mailbox_dir.iterdir():
-        if not p.is_file():
-            continue
-        m = COUNTER_RE.match(p.name)
-        if m:
-            max_n = max(max_n, int(m.group(1)))
-    # Archive (recursive)
-    archive = mailbox_dir / ".archive"
-    if archive.is_dir():
-        for p in archive.rglob("*.md"):
-            m = COUNTER_RE.match(p.name)
-            if m:
-                max_n = max(max_n, int(m.group(1)))
-    return max_n + 1
-
-
-def render_mailbox_file(records: list[dict], counter: int) -> tuple[str, str]:
-    """Return (filename, full-message-content) for the mailbox write."""
-    today = date.today().isoformat()
-    n = len(records)
-    subject = f'"[DRIFT QUEUE] {n} source{"s" if n != 1 else ""} drifted — re-capture via Obsidian REST API"'
-    header = (
-        "---\n"
-        "from: wiki\n"
-        "to: clipper\n"
-        f"date: {today}\n"
-        "status: open\n"
-        "re: null\n"
-        f"subject: {subject}\n"
-        "---\n"
-        "\n"
-    )
-    filename = f"wiki_message_{counter:03d}.md"
-    return filename, header + render_body(records)
-
-
 def main(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(description="Compose [DRIFT QUEUE] mailbox message.")
+    p = argparse.ArgumentParser(description="Compose the drift re-capture queue.")
     p.add_argument("wiki", help="Path to the wiki root")
-    p.add_argument("--write", action="store_true",
-                   help="Write a mailbox file under vault/_mailbox/ instead of printing to stdout")
-    p.add_argument("--vault", default=None,
-                   help="Override vault directory (default: <wiki>/../vault)")
+    p.add_argument("--json", action="store_true", help="Emit bucket JSON instead of markdown")
+    p.add_argument("--handoff", action="store_true",
+                   help="Emit JSON incl. the clip_handoff decision for the clip bucket")
+    p.add_argument("--out", default=None, help="HTML path for an over-threshold clip handoff")
+    p.add_argument("--threshold", type=int, default=clip_handoff.DEFAULT_THRESHOLD,
+                   help="clip_handoff tab threshold")
     args = p.parse_args(argv)
 
     wiki_root = Path(args.wiki).resolve()
@@ -204,38 +175,28 @@ def main(argv: list[str]) -> int:
         print(f"error: {jsonl_path} not found — run check_source_freshness.py first", file=sys.stderr)
         return 2
 
-    vault_root = Path(args.vault).resolve() if args.vault else (wiki_root.parent / "vault")
-    if not vault_root.is_dir():
-        print(f"error: vault dir not found at {vault_root}", file=sys.stderr)
-        return 2
-
-    candidates = collect_drifted(jsonl_path)
-    records = filter_uncleared(candidates, wiki_root)
-
+    records = filter_uncleared(collect_drifted(jsonl_path), wiki_root)
     if not records:
         print("no drift to queue", file=sys.stderr)
         return 1
 
-    if not args.write:
-        sys.stdout.write(render_body(records))
+    buckets = split_buckets(records)
+    if not (args.json or args.handoff):
+        sys.stdout.write(render_body(buckets))
         return 0
 
-    mailbox_dir = vault_root / "_mailbox"
-    if not mailbox_dir.is_dir():
-        print(f"error: mailbox dir not found at {mailbox_dir}", file=sys.stderr)
-        return 2
-    counter = next_message_counter(mailbox_dir)
-    filename, content = render_mailbox_file(records, counter)
-    target = mailbox_dir / filename
-    if target.exists():
-        print(f"error: {target} already exists — counter collision; rerun", file=sys.stderr)
-        return 2
-    target.write_text(content, encoding="utf-8")
-    try:
-        display = target.relative_to(wiki_root.parent)
-    except ValueError:
-        display = target
-    print(f"wrote {display} ({len(records)} drifted slug{'s' if len(records) != 1 else ''})")
+    payload: dict = dict(buckets)
+    if args.handoff:
+        urls = clip_handoff.dedupe([r["url"] for r in buckets["clip"]])
+        mode = clip_handoff.decide(urls, args.threshold)
+        html_path = None
+        if mode == "html":
+            out = Path(args.out) if args.out else clip_handoff.DEFAULT_OUT_DIR / f"clip-queue-drift-{date.today().isoformat()}.html"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(clip_handoff.render_html(urls, "Drift re-capture — clip queue"), encoding="utf-8")
+            html_path = str(out)
+        payload["clip_handoff"] = {"mode": mode, "count": len(urls), "urls": urls, "html_path": html_path}
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 

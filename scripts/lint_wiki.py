@@ -376,7 +376,7 @@ def check_drifted_sources(pages: dict) -> list[str]:
     inline `> [!WARNING] Source drift detected` callout) when the
     upstream URL's extracted main content no longer matches the slug's
     first-ever baseline_hash. Surfacing the flag at lint time gives the
-    user a review queue: re-capture via clipper to refresh, or
+    user a review queue: re-capture (see `compose_drift_queue.py`), or
     investigate whether the drift is material.
 
     Phase-2 mitigation for [[llm-wiki-failure-modes]] #8 (dynamic-data

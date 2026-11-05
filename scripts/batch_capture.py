@@ -12,8 +12,8 @@ text file of URLs (one per line; full-line `#` comments allowed) and sorts each
 into one of four buckets:
 
   - already_in_vault    — URL is in vault/_indexes/url-index.json (dedup hit)
-  - redirect_to_clipper — domain is on the auth_required list; only the
-                          authenticated Chrome clipper can fetch it
+  - redirect_to_browser — domain is on the auth_required list; only the
+                          user's authenticated browser can fetch it
   - fetchable           — head_preserving or default domain; the model captures
                           these via the normal /wiki-capture Step 3a cascade
   - errored             — line isn't a parseable http(s) URL
@@ -21,8 +21,10 @@ into one of four buckets:
 The `/wiki-capture --batch <file>` skill mode runs this with `--json`, presents
 the buckets, then loops the model-driven capture over the `fetchable` bucket
 (running the per-URL metadata cascade as usual) and chains the whole captured
-batch into `/wiki-ingest`. The `redirect_to_clipper` bucket is handed to the
-clipper; `already_in_vault` is skipped.
+batch into `/wiki-ingest`. The `redirect_to_browser` bucket is handed to the
+user via `clip_handoff.py` (<= 15 URLs -> offer to open Chrome tabs; more ->
+an HTML checklist) for Obsidian Web Clipper capture; `already_in_vault` is
+skipped.
 
 Classification is by domain only — no urllib fetch here. A `default`-domain URL
 still needs a network fetch to decide use-metadata vs fallback-to-webfetch, but
@@ -135,7 +137,7 @@ def classify_urls(urls: list[str], vault_root: Path) -> dict:
 
     buckets = {
         "fetchable": [],
-        "redirect_to_clipper": [],
+        "redirect_to_browser": [],
         "already_in_vault": [],
         "errored": [],
     }
@@ -161,7 +163,7 @@ def classify_urls(urls: list[str], vault_root: Path) -> dict:
 
         classification, host = epm.classify(url, head_preserving, auth_required)
         if classification == "auth_required":
-            buckets["redirect_to_clipper"].append({"url": url, "domain": host})
+            buckets["redirect_to_browser"].append({"url": url, "domain": host})
         else:
             # head_preserving → trust metadata via WebFetch prompt.
             # default → model runs the metadata cascade (network) per-URL.
@@ -191,7 +193,7 @@ def print_human(report: dict) -> None:
     print(f"Batch triage — {report['input_file']}  ({report['total']} URLs)")
     print(
         f"  fetchable {counts['fetchable']}  |  "
-        f"clipper {counts['redirect_to_clipper']}  |  "
+        f"browser {counts['redirect_to_browser']}  |  "
         f"in-vault {counts['already_in_vault']}  |  "
         f"errored {counts['errored']}"
     )
@@ -200,9 +202,9 @@ def print_human(report: dict) -> None:
         print("\nFETCHABLE (main session captures these):")
         for item in report["fetchable"]:
             print(f"  [{item['classification']}] {item['url']}")
-    if report["redirect_to_clipper"]:
-        print("\nREDIRECT TO CLIPPER (auth_required — needs the browser session):")
-        for item in report["redirect_to_clipper"]:
+    if report["redirect_to_browser"]:
+        print("\nREDIRECT TO BROWSER (auth_required — clip with the Web Clipper; hand over via clip_handoff.py):")
+        for item in report["redirect_to_browser"]:
             print(f"  {item['url']}")
     if report["already_in_vault"]:
         print("\nALREADY IN VAULT (skipped):")

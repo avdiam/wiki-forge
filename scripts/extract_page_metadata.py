@@ -4,7 +4,7 @@ URL → page-metadata extractor for /wiki-capture.
 
 Cascade:
   1. Classify URL by domain against url_classifier_lists.json:
-       - auth_required: skip fetch, redirect to clipper.
+       - auth_required: skip fetch, redirect to the user's browser (Web Clipper).
        - head_preserving: WebFetch path (Path 1) — caller invokes WebFetch with
          the metadata-targeted prompt; this script returns no metadata of its
          own for these.
@@ -308,7 +308,7 @@ def _decide_tag_source(classification, metadata, fetch_status):
 
 def _decide_next_action(classification, fetch_status, has_metadata):
     if classification == "auth_required":
-        return "skip-redirect-to-clipper"
+        return "skip-redirect-to-browser"
     if classification == "head_preserving":
         return "use-webfetch-prompt"
     # default — Path 3 outcome
@@ -330,7 +330,7 @@ def main():
             "url": url,
             "domain": host,
             "classification": classification,
-            "next_action": "skip-redirect-to-clipper",
+            "next_action": "skip-redirect-to-browser",
             "fetch_status": "skipped",
             "metadata": _empty_metadata(),
             "tag_source": "clippings-marker",

@@ -141,9 +141,9 @@ def pre_screen(wiki_root: Path, source_path: Path, vault_root: Path | None = Non
         quality = quality.lower().strip()
 
     # -- Check 2: tag overlap --
-    # Merge `tags:` (the clipper's Claude-assessed topical tags since the
-    # 2026-05-29 extension-assisted switch) with legacy `source_tags:` (older
-    # clips + /wiki-capture's URL cascade). Exclude the legacy `clippings`
+    # Merge `tags:` (topical tags, when the capture carries them — legacy
+    # 2026-05-29..2026-11-05 clips were annotated in place) with `source_tags:`
+    # (/wiki-capture's URL cascade + older clips). Exclude the legacy `clippings`
     # sentinel — it was a pre_screen-silencer marker, not a relevance signal.
     real_tags = fm.get("source_tags", []) or []
     marker_tags = fm.get("tags", []) or []
@@ -219,7 +219,7 @@ def pre_screen(wiki_root: Path, source_path: Path, vault_root: Path | None = Non
         if verdict == "pass":
             verdict = "warn"
         reasons.append(
-            "Clipper marked this source as 'shallow' quality."
+            "Source frontmatter marks this source as 'shallow' quality."
         )
 
     # Warn: some promotional signals

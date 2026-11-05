@@ -84,7 +84,7 @@ def source_slugs(frontmatter: dict) -> set[str]:
 
     `sources:` carries project-root paths (`vault/Web Articles/<slug>.md`); the
     stem is the stable identity used everywhere else (it matches `trace`'s
-    `slug` field and survives the non-canonical clipper filenames).
+    `slug` field and survives the non-canonical Web Clipper filenames).
     """
     srcs = frontmatter.get("sources") or []
     if not isinstance(srcs, list):

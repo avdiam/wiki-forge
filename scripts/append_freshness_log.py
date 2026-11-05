@@ -19,8 +19,9 @@ Row schema:
 
 `http_status` is the upstream HTTP code on a successful fetch (200,
 404, ...) OR a string sentinel for skipped / failed polls:
-  - `"skipped"` with `reason: "requires_clipper"` — paywall domain
-    (Medium and known mirrors); phase 3 wires these to clipper.
+  - `"skipped"` with `reason: "requires_auth"` — paywall / login-walled
+    domain (Medium and known mirrors). Rows written before 2026-11-05
+    carry the legacy value `"requires_clipper"` — same meaning.
   - `"skipped"` with `reason: "no_url"` or `"no_vault_link"` — source
     page has no resolvable upstream URL; nothing to poll.
   - `"error"` with `error: "timeout" | "dns" | "connection" | ...` —
@@ -43,7 +44,8 @@ baseline; mismatch sets `drifted: true` and the polling script edits
 the source page to add `source_drifted: true` frontmatter plus an
 inline `> [!WARNING] Source drift detected` callout. The
 `check_drifted_sources` lint check surfaces those flagged pages.
-Drift-clear path: re-capture via clipper, ingestor regenerates the
+Drift-clear path: re-capture (`compose_drift_queue.py` lists what and
+how), ingestor regenerates the
 source page from the fresh vault file, drift flag and callout
 disappear naturally.
 
@@ -94,7 +96,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--error", type=optional_str, default=None,
                    help="Error class on http_status='error' rows: 'timeout', 'dns', 'connection', etc.")
     p.add_argument("--reason", type=optional_str, default=None,
-                   help="Reason on http_status='skipped' rows: 'requires_clipper', 'no_url', etc.")
+                   help="Reason on http_status='skipped' rows: 'requires_auth', 'no_url', etc.")
     return p.parse_args(argv)
 
 

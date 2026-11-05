@@ -122,7 +122,7 @@ stale: false
 - **captured** — *Required on `pages/sources/` pages; not used elsewhere.* ISO date
   the raw source material was pulled into `vault/`. Copied from the raw vault
   file's frontmatter (`captured:` written by `/wiki-capture`, or `clipped:`
-  written by the clipper — ingestor accepts either and writes `captured:` on
+  written by the Obsidian Web Clipper — ingestor accepts either and writes `captured:` on
   the source page). Distinct from `last_updated` (the wiki-page edit date).
   Drives the `stale_source` lint check — source pages whose `captured:` is
   older than 180 days surface as a review queue, signaling upstream content

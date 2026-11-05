@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Regenerate the vault URL index used by the clipper for wake-up dedup.
+"""Regenerate the vault URL index used for capture-side URL dedup.
 
 The index is the precomputed answer to "which URLs has this vault already
-seen?" — clipper Step 7 GETs the single file instead of scanning ~110+
-markdown files. Index lives at `<vault>/_indexes/url-index.json`; the
+seen?" — `batch_capture.py` reads the single file instead of scanning every
+vault markdown file. Index lives at `<vault>/_indexes/url-index.json`; the
 `_indexes/` prefix excludes it from ingest by the existing `_`-rule.
 
 Usage:
@@ -14,7 +14,7 @@ Usage:
     # /wiki-capture post-write). Skip-if-URL-present; no-op on duplicate.
     python regen_vault_index.py --vault <vault-root> --append <vault-relative-path>
 
-Writes are atomic via tmp+replace so clipper polls never see a partial file.
+Writes are atomic via tmp+replace so concurrent readers never see a partial file.
 """
 from __future__ import annotations
 
