@@ -121,7 +121,8 @@ two placeholder tokens only.
 
 ### 4A. Dispatch wiki-curator with mode: soft
 
-Use the Agent tool:
+Note the dispatch time — it is the `--duration-ms` fallback in 6A if no
+`<usage>` block ever surfaces. Use the Agent tool:
 
 - **subagent_type:** `"wiki-forge:wiki-curator"`
 - **model:** `"opus"` (frontmatter default)
@@ -156,41 +157,48 @@ Every other section is off-limits.
 Return the structured Mode A report.
 ```
 
-### 5A. Commit
+### 5A. Append to log.md, then commit
 
-The mechanical script + the curator's bounded edit produce a single diff.
-Commit it as one operation:
-
-```bash
-cd wiki
-git add overview.md
-git commit -m "overview: soft refresh at ingest #<curr_n>
-
-- Mechanical: stats / hub list / refresh marker
-- Narrative: ingests <prev_n+1>–<curr_n>"
-```
-
-If `git status --porcelain wiki/overview.md` is empty (no changes), skip
-the commit.
-
-### 6A. Append to log.md
+The mechanical script + the curator's bounded edit + the `log.md` note
+produce a single diff. If `git status --porcelain wiki/overview.md` is
+empty (no changes), skip this whole step — no note, no commit — and go
+to 6A with `status: no_changes`.
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note \
   --title "overview soft-refresh at ingest #<curr_n>" \
   --note "ingests <prev_n+1>–<curr_n> summarized; mechanical stats refreshed" \
   --wiki wiki
+git add wiki/overview.md wiki/log.md
+git commit -m "overview: soft refresh at ingest #<curr_n>
+
+- Mechanical: stats / hub list / refresh marker
+- Narrative: ingests <prev_n+1>–<curr_n>"
+content_hash=$(git rev-parse --short HEAD)
 ```
 
-### 6A.2. Append to overview_log.jsonl
+Root-relative paths, no `cd` (a bare `cd wiki` leaks into every later
+step's relative paths). `content_hash` is final — nothing amends this
+commit, so the hash recorded in 6A stays resolvable in history.
 
-Parse the curator's `<usage>` block per-field (same tolerant approach as
-`/wiki-ingest` step 13 — for each field in `{total_tokens, input_tokens,
+### 6A. Append to overview_log.jsonl + telemetry commit
+
+**Wait for the curator's `<usage>` block first.** When the Agent dispatch
+in 4A returns synchronously, `<usage>` is in the tool result. When it runs
+in the background, the tool result is only a launch ack and `<usage>`
+arrives later in the completion `<task-notification>` — do not append
+until that notification has landed. Only if no `<usage>` is ever
+surfaced: pass empty strings for the cost fields and use the main-session
+wall-clock since the 4A dispatch as `--duration-ms` (the appender
+requires an integer there; `""` is rejected).
+
+Parse `<usage>` per-field (same tolerant approach as `/wiki-ingest`
+step 13 — for each field in `{total_tokens, input_tokens,
 cache_creation_input_tokens, cache_read_input_tokens, output_tokens,
 tool_uses, duration_ms}`, run `<field>:\s*(\d+)` against the
 `<usage>...</usage>` content). Missing fields → null. `status` is
-`applied` if step 5A produced a commit, `no_changes` if the commit was
-skipped because the diff was empty.
+`applied` if step 5A produced a commit, `no_changes` if it was skipped.
+`--commit-hash` is `content_hash` from 5A (`""` for `no_changes`).
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
@@ -210,25 +218,22 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
 If the appender exits non-zero, mention briefly and move on. Telemetry
 failure does NOT roll back the operation.
 
-**Fold telemetry into the soft-refresh commit (when step 5A produced one).**
-The two appenders above run AFTER step 5A's commit (they need the commit
-hash and the curator's `<usage>` block) — left as-is, the `log.md` and
-`overview_log.jsonl` rows stay dirty until a later session backfills
-them. Amend the soft-refresh commit to fold them in:
+**Commit the row separately — never amend 5A.** Amending the content
+commit to fold the row in rewrites its hash, so the row would point at
+an orphaned pre-amend commit (every `overview_log.jsonl` hash through
+ingest #321 did — session 132). A separate telemetry commit keeps the
+recorded hash valid:
 
 ```bash
-if ! git diff --quiet wiki/log.md wiki/.meta/overview_log.jsonl; then
-    git add wiki/log.md wiki/.meta/overview_log.jsonl
-    git commit --amend --no-edit
+if ! git diff --quiet wiki/.meta/overview_log.jsonl; then
+    git add wiki/.meta/overview_log.jsonl
+    git commit -m "overview: telemetry for soft refresh at ingest #<curr_n>"
 fi
 ```
 
-The diff-quiet gate is defensive — no-op when an appender failed, when
-step 5A skipped its commit because the overview diff was empty, or when
-nothing actually changed. HEAD at this point is the soft-refresh commit
-from step 5A. Same pattern as `/wiki-ingest` step 13's telemetry fold —
-see that SKILL for the wider rationale. Personal-repo amend policy
-applies (see `vault/.wiki-identity.md` Obsidian commit policy).
+The diff-quiet gate is defensive — no-op when the appender failed. The
+`no_changes` path commits its row too, so it never sits dirty into the
+next operation.
 
 ### 7A. Relay
 
@@ -342,42 +347,39 @@ trigger baseline and checkpoint deletion are documented there. The skill
 intentionally does not repeat them; otherwise the contract drifts in two
 places.)
 
-### 5B. Commit
+### 5B. Append to log.md, then commit
 
 If the curator returned `done` with status implying a write occurred,
-commit:
-
-```bash
-cd wiki
-git add overview.md .meta/overview-config.json
-git commit -m "overview: full rewrite (Mode B)
-
-<Curator report's first line: trigger summary or 'user-invoked'>
-Sections changed: <count>
-Pull-quotes: kept K, replaced R, dropped D
-Baseline reset."
-```
-
-If status is `cancelled`, skip the commit. The checkpoint is already
-deleted by the curator.
-
-### 6B. Append to log.md
+append the note and commit both together:
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note \
   --title "overview full rewrite (Mode B)" \
   --note "<curator's result string>" \
   --wiki wiki
+git add wiki/overview.md wiki/.meta/overview-config.json wiki/log.md
+git commit -m "overview: full rewrite (Mode B)
+
+<Curator report's first line: trigger summary or 'user-invoked'>
+Sections changed: <count>
+Pull-quotes: kept K, replaced R, dropped D
+Baseline reset."
+content_hash=$(git rev-parse --short HEAD)
 ```
 
-### 6B.2. Append to overview_log.jsonl
+If status is `cancelled`, skip the note and the commit. The checkpoint
+is already deleted by the curator.
 
-Mode B emits two `<usage>` blocks (one per pass). Parse each block
+### 6B. Append to overview_log.jsonl + telemetry commit
+
+Wait for both passes' `<usage>` blocks (same rule as 6A — a background
+dispatch surfaces `<usage>` in its completion notification, not the
+launch ack). Mode B emits two `<usage>` blocks (one per pass). Parse each block
 per-field (same tolerant approach as Mode A) and **aggregate across
 passes** for the row's cost fields per the HITL contract in
 `vault/.wiki-identity.md` § Subagent HITL — sum every numeric field
 across the two passes; `duration_ms` sums the two passes' wall-clocks.
-`commit_hash` is from the Pass-2 commit only (Pass 1 doesn't commit).
+`commit_hash` is `content_hash` from 5B (Pass 1 doesn't commit).
 `status` is `applied` if Pass 2 wrote and committed, `cancelled` if
 Pass 2 returned status `cancelled` (skip the commit entirely).
 
@@ -401,22 +403,18 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
 `grep -c "^## \[.*\] ingest" wiki/log.md` if you didn't capture it
 upstream).
 
-**Fold telemetry into the full-rewrite commit (when step 5B produced one).**
-Same shape as Mode A's fold — the appenders run after step 5B's commit,
-so the `log.md` and `overview_log.jsonl` rows stay dirty until amended:
+**Commit the row separately — never amend 5B** (same reason as 6A: an
+amend orphans the hash the row records):
 
 ```bash
-if ! git diff --quiet wiki/log.md wiki/.meta/overview_log.jsonl; then
-    git add wiki/log.md wiki/.meta/overview_log.jsonl
-    git commit --amend --no-edit
+if ! git diff --quiet wiki/.meta/overview_log.jsonl; then
+    git add wiki/.meta/overview_log.jsonl
+    git commit -m "overview: telemetry for full rewrite at ingest #<N>"
 fi
 ```
 
-The diff-quiet gate covers the cancelled-status path (no step 5B commit
-to amend, no telemetry rows appended → nothing in the diff) and the
-appender-failed path. HEAD at this point is the full-rewrite commit
-from step 5B when status is `applied`. Personal-repo amend policy
-applies (see `vault/.wiki-identity.md` Obsidian commit policy).
+The `cancelled` row is committed the same way; the diff-quiet gate covers
+the appender-failed path.
 
 ### 7B. Relay
 

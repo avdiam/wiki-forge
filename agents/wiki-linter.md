@@ -150,7 +150,7 @@ After applying fixes (if any):
 
 **Do not append to `log.md` or `lint_log.jsonl` yourself.** Telemetry is
 owned by the dispatching `/wiki-lint` skill (SKILL.md step 4) — same shape
-as `/wiki-ingest` step 13 and `/wiki-overview` step 6A.2. Your job ends at
+as `/wiki-ingest` step 13 and `/wiki-overview` step 6A. Your job ends at
 the fix-commit (if any) plus the structured footer below; the skill
 consumes the footer + the `<usage>` block and invokes both appenders from
 the main session. This is non-negotiable: prior contract drift where the

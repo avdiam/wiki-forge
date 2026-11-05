@@ -48,7 +48,7 @@ The agent does NOT append to `log.md` or `lint_log.jsonl`. It returns the
 report with a trailing machine-parsable footer, plus the Agent tool
 appends a `<usage>` block. This skill consumes both and invokes the two
 appenders directly — same pattern as `/wiki-ingest` step 13 and
-`/wiki-overview` step 6A.2 (skill owns telemetry; agent owns the work).
+`/wiki-overview` step 6A (skill owns telemetry; agent owns the work).
 
 **Parse the agent's footer** (last block of the report):
 
