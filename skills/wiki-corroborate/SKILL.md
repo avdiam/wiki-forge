@@ -1,6 +1,7 @@
 ---
 name: wiki-corroborate
-description: Search-and-surface skill for the `verify: true` review queue. For each flagged page, runs a tier-aware WebSearch for primary / authoritative corroborating sources and outputs a per-flag block of tier-classified candidate URLs. Resolution flows through normal `/wiki-capture` → `/wiki-ingest`; the verify-clearing decision happens at the ingestor's takeaway gate. Use when the user runs /wiki-corroborate, says "find sources for X", "corroborate this flag", or wants to drain the verify queue.
+description: >-
+  Search-and-surface skill for the `verify: true` review queue. For each flagged page, runs a tier-aware WebSearch for primary / authoritative corroborating sources and outputs a per-flag block of tier-classified candidate URLs. Resolution flows through normal `/wiki-capture` → `/wiki-ingest`; the verify-clearing decision happens at the ingestor's takeaway gate. Use when the user runs /wiki-corroborate, says "find sources for X", "corroborate this flag", or wants to drain the verify queue.
 argument-hint: "<slug> | --batch X-Y | --all [--include-tier-3]"
 ---
 

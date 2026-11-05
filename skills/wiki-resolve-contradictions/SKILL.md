@@ -1,6 +1,7 @@
 ---
 name: wiki-resolve-contradictions
-description: Search-and-surface skill for the typed `contradicts:` edge queue. For each unique pair, runs a tier-aware WebSearch for authoritative adjudicating sources and outputs a per-pair block of tier-classified candidate URLs alongside the three-outcome decision menu (A wins / B wins / both stand) and the Jadad four-criterion fallback rubric. Resolution flows through normal `/wiki-capture` → `/wiki-ingest`; the edge-removal + Resolved-callout decision happens at the ingestor's takeaway gate's new "Contradiction resolution" subsection. Sibling to `/wiki-corroborate`. Use when the user runs /wiki-resolve-contradictions, says "find adjudicating sources for X vs Y", "resolve this contradiction", or wants to drain the contradicts: queue.
+description: >-
+  Search-and-surface skill for the typed `contradicts:` edge queue. For each unique pair, runs a tier-aware WebSearch for authoritative adjudicating sources and outputs a per-pair block of tier-classified candidate URLs alongside the three-outcome decision menu (A wins / B wins / both stand) and the Jadad four-criterion fallback rubric. Resolution flows through normal `/wiki-capture` → `/wiki-ingest`; the edge-removal + Resolved-callout decision happens at the ingestor's takeaway gate's new "Contradiction resolution" subsection. Sibling to `/wiki-corroborate`. Use when the user runs /wiki-resolve-contradictions, says "find adjudicating sources for X vs Y", "resolve this contradiction", or wants to drain the contradicts: queue.
 argument-hint: "<pair-key> | --batch X-Y | --all [--include-tier-3]"
 ---
 

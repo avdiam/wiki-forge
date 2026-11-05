@@ -192,7 +192,7 @@ per-wiki content — only the *machinery* (scripts, agents) lives in the plugin.
 
 The Python **dependencies** (onnxruntime, tokenizers, numpy) are provisioned
 automatically by the plugin's SessionStart hook (`hooks/hooks.json` →
-`scripts/install_deps.py`), isolated into `${CLAUDE_PLUGIN_DATA}/pylib`. This
+`${CLAUDE_PLUGIN_ROOT}/scripts/install_deps.py`), isolated into `${CLAUDE_PLUGIN_DATA}/pylib`. This
 step's job is therefore the **per-wiki ONNX model** (~30MB, downloaded into
 `<wiki-root>/.meta/models/`) — a wiki-root-relative artifact the deps hook does
 not handle.

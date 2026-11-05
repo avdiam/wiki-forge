@@ -4,7 +4,6 @@ description: Curates wiki/overview.md. Three dispatch modes — `soft` (refresh 
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 effort: medium
-context: fork
 maxTurns: 30
 ---
 

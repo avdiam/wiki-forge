@@ -228,7 +228,7 @@ step 5A skipped its commit because the overview diff was empty, or when
 nothing actually changed. HEAD at this point is the soft-refresh commit
 from step 5A. Same pattern as `/wiki-ingest` step 13's telemetry fold —
 see that SKILL for the wider rationale. Personal-repo amend policy
-applies (see [`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
+applies (see `vault/.wiki-identity.md` Obsidian commit policy).
 
 ### 7A. Relay
 
@@ -416,7 +416,7 @@ The diff-quiet gate covers the cancelled-status path (no step 5B commit
 to amend, no telemetry rows appended → nothing in the diff) and the
 appender-failed path. HEAD at this point is the full-rewrite commit
 from step 5B when status is `applied`. Personal-repo amend policy
-applies (see [`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
+applies (see `vault/.wiki-identity.md` Obsidian commit policy).
 
 ### 7B. Relay
 

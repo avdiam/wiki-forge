@@ -3,7 +3,6 @@ name: wiki-linter
 description: Runs a three-pass health check on the wiki — mechanical checks via lint_wiki.py, semantic checks via LLM reasoning over flagged pages, then a prioritized human-readable report. Never auto-fixes without explicit approval. Dispatched by the wiki-lint skill — not invoked directly.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
-context: fork
 maxTurns: 40
 ---
 

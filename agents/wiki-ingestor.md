@@ -4,7 +4,6 @@ description: Pure executor for wiki ingestion. Receives a complete approved plan
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 effort: low
-context: fork
 maxTurns: 100
 ---
 

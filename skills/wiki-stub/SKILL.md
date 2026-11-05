@@ -1,6 +1,7 @@
 ---
 name: wiki-stub
-description: Create a low-confidence placeholder page for a slug — three patterns. `hub` anchors a slug accumulating ≥10 incoming wikilinks but no dedicated source yet. `single-source` codifies the in-band single-source CREATE path. `planned` declares a user-pre-empted research target with zero sources. All three pair `verify: true` with a verbatim callout the `check_drifted_stubs` lint depends on. Use when the user says /wiki-stub <slug>, "stub this slug", "create a placeholder for X", or "list stub candidates".
+description: >-
+  Create a low-confidence placeholder page for a slug — three patterns. `hub` anchors a slug accumulating ≥10 incoming wikilinks but no dedicated source yet. `single-source` codifies the in-band single-source CREATE path. `planned` declares a user-pre-empted research target with zero sources. All three pair `verify: true` with a verbatim callout the `check_drifted_stubs` lint depends on. Use when the user says /wiki-stub <slug>, "stub this slug", "create a placeholder for X", or "list stub candidates".
 argument-hint: "<slug> [--type concept] [--pattern hub|single-source|planned] [--source <vault-path>] [--reason \"<text>\"] | --list"
 disable-model-invocation: true
 ---

@@ -150,7 +150,7 @@ and `<total-pages>` (Total pages).
 The diff-quiet gate is defensive in both branches — covers the case
 where the agent's appenders failed and produced no telemetry rows.
 Personal-repo amend policy applies for branch (a) (see
-[`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
+`vault/.wiki-identity.md` Obsidian commit policy).
 
 ### 6. Chain to /wiki-overview --soft (when due)
 

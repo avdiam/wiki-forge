@@ -320,38 +320,10 @@ Run the deterministic stdlib scanner against the source file:
 python "${CLAUDE_PLUGIN_ROOT}/scripts/check_secrets.py" --wiki wiki "<source-path>"
 ```
 
-Pure stdlib regex; no model dependency. Output is JSON with a `findings`
-list. Each finding carries `severity` (`high` for known credential
-prefixes — GitHub PATs, AWS keys, Stripe / OpenAI / Anthropic keys, etc.;
-`low` for ambiguous high-entropy strings inside fenced code blocks),
-`pattern`, `line`, `redacted` token preview, and `context` snippet.
-
-**On `high` findings:** surface the redacted match list in the takeaway
-block under § Secrets scan with **HALT** semantics — the user must
-acknowledge each high finding (`accept all`, `accept N,M`, or describe
-how to redact in vault) before dispatch. The upstream prevention is the
-capture-side rule: **never store third-party credentials** (API keys,
-tokens, session cookies, signed/tokenized URLs) in a vault file — strip
-them at capture time, whichever onramp wrote the file. This scan is
-forward-insurance for when that rule fails.
-
-**On `low` findings only:** include them in § Secrets scan as a soft
-warning — no halt; takeaway-gate proceeds normally. The user can opt to
-investigate or skip.
-
-**On no findings:** include § Secrets scan with `clean` for affirmative
-visibility; absence-of-section is harder to audit than a positive
-all-clear.
-
-This is the parser-side application of [[lethal-trifecta]]'s
-"sanitize the untrusted-content leg" mitigation — categorically reliable
-for known credential prefixes (where regex is sufficient) but not a
-substitute for the capture-side discipline that keeps secrets out of the
-vault in the first place.
-
-Sidecar config: `wiki/.meta/secret-patterns.json` (optional) extends the
-built-in pattern set; documented in the `check_secrets.py` module
-docstring (`python "${CLAUDE_PLUGIN_ROOT}/scripts/check_secrets.py" --help`).
+Handle the findings per [references/secret-scan.md](references/secret-scan.md)
+(read it whenever there is at least one finding): `high` findings HALT at the
+step-11 gate until the user acknowledges each one; `low` findings only are a
+soft warning; no findings is reported as `clean` under § Secrets scan.
 
 ### 11. Present takeaways and WAIT for free-form approval
 
@@ -406,57 +378,7 @@ Present in the main chat in this exact format:
 >   > NO VERBATIM PHRASE FOUND — fold into [[google-adk]] § Skills instead
 > ```
 
-### verify: true re-evaluation
-(only emitted when the proposed plan has EDIT operations on pages whose
-frontmatter currently carries `verify: true` — closes the loop with
-`/wiki-corroborate`. To detect, grep each EDIT target's frontmatter for
-`^verify: true` once before assembling the takeaway block; emit the section
-only if at least one EDIT target matches. Skip entirely otherwise — most
-ingests don't touch flagged pages.)
-
-For each EDIT page that currently has `verify: true`, surface one block:
-
-- **[[<slug>]]** — currently flagged with callout: `<existing callout text, abbreviated to ~120 chars>`
-- New source: [[<source-slug>]] (this ingest)
-- Decision (per page, default ASK):
-  - **(Y) Clear** — remove `verify: true` from frontmatter and delete the inline `⚠ needs verification:` callout. Confidence rises one tier (cap at 1.0); page enters normal cited-claim status.
-  - **(N) Retain** — new source adds breadth but doesn't address the specific verification target. Flag and callout stay.
-  - **(P) Partial** — narrow the callout to the still-unverified portion. Reply with the new callout text inline.
-
-Default: ask. Never auto-clear. The new source may corroborate the flagged
-claim, partially address it, or be unrelated — the user owns the call.
-
-### Contradiction resolution
-(only emitted when the proposed plan has EDIT operations on pages whose
-frontmatter currently carries a non-empty `contradicts:` list — closes the
-loop with `/wiki-resolve-contradictions`. To detect, parse each EDIT
-target's frontmatter for a non-empty `contradicts:` list once before
-assembling the takeaway block; for each match, look up the other side of
-each pair via the canonical `<slug-a>|<slug-b>` pair_key (slugs sorted
-ascending). Emit the section only if at least one such pair exists. Skip
-entirely otherwise — most ingests don't touch pages with active
-contradicts: edges.)
-
-For each `contradicts:` pair surfaced by an EDIT target, present one block:
-
-- **Pair:** [[<slug-a>]] ↕ [[<slug-b>]]
-- **Disagreement:** `<callout_excerpt from either side, abbreviated to ~120 chars; or "no inline callout — structural edge only">`
-- **New source:** [[<source-slug>]] (this ingest)
-- **Outcome (per pair, default `defer`):**
-  - **(a_wins)** — side A's claim stands per the new source. Ingestor adds `> [!NOTE] Resolved: <claim summary> stands per [[<source-slug>]]` to the aggregator page (the concept/entity that cites both sides; for source↔source pairs the aggregator is the concept/entity that already cites both — name it inline if ambiguous). Removes `[[<slug-b>]]` from side A's `contradicts:` frontmatter AND `[[<slug-a>]]` from side B's `contradicts:` frontmatter (symmetric edge removal).
-  - **(b_wins)** — mirror of `a_wins` for side B.
-  - **(both_stand)** — genuine disagreement preserved. Ingestor removes the symmetric edge from both `contradicts:` lists, adds a `## Related` entry on each side pointing to the other with the annotation `(disagreement examined — both positions stand; see [[<source-slug>]])`. No callout added.
-  - **(defer)** — no edits. `contradicts:` edge stays in place. Useful when the new source touches the page but doesn't address the specific disagreement.
-
-Default: `defer`. Never auto-resolve. The new source may adjudicate the
-disputed claim, partially address it, or be unrelated to the
-disagreement — the user owns the call. Multiple pairs on the same EDIT
-page are decided independently (one outcome per pair).
-
-`superseded_by:` is NOT used by this flow — that field is reserved for
-its original entity-version use case (e.g., `gpt-3 → superseded_by:
-[[gpt-4]]`). Evidential disagreements use the `> [!NOTE] Resolved:`
-callout + edge-removal mechanic above.
+<conditional sections from references/plan-conditional.md go here, if any>
 
 ### Contradictions detected
 - [[page-name]] — older claim: <X>; new claim: <Y>
@@ -476,6 +398,11 @@ callout + edge-removal mechanic above.
 
 Proceed? Anything to emphasize, de-emphasize, or skip?
 ```
+
+**Conditional sections.** Before assembling the block, grep each EDIT target's
+frontmatter for `^verify: true` and for a non-empty `contradicts:` list. If either
+matches, read [references/plan-conditional.md](references/plan-conditional.md) and
+insert its sections where the template marks them. Most ingests match neither.
 
 **Wait for the user's explicit reply before dispatching.** Acceptable
 replies:
@@ -650,7 +577,7 @@ The diff-quiet gate is defensive (no-op when the appender failed or when
 nothing actually changed). HEAD at this point is the agent's commit, or
 the most-recent fix-up commit when the README-ingest pattern produced one
 (per step 8 of the ingestor playbook) — both are correct amend targets.
-Personal-repo amend policy applies (see [`vault/.wiki-identity.md`](../../../vault/.wiki-identity.md) Obsidian commit policy).
+Personal-repo amend policy applies (see `vault/.wiki-identity.md` Obsidian commit policy).
 
 ### 13.5. Tick the triage batch checkbox (when this source came from a triage batch)
 
@@ -722,9 +649,4 @@ paradigm-shifting material that warrants discussion.
 
 ## Why this structure
 
-The skill owns the entire pre-write pipeline because:
-
-1. **Free-form approval needs main-thread conversational input.** The user replies with prose ("skip the LangChain section, emphasize the cost angle"); structured tools like `AskUserQuestion` would force discrete choices and lose expressiveness.
-2. **Discovery and analysis benefit from main-context state.** `wiki/AGENTS.md` is auto-loaded into the main session (via `wiki/CLAUDE.md`'s `@-include`); the user's prior conversation is in scope; spawning a subagent for the cheap pre-flight is overkill.
-3. **The agent stays a pure executor.** Single source of truth per concern: discovery + analysis + probe = SKILL; writes + commit + log + lint = agent. No overlap, no redundancy.
-4. **Capture chains here.** `/wiki-capture` is a thin onramp — it lands the file in vault/ and hands the path to this skill. The agent is never invoked directly.
+Design rationale: [references/design.md](references/design.md).

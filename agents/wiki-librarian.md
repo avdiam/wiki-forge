@@ -1,10 +1,10 @@
 ---
 name: wiki-librarian
-description: Reads specific wiki pages and synthesizes an answer — either prose Q-A (default) or a five-section topic-coverage survey (when `Survey mode: true`). Receives a pre-filtered page list from the wiki-query or wiki-summarize skill — does NOT do page discovery. Optionally files the result as a synthesis page (`subtype: coverage-report` for survey mode). Dispatched by wiki-query (large wikis) or wiki-summarize (always); not invoked directly.
+description: >-
+  Reads specific wiki pages and synthesizes an answer — either prose Q-A (default) or a five-section topic-coverage survey (when `Survey mode: true`). Receives a pre-filtered page list from the wiki-query or wiki-summarize skill — does NOT do page discovery. Optionally files the result as a synthesis page (`subtype: coverage-report` for survey mode). Dispatched by wiki-query (large wikis) or wiki-summarize (always); not invoked directly.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 effort: medium
-context: fork
 maxTurns: 20
 ---
 
