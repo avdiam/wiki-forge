@@ -117,17 +117,33 @@ def iter_content_files(vault: Path):
     also applies to the passed path itself: pointing the script at
     `vault/.skipped` (or any `.`/`_`-prefixed dir) yields nothing, so skip
     stubs and mailbox files are never normalized as content.
+
+    The same exclusion applies to **files**: a `.`/`_`-prefixed `*.md` is never
+    content. This matters most at the vault root, where the owner:wiki protocol
+    files live (`.wiki-identity.md`, `.wiki-identity-bootstrap.md`,
+    `.clipper-rules.md`, `.clipper-identity.md`, `.author-watchlist.md`) —
+    `Path.glob("*.md")` matches dotfiles, so without this filter a vault-root
+    run would rename them to `YYYY-MM-DD-wiki-identity.md` etc., breaking the
+    SessionStart bootstrap hook and every `@vault/.wiki-identity.md` include.
+    (Found s130 via a vault-root `--dry-run`.)
     """
-    if not vault.name.startswith((".", "_")):
+    if not _excluded(vault.name):
         for md in sorted(vault.glob("*.md")):
-            yield md
+            if not _excluded(md.name):
+                yield md
     for child in sorted(vault.iterdir()):
         if not child.is_dir():
             continue
-        if child.name.startswith((".", "_")):
+        if _excluded(child.name):
             continue
         for md in sorted(child.glob("*.md")):
-            yield md
+            if not _excluded(md.name):
+                yield md
+
+
+def _excluded(name: str) -> bool:
+    """Ingest-exclusion rule: `.`/`_`-prefixed names are protocol/metadata."""
+    return name.startswith((".", "_"))
 
 
 def main() -> int:
