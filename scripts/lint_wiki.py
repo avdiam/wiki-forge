@@ -771,7 +771,7 @@ def check_source_backlog(vault_dir: Path, pages: dict) -> list[str]:
 
     Recurses into subdirectories (e.g., vault/Web Articles/, vault/Clippings/),
     and excludes any path whose top-level segment begins with . or _ (matches the
-    ingest-exclusion rule in vault/.wiki-identity.md). A file is "handled" if it
+    ingest-exclusion rule in the wiki-ingestor playbook). A file is "handled" if it
     either has a source page in wiki/pages/sources/ OR a stub in vault/.skipped/ —
     both are decisions recorded by the ingest flow; neither should re-surface as
     pending.

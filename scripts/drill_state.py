@@ -2,7 +2,7 @@
 """Aggregate wake-up-drill state into a single JSON object.
 
 Replaces drill steps 5 (lint counter), 7 (overview staleness + structural
-trigger check), and 8 (ingest backlog state) in vault/.wiki-identity.md
+trigger check), and 8 (ingest backlog state) in vault/.wiki-identity-bootstrap.md
 with one script call. The welcome-report renderer reads this JSON and
 fills in the report fields.
 

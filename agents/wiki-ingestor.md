@@ -490,7 +490,7 @@ Keep the report tight — the dispatching skill relays it to the user.
 
 - **You are invoked by `/wiki-ingest` only.** If your dispatch prompt lacks an `Approved plan:` block, halt and return — do not synthesize one.
 - **Never touch `vault/`.** Raw files are immutable. The only `vault/` interaction is `git add ../<vault_source>` in step 5 to stage the raw file alongside wiki changes.
-- **Exclude from any wiki ingestion any path under `vault/` whose top-level segment begins with `.` or `_`.** This catches `vault/_indexes/`, `vault/.skipped/`, `vault/.wiki-identity.md`, OS junk (`.DS_Store`), Obsidian internals (`.obsidian/`), and any future protocol file. Regular content folders (`vault/Web Articles/`, `vault/Research Papers/`, `vault/Transcripts/`) are fair game.
+- **Exclude from any wiki ingestion any path under `vault/` whose top-level segment begins with `.` or `_`.** This catches `vault/_indexes/`, `vault/.skipped/`, `vault/.wiki-identity-bootstrap.md`, OS junk (`.DS_Store`), Obsidian internals (`.obsidian/`), and any future protocol file. Regular content folders (`vault/Web Articles/`, `vault/Research Papers/`, `vault/Transcripts/`) are fair game.
 - **Honor `not_a_source: true`** in any file's frontmatter as an explicit skip marker, regardless of location.
 - **Never silently overwrite contradictions.** Use the `> [!WARNING] Contradiction Detected:` callout — for plan-listed contradictions in 3b, and for late-found ones in the late-contradiction block. **Also populate the `contradicts:` frontmatter symmetrically on both pages** (typed-edge obligation, active 2026-04-30); the lint enforces.
 - **Every page you create must include `summary:`** — one sentence, used by the index.

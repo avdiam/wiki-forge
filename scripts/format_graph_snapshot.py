@@ -7,7 +7,7 @@ format:
 
     hubs <slug-1> (N), <slug-2> (N), <slug-3> (N) | <orphan/component status> | typed: <C>c/<S>s/<U>u
 
-Used by the wake-up drill in vault/.wiki-identity.md (step 6) to keep the
+Used by the wake-up drill (vault/.wiki-identity-bootstrap.md) to keep the
 formatting logic out of the inlined heredoc.
 
 Usage:

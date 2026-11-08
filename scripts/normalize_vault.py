@@ -120,11 +120,11 @@ def iter_content_files(vault: Path):
 
     The same exclusion applies to **files**: a `.`/`_`-prefixed `*.md` is never
     content. This matters most at the vault root, where the owner:wiki protocol
-    files live (`.wiki-identity.md`, `.wiki-identity-bootstrap.md`,
+    files live (`.wiki-identity-bootstrap.md`, `.wiki-identity-dev.md`,
     `.author-watchlist.md`, …) —
     `Path.glob("*.md")` matches dotfiles, so without this filter a vault-root
-    run would rename them to `YYYY-MM-DD-wiki-identity.md` etc., breaking the
-    SessionStart bootstrap hook and every `@vault/.wiki-identity.md` include.
+    run would rename them to `YYYY-MM-DD-wiki-identity-bootstrap.md` etc., breaking
+    the SessionStart bootstrap hook.
     (Found s130 via a vault-root `--dry-run`.)
     """
     if not _excluded(vault.name):

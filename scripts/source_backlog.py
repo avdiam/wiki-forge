@@ -40,7 +40,7 @@ SOURCE_HASH_LINE_RE = re.compile(r"^\s*source_hash:\s*[\"']?([0-9a-fA-F]+)")
 def is_excluded_vault_path(relative_parts: tuple[str, ...]) -> bool:
     """Ingest-exclusion rule: a vault path whose top-level segment begins with
     `.` or `_` is not a source. Catches protocol/config files
-    (`.wiki-identity.md`, `.clipper-rules.md`), protocol folders (`_mailbox/`,
+    (`.wiki-identity-bootstrap.md`, `.clipper-rules.md`), protocol folders (`_mailbox/`,
     `.skipped/`), and Obsidian internals (`.obsidian/`).
     """
     if not relative_parts:

@@ -8,7 +8,7 @@ curator-subagent return; pass empty string or "null" when they aren't
 available.
 
 Mode B emits a single row that aggregates Pass 1 + Pass 2 token / turn
-counts (per the HITL contract in vault/.wiki-identity.md — "each Pass
+counts (per the HITL contract in dev/hitl-subagent-pattern.md — "each Pass
 emits its own <usage>. Aggregate total_tokens / tool_uses / duration_ms
 across passes"). `commit_hash` is from the Mode B Pass-2 commit only.
 
