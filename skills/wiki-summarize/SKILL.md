@@ -223,6 +223,8 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --usage-json .claude/tmp/usage-summarize.json
 ```
 
+Commit the row on its own: `git -C <wiki> add .meta/query_log.jsonl && git -C <wiki> commit -m "summarize: telemetry"` (never `git add .`).
+
 Telemetry is observational — if the appender exits non-zero, mention it briefly
 in the relay but do NOT retry and do NOT fail the survey.
 

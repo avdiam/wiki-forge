@@ -228,6 +228,14 @@ Path A (inline): drop `--usage-json`; `--duration-ms` is the wall-clock. Path B:
 
 If this invocation was routed from `/wiki-ask`, add `--routed-from ask` to the command above.
 
+Commit the row on its own (never `git add .`; never amend a filing commit):
+
+```bash
+git -C <wiki> add .meta/query_log.jsonl && git -C <wiki> commit -m "query: telemetry"
+```
+
+Run this step after step 5's filing decision, so `--filed-as` carries the slug.
+
 Telemetry is observational — if the appender exits non-zero, mention it
 briefly in the relay but do NOT retry and do NOT fail the query.
 
