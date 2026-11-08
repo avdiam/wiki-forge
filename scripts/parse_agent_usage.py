@@ -25,7 +25,10 @@ Optional transcript enrichment (`--agent-id`, repeatable): reads
 `~/.claude/projects/<slug>/*/subagents/agent-<id>.jsonl` and adds
 - `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`,
   `output_tokens`: summed over every assistant API call (the billing view;
-  these do NOT add up to `total_tokens`, which is the harness's own figure),
+  these do NOT add up to `total_tokens`, which is the harness's own figure
+  and tracks context size, not work: s135's linter reported 47K while its
+  turns re-read ~1.0M cached tokens. Judge efficiency by the per-turn sums:
+  a startup-context cut saves its size on every turn, not once),
 - `models`: the distinct per-message `model` values (the model that actually
   ran; never trust `.meta.json`'s `pickedEffortModel`),
 - `assistant_turns`, and `tool_uses` when no block supplied it.
