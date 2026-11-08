@@ -607,9 +607,10 @@ def check_artifact_presence(pages: dict, config: dict) -> list[dict]:
 # === GRAPH CHECKS: wikilink-graph / cross-page relationships ===
 def check_orphans(pages: dict) -> list[str]:
     referenced: set[str] = set()
-    for info in pages.values():
+    for slug, info in pages.items():
         for link in find_wikilinks(info["body"]):
-            referenced.add(link)
+            if link != slug:  # a self-link is not an inbound link
+                referenced.add(link)
     return sorted(slug for slug in pages if slug not in referenced)
 
 
@@ -983,10 +984,11 @@ def check_schema_doc_consistency(wiki_root: Path) -> list[dict]:
 
 
 # === ORCHESTRATION & CLI ===
-def build_report(wiki_root: Path, vault_dir: Path | None = None) -> dict:
+def build_report(wiki_root: Path, vault_dir: Path | None = None, pages: dict | None = None) -> dict:
     if vault_dir is None:
         vault_dir = _find_vault_dir(wiki_root)
-    pages = collect_pages(wiki_root)
+    if pages is None:
+        pages = collect_pages(wiki_root)
     config = load_lint_config(wiki_root)
     return {
         "wiki_root": str(wiki_root),
@@ -1179,6 +1181,99 @@ def render_human(report: dict) -> str:
     return "\n".join(lines)
 
 
+# === COMPACT OUTPUT: --summary / --only / --log-mechanical ===
+# The full --json report is ~170 KB on a 680-page wiki, which the Bash tool
+# truncates to a 2 KB preview; agents then dig through it call by call. The
+# summary is the agent-facing default: counts for every check (a fixed key set,
+# so telemetry rows are comparable), the first N items of each non-zero check,
+# lint cadence state, and a category report that replaces reading index files.
+
+REPORT_META_KEYS = frozenset({"wiki_root", "vault_dir", "total_pages", "checked_at"})
+SMALL_CATEGORY_MAX = 2
+
+
+def count_of(value) -> int:
+    """Number of flagged items in one check's result."""
+    if value is None:
+        return 0
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, dict):
+        lists = [v for v in value.values() if isinstance(v, list)]
+        if lists or "missing_index" in value:  # index_drift shape
+            return sum(len(v) for v in lists) + int(bool(value.get("missing_index")))
+        return 1  # overview_staleness: a dict means "stale"
+    return int(bool(value))
+
+
+def report_counts(report: dict) -> dict:
+    return {k: count_of(v) for k, v in report.items() if k not in REPORT_META_KEYS}
+
+
+def lint_cadence(wiki_root: Path) -> dict:
+    from drill_state import compute_lint_state
+    log_path = wiki_root / "log.md"
+    text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""
+    lint_counter, ingest_count = compute_lint_state(text)
+    return {"ingest_count": ingest_count, "lint_counter": lint_counter, "full_lint_due": lint_counter >= 10}
+
+
+def category_report(pages: dict) -> dict:
+    by_cat: dict = {}
+    for slug, info in pages.items():
+        cat = info["frontmatter"].get("category") or "(none)"
+        by_cat.setdefault(str(cat), []).append(slug)
+    return {
+        "counts": dict(sorted((c, len(v)) for c, v in by_cat.items())),
+        "small": {c: sorted(v) for c, v in sorted(by_cat.items()) if len(v) <= SMALL_CATEGORY_MAX},
+    }
+
+
+def summarize_report(report: dict, wiki_root: Path, pages: dict, detail: int = 10,
+                     only: list[str] | None = None) -> dict:
+    counts = report_counts(report)
+    out: dict = {
+        "total_pages": report["total_pages"],
+        **lint_cadence(wiki_root),
+        "verdict": "clean" if not any(counts.values()) else "issues",
+        "counts": counts,
+        "details": {},
+        "truncated": {},
+    }
+    keys = only if only else [k for k, n in counts.items() if n]
+    for k in keys:
+        if k not in counts:
+            out.setdefault("unknown_checks", []).append(k)
+            continue
+        val = report[k]
+        if isinstance(val, list) and not only and len(val) > detail:
+            out["details"][k] = val[:detail]
+            out["truncated"][k] = len(val) - detail
+        else:
+            out["details"][k] = val
+    if not only:
+        out["category_report"] = category_report(pages)
+    return out
+
+
+def log_mechanical(wiki_root: Path, report: dict, duration_ms: int, commit: str | None) -> int:
+    import append_lint_log
+    cad = lint_cadence(wiki_root)
+    counts = report_counts(report)
+    argv = [
+        "--wiki", str(wiki_root), "--lint-type", "mechanical",
+        "--ingest-count-at-run", str(cad["ingest_count"]),
+        "--total-pages", str(report["total_pages"]),
+        "--counts", json.dumps(counts),
+        "--verdict", "clean" if not any(counts.values()) else "issues",
+        "--semantic-pass-ran", "false",
+        "--duration-ms", str(duration_ms),
+    ]
+    if commit:
+        argv += ["--commit-hash", commit]
+    return append_lint_log.main(argv)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -1186,7 +1281,16 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("wiki_root", help="Path to the wiki root")
     parser.add_argument("--vault", default=None, help="Path to the vault/ directory (default: sibling of wiki root)")
-    parser.add_argument("--json", action="store_true", help="Emit JSON (for subagent consumption)")
+    parser.add_argument("--json", action="store_true", help="Emit the full JSON report (large: ~170 KB at 680 pages)")
+    parser.add_argument("--summary", action="store_true",
+                        help="Compact JSON for agents: counts for every check, first N items of each non-zero check, "
+                             "lint cadence, category report")
+    parser.add_argument("--detail", type=int, default=5, help="Items per check in --summary (default 5)")
+    parser.add_argument("--only", default=None,
+                        help="Comma-separated checks: --summary shows these in full (and nothing else)")
+    parser.add_argument("--log-mechanical", action="store_true",
+                        help="Also append the mechanical lint_log.jsonl row (real duration, fixed counts key set); implies --summary")
+    parser.add_argument("--commit", default=None, help="Commit hash to record with --log-mechanical")
     args = parser.parse_args(argv)
 
     wiki_root = Path(args.wiki_root).resolve()
@@ -1195,8 +1299,20 @@ def main(argv: list[str]) -> int:
         return 2
 
     vault_dir = Path(args.vault).resolve() if args.vault else None
-    report = build_report(wiki_root, vault_dir)
-    if args.json:
+    import time
+    t0 = time.monotonic()
+    pages = collect_pages(wiki_root)
+    report = build_report(wiki_root, vault_dir, pages)
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    if args.log_mechanical:
+        rc = log_mechanical(wiki_root, report, duration_ms, args.commit)
+        if rc != 0:
+            return rc
+        args.summary = True
+    if args.summary or args.only:
+        only = [c.strip() for c in args.only.split(",") if c.strip()] if args.only else None
+        print(json.dumps(summarize_report(report, wiki_root, pages, args.detail, only), separators=(",", ":")))
+    elif args.json:
         print(json.dumps(report, indent=2))
     else:
         print(render_human(report))

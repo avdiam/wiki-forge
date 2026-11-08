@@ -271,6 +271,40 @@ def cmd_subgraph(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_retrieve(args: argparse.Namespace) -> int:
+    """Topic -> page set for /wiki-summarize (and /wiki-ask routing).
+
+    If the topic resolves to an existing slug: `SHAPE_A <slug> <n_pages>
+    <inbound_count>`, then one wiki-relative path per page (anchor first, then
+    its neighbors within --depth hops). Otherwise: `SHAPE_B` (caller falls
+    back to hybrid search). Topic comes from argv or, with --topic-stdin, from
+    stdin verbatim (no shell escaping needed).
+    """
+    raw = sys.stdin.read() if args.topic_stdin else (args.topic or "")
+    nodes, outbound, inbound = build_graph(args.wiki_root)
+    slug = _resolve_slug(raw, nodes)
+    if slug not in nodes:  # "Agent Memory Systems" -> agent-memory-systems
+        import re
+        kebab = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")
+        slug = kebab if kebab in nodes else slug
+    if slug not in nodes:
+        print("SHAPE_B")
+        return 0
+    from constants import PAGE_TYPES
+    slug_to_path: dict[str, str] = {}
+    for page_type in PAGE_TYPES:
+        type_dir = args.wiki_root / "pages" / page_type
+        if type_dir.is_dir():
+            for md in type_dir.glob("*.md"):
+                slug_to_path[md.stem] = f"pages/{page_type}/{md.name}"
+    adj = _undirected_adjacency(nodes, outbound, inbound)
+    pages = [slug] + [s for s, _ in neighbors_within(adj, slug, args.depth)]
+    print("SHAPE_A", slug, len(pages), len(inbound.get(slug, set())))
+    for s in pages:
+        print(slug_to_path.get(s, f"# UNRESOLVED:{s}"))
+    return 0
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Run path / neighbors / subgraph queries over the wikilink graph"
@@ -306,6 +340,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     sp_sub.add_argument("slug")
     sp_sub.add_argument("--json", **json_flag_kwargs)
     sp_sub.set_defaults(func=cmd_subgraph)
+
+    sp_ret = sub.add_parser("retrieve", help="Topic -> SHAPE_A page paths (slug match) or SHAPE_B")
+    sp_ret.add_argument("topic", nargs="?", default=None)
+    sp_ret.add_argument("--topic-stdin", action="store_true", help="Read the topic verbatim from stdin")
+    sp_ret.add_argument("--depth", type=int, default=1, help="Hop limit (default 1)")
+    sp_ret.set_defaults(func=cmd_retrieve)
 
     return p.parse_args(argv)
 

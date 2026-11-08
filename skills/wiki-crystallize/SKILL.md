@@ -120,8 +120,9 @@ itself or any vault source.
 ### 8. Regenerate index, commit, lint, log
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" wiki
-git add -A && git commit -m "crystallize: <synthesis-slug> → <N> facts into <M> pages"
-python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" wiki --json   # mechanical post-op lint
+git add <each target page path> pages/indexes/ .meta/categories-index.json .meta/index_stats.json  # run from wiki/; never git add -A
+git commit -m "crystallize: <synthesis-slug> → <N> facts into <M> pages"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" wiki --summary   # compact post-op lint (never --json: ~170 KB)
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" crystallize \
   --title "<synthesis-slug> → <N> facts" \
   --updated "<comma-sep target page paths>" \

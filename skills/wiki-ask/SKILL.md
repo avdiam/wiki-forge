@@ -83,7 +83,10 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --routed-to <query|graph|summarize|trace> \
   --routing-clarifications <N> \
   --duration-ms <router_wall_clock_ms>
+git -C <wiki> add .meta/query_log.jsonl && git -C <wiki> commit -m "ask: telemetry"
 ```
+
+Commit the row on its own (never `git add .`). The dispatched skill commits its own row separately.
 
 Notes:
 - `--query-skill ask` distinguishes the router row from the dispatched skill's row.

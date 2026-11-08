@@ -67,14 +67,13 @@ Run the mechanical refresh script. This is fast (~1s), deterministic, and
 the only file it touches is `wiki/overview.md` (Stats section + the
 mechanical-refresh marker line).
 
-If `/tmp/wiki-graph.json` exists (the wake-up drill stashes it on every
-session start, and `/wiki-lint` re-stashes it during Pass A), pass it
-through to skip an inline graph rebuild — same pattern as the drill's graph step
-reusing its own snapshot:
+If `.claude/tmp/wiki-graph.json` exists (`/wiki-lint` stashes it during
+Pass A, just before chaining here), pass it through to skip an inline graph
+rebuild:
 
 ```bash
-if [ -f /tmp/wiki-graph.json ]; then
-    python "${CLAUDE_PLUGIN_ROOT}/scripts/update_overview_mechanical.py" wiki --graph-json /tmp/wiki-graph.json
+if [ -f .claude/tmp/wiki-graph.json ]; then
+    python "${CLAUDE_PLUGIN_ROOT}/scripts/update_overview_mechanical.py" wiki --graph-json .claude/tmp/wiki-graph.json
 else
     python "${CLAUDE_PLUGIN_ROOT}/scripts/update_overview_mechanical.py" wiki
 fi

@@ -27,7 +27,7 @@ Context for this run:
 - Wiki root: <absolute path to wiki/>
 
 Run the three-pass workflow:
-  Pass A: Mechanical (${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py --json)
+  Pass A: Mechanical (${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py --summary)
   Pass B: Semantic (read flagged pages, detect real contradictions and stale facts)
   Pass C: Human-readable report with prioritized fix offer
 

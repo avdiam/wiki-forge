@@ -234,8 +234,8 @@ Summarize to the user:
 - **Never auto-ingest from triage.** Triage plans; `/wiki-ingest` executes.
   The two skills are complementary, not chained.
 - **User approves every decision.** Present proposals; don't act silently.
-- **Batch size is 5.** Matches the ingest cadence rule (overview refresh
-  every 5 ingests). If the user wants larger batches, they can ask.
+- **Batch size is 5.** Two batches make one lint/overview cycle (both run
+  every 10 ingests). If the user wants larger batches, they can ask.
 - **One triage file at a time.** If an active triage file exists with
   unchecked batches, prompt the user to continue or replace it.
 - **Maybes are honest.** Don't force a decision on ambiguous files — defer

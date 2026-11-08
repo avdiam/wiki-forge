@@ -165,11 +165,11 @@ WIKI_CORROBORATE_URLS=$(cat <<'URLS_EOF'
 <one URL per line, from this flag's WebSearch>
 URLS_EOF
 )
-python - "$WIKI_CORROBORATE_URLS" "<wiki>" <<'PY'
+python - "$WIKI_CORROBORATE_URLS" "<wiki>" "${CLAUDE_PLUGIN_ROOT}/scripts" <<'PY'
 import json, sys
 from pathlib import Path
 urls_blob, wiki_root = sys.argv[1], sys.argv[2]
-sys.path.insert(0, str(Path(wiki_root) / ".scripts"))
+sys.path.insert(0, sys.argv[3])  # ${CLAUDE_PLUGIN_ROOT}/scripts (wiki/.scripts retired s103)
 from extract_page_metadata import classify_credibility, _load_credibility_lists
 
 tiers = _load_credibility_lists()

@@ -345,8 +345,9 @@ page frontmatter. Do not hand-edit any index file.
 
 ```bash
 cd <wiki>
-git add .
+git add <every path in WRITE_LIST, wiki-relative> pages/indexes/ .meta/categories-index.json .meta/index_stats.json
 git add "../<vault_source>"   # raw source alongside wiki changes
+# Never `git add .`: the tree may hold the user's unrelated edits.
 git commit -m "ingest: <source title>
 
 - Created: <list>
@@ -425,41 +426,24 @@ entirely when no contradiction-resolution decisions fired in this ingest.
 
 ### 6. Mechanical lint
 
-Run the post-commit mechanical lint as a sanity check:
+Run the post-commit mechanical lint. One call lints, writes the
+`<wiki>/.meta/lint_log.jsonl` row (real duration, page count, ingest count,
+a fixed counts key set) and prints a compact summary (~6 KB). Never use
+`--json` here: the full report is ~170 KB and gets truncated.
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" <wiki> --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" <wiki> --log-mechanical --commit <short-hash>
 ```
 
-Parse the JSON. If any of `broken_links`, `orphans`, `index_drift`,
-`needs_verification`, or `excessive_ambiguous` are non-zero, surface them
-in the final report so the user can decide whether to address immediately
-or defer. Do not auto-fix.
+From the summary: if `counts` shows any of `broken_links`, `orphans`,
+`index_drift`, `needs_verification` or `excessive_ambiguous` non-zero,
+surface them (with `details`) in the final report so the user can decide
+whether to address them now or defer. Do not auto-fix. If
+`full_lint_due` is true, remind the user that a full `/wiki-lint` is due
+(cadence: every 10 ingests, chained to `/wiki-overview --soft`).
 
-Record the run in `<wiki>/.meta/lint_log.jsonl`:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_lint_log.py" \
-  --wiki <wiki> \
-  --lint-type mechanical \
-  --semantic-pass-ran false \
-  --ingest-count-at-run $(grep -c "^## \[.*\] ingest" <wiki>/log.md) \
-  --counts '<JSON object: one int per check>' \
-  --verdict <clean if all zero else issues> \
-  --total-tokens "" \
-  --tool-uses "" \
-  --commit-hash "" \
-  --duration-ms <wall-clock ms for the lint_wiki.py call>
-```
-
-The row is picked up by the next operation's commit — no dedicated
-telemetry commit. Mechanical runs are stdlib, no subagent, no separate
-commit.
-
-If this ingest's post-log count (the awk counter + 1) is a multiple of 10,
-also remind the user in the final report that a full `/wiki-lint` is due
-(cadence: a full three-pass lint every 10 ingests, chained to
-`/wiki-overview --soft`).
+The row is picked up by the next operation's commit; no dedicated
+telemetry commit.
 
 ### 7. Structured report
 

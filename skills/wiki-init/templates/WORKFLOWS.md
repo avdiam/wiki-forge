@@ -26,7 +26,7 @@ This file provides cross-LLM operational parity. If your platform (Gemini, Curso
 4. **Offer to save:** Ask the user if the result warrants saving as a permanent synthesis page in `wiki/pages/syntheses/`.
 
 ### 3. Lint the Wiki
-1. **Mechanical Check:** Run `python <scripts>/lint_wiki.py wiki/ --json`.
+1. **Mechanical Check:** Run `python <scripts>/lint_wiki.py wiki/ --summary` (compact; `--json` is the full report).
 2. **Topological Check:** Run `python <scripts>/graph_analyzer.py wiki/ --json`.
 3. Read and synthesize the final outputs. Using your semantic reasoning, review any files flagged for conflicting categorization or stale dependencies.
 4. Provide a structured review report to the user and immediately offer to execute fixes for orphans or broken links.

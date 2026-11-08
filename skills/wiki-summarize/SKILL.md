@@ -47,50 +47,19 @@ or malformed.
 
 ### 3. Two-shape retrieval
 
-Build the wikilink graph and try slug resolution first; fall through to fuzzy
-search on miss.
-
-**Topic-passing convention.** `<topic>` is captured into a shell variable via a
-single-quoted heredoc (no expansion, opaque to bash) and passed to Python via
-`argv`. This survives `"`, `\`, `$`, backticks, apostrophes, and embedded
-newlines without escaping. Replace `<topic>` literally — do not pre-escape.
+Try slug resolution first; fall through to fuzzy search on miss. One script
+call does it. The topic goes in on stdin through a single-quoted heredoc, so
+`"`, `\`, `$`, backticks and apostrophes need no escaping. Replace `<topic>`
+literally; don't pre-escape:
 
 ```bash
-WIKI_SUMMARIZE_TOPIC=$(cat <<'TOPIC_EOF'
+python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_query.py" <wiki> retrieve --topic-stdin <<'TOPIC_EOF'
 <topic>
 TOPIC_EOF
-)
-python - "$WIKI_SUMMARIZE_TOPIC" <<'PY'
-import sys
-from pathlib import Path
-sys.path.insert(0, "<wiki>/.scripts")
-from graph_analyzer import build_graph
-from graph_query import _resolve_slug, neighbors_within
-
-raw = sys.argv[1]
-wiki = Path("<wiki>")
-nodes, outbound, inbound = build_graph(wiki)
-adj = {n: outbound.get(n, set()) | inbound.get(n, set()) for n in nodes}
-
-slug = _resolve_slug(raw, nodes)
-if slug in nodes:
-    # Map slugs → relative paths once, so the librarian receives paths
-    # directly (symmetric with /wiki-query Path B's hybrid_search.py output).
-    slug_to_path = {}
-    for type_dir in ("concepts", "entities", "sources", "comparisons", "syntheses"):
-        for p in (wiki / type_dir).glob("*.md"):
-            slug_to_path[p.stem] = f"{type_dir}/{p.name}"
-
-    pairs = neighbors_within(adj, slug, 1)
-    pages = [slug] + [s for s, _ in pairs]
-    inbound_count = len(inbound.get(slug, set()))
-    print("SHAPE_A", slug, len(pages), inbound_count)
-    for s in pages:
-        print(slug_to_path.get(s, f"# UNRESOLVED:{s}"))
-else:
-    print("SHAPE_B")
-PY
 ```
+
+The topic resolves if it is a slug, a `[[slug]]`, a `slug.md`, or a title
+that kebab-cases to a slug ("Agent Memory Systems" → `agent-memory-systems`).
 
 The fourth field on the SHAPE_A line is the anchor's inbound-link count — pass
 this to the librarian via the prompt for the **Structural footprint** section
@@ -107,9 +76,8 @@ in the relay (rare; signals graph drift) but proceed with the resolved pages.
 - `retrieval_shape = "slug-anchored"`, `coverage_anchor_slug = <resolved slug>`.
 - Page list = anchor + depth-1 neighbors. Sort: anchor first, then neighbors in
   the order returned by `neighbors_within` (sorted by hop-distance asc, slug asc).
-- Page paths are resolved by the bash glue (`slug_to_path` dict scans the five
-  canonical type-dirs once); the librarian receives paths directly, no Glob
-  round-trips needed.
+- Page paths come from the script (it scans `pages/<type>/` once); the
+  librarian receives paths directly, no Glob round-trips needed.
 - **Orphan case** (anchor exists but 0 neighbors): proceed with the single page.
   The five-section survey will surface the isolation honestly in **Structural footprint**.
 

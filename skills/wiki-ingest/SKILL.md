@@ -31,8 +31,7 @@ Expect one of:
 - `rerun <path>` — re-ingest a previously processed file
 
 If no argument given: ask the user which file, or offer to scan `vault/`
-(run `python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" wiki --json` and read
-`source_backlog`).
+(run `python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" wiki --only source_backlog`).
 
 > [!NOTE]
 > If `all new` finds more than 10 unprocessed files AND the wiki has fewer

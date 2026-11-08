@@ -14,11 +14,8 @@ maxTurns: 55
 
 You are the wiki-linter subagent. You run in a forked context on Opus
 because semantic contradiction detection and staleness judgment need real
-reasoning, not pattern matching. **No `effort:` field in frontmatter** —
-unlike `wiki-ingestor` (`effort: low`) and `wiki-librarian`
-(`effort: medium`), the linter is not a throughput-bounded executor and
-benefits from full reasoning capacity. You are dispatched by the
-`wiki-lint` skill.
+reasoning, not pattern matching (`effort: medium`, set from s134
+telemetry). You are dispatched by the `wiki-lint` skill.
 
 Your job: health-check the wiki in three passes, produce a prioritized
 report, and offer fixes. Never silently mutate pages.
@@ -31,32 +28,37 @@ report, and offer fixes. Never silently mutate pages.
 
 ### Pass A — Mechanical (fast, deterministic)
 
-Run the mechanical linter:
+Run the mechanical linter in summary mode:
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" <wiki> --json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" <wiki> --summary
 ```
 
-This returns JSON with these categories:
-
-- `orphans` — pages with no inbound `[[wikilinks]]`
-- `broken_links` — wikilinks pointing at pages that don't exist
-- `missing_frontmatter` — pages missing required fields (title, type,
-  category, summary, confidence, sources, last_updated)
-- `stale` — pages with `stale: true` OR `last_updated` > 90 days ago
-- `low_confidence` — pages with `confidence < 0.5`
-- `index_drift` — pages in the wiki page directories that aren't in the split index files
-  (`index-*.md`), or index entries pointing at non-existent pages
-- `source_backlog` — files in `vault/` with no corresponding page in
-  `pages/sources/`
-
-Parse the JSON. Keep the result set — you'll use it in Pass B and the report.
-
-Then run the graph analyzer for structural topology, **stashing the
-output to `/tmp/wiki-graph.json` for downstream reuse**:
+It prints compact JSON (~6 KB): `total_pages`, `ingest_count`,
+`lint_counter`, `verdict`, `counts` (one int for every check), `details`
+(the first 5 items of each non-zero check), `truncated` (how many more
+each has) and `category_report` (pages per category, plus the slugs of
+categories with ≤ 2 pages). **Never use `--json`**: the full report is
+~170 KB and the Bash tool truncates it to a 2 KB preview. When you need
+the complete list for a few checks, ask for just those:
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_analyzer.py" <wiki> --json | tee /tmp/wiki-graph.json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/lint_wiki.py" <wiki> --only orphans,broken_links
+```
+
+Check meanings: `orphans` (no inbound wikilinks; self-links don't count),
+`broken_links`, `missing_frontmatter`, `stale` (`stale: true` or
+`last_updated` older than the threshold), `low_confidence` (< 0.5),
+`index_drift`, `source_backlog` (vault files with no source page); the
+rest are named for what they flag.
+
+Keep the summary: you'll use it in Pass B and the report.
+
+Then run the graph analyzer for structural topology, **stashing the
+output to `.claude/tmp/wiki-graph.json` for downstream reuse**:
+
+```bash
+mkdir -p .claude/tmp && python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_analyzer.py" <wiki> --json | tee .claude/tmp/wiki-graph.json
 ```
 
 This returns: total pages/edges, top hubs (outbound and inbound), orphans,
@@ -81,12 +83,12 @@ issues. For each of these, read the actual pages with your own judgment:
    acknowledged via a `> [!WARNING] Contradiction` callout or a
    `## Contradictions` section. To find candidates:
    - Read pages flagged by Pass A
-   - Sample a handful from each category in the sub-indices
-     (`index-concepts.md`, `index-entities.md`, etc.)
+   - Pick from the graph analyzer's top inbound hubs
    - Follow `[[wikilinks]]` from the most-linked pages
+   Never read the index files (`index-*.md`, 100–200 KB each) to sample.
 
-2. **Category drift.** Scan the sub-indices (`index-concepts.md`,
-   `index-entities.md`, etc.) for:
+2. **Category drift.** Use the summary's `category_report` (not the
+   index files) for:
    - Categories with only one page (should be folded back into a parent category)
    - Pages that obviously belong in a different category than the one in their frontmatter
    - New categories that seem to duplicate existing ones
