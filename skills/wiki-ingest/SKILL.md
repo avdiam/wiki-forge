@@ -488,38 +488,27 @@ Parse two blocks from the Agent tool's return and write one row to
 `<wiki>/.meta/ingest_log.jsonl`. Schema in the `append_ingest_log.py`
 module docstring (`python "${CLAUDE_PLUGIN_ROOT}/scripts/append_ingest_log.py" --help`).
 
-**Block A — `<usage>` metadata** the Agent tool appends after the report:
+**Block A — `<usage>` metadata.** The harness reports the dispatch's cost
+in a `<usage>` block: in the Agent tool result for a foreground dispatch, or
+in the completion `<task-notification>` for a background one (wait for it).
+Its syntax has changed over time (`total_tokens: N, …` → `<subagent_tokens>N</subagent_tokens>…`),
+so never regex it by hand. Pipe it to the parser with the agent's id; the id
+also recovers per-call token counts and the model that actually ran from the
+subagent transcript:
 
+```bash
+# <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
+python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
+  --agent-id <agent-id> --out .claude/tmp/usage-ingest.json <<'USAGE'
+<every <usage>...</usage> block for this operation, verbatim>
+USAGE
 ```
-<usage>total_tokens: <N>, tool_uses: <N>, duration_ms: <N></usage>
-```
 
-The block may include additional fields the Agent tool surfaces natively
-(`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`,
-`output_tokens`); capture each independently rather than relying on a
-single multi-group regex, so format drift doesn't lose the row. For each
-field name in `{total_tokens, input_tokens, cache_creation_input_tokens,
-cache_read_input_tokens, output_tokens, tool_uses, duration_ms}`, run
-`<field>:\s*(\d+)` against the `<usage>...</usage>` content and capture
-when present.
-
-> **Known regex quirk** (documented + accepted). The `input_tokens:\s*(\d+)`
-> pattern matches as a substring inside `cache_creation_input_tokens` /
-> `cache_read_input_tokens`. Has not bitten production because the Agent
-> tool today emits only `total_tokens` / `tool_uses` / `duration_ms`. If
-> the harness ever starts emitting `cache_*_input_tokens` without also
-> emitting `input_tokens`, the regex will return the longer field's value
-> as if it were `input_tokens`. Fix when it bites: anchor with negative
-> lookbehind — `(?<![a-z_])input_tokens:\s*(\d+)`. The contract + quirk are
-> pinned by `dev/tests/test_usage_parsing.py` (six cases, stdlib
-> unittest); update spec and test together.
-
-If the entire block is missing or all field regexes fail, pass empty
-strings for the cost fields and use the main-session wall-clock from
-step 12 as the `--duration-ms` fallback. Telemetry is observational, not
-a contract — null fields are preferable to losing the row. The
-`cache_creation_input_tokens` field in particular is the load-bearing
-slice for measuring SessionStart-hook cache savings.
+Then pass `--usage-json .claude/tmp/usage-ingest.json` to the appender. If
+no block ever arrived, still run the parser (it emits nulls) and pass
+`--duration-ms <main-session wall-clock from step 12>` explicitly; an
+explicit flag always overrides the file. Telemetry is observational, not
+a contract: null fields are preferable to losing the row.
 
 **Block B — the agent's structured report** (from its step 8). Extract:
 
@@ -544,13 +533,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_ingest_log.py" --wiki <wiki> \
   --pages-created "<comma-sep slugs>" \
   --pages-updated "<comma-sep slugs>" \
   --contradictions-flagged <N> \
-  --total-tokens <N or ""> \
-  --input-tokens <N or ""> \
-  --cache-creation-input-tokens <N or ""> \
-  --cache-read-input-tokens <N or ""> \
-  --output-tokens <N or ""> \
-  --tool-uses <N or ""> \
-  --duration-ms <N> \
+  --usage-json .claude/tmp/usage-ingest.json \
   --commit-hash <short-hash>
 ```
 

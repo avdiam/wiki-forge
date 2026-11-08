@@ -184,16 +184,22 @@ in 4A returns synchronously, `<usage>` is in the tool result. When it runs
 in the background, the tool result is only a launch ack and `<usage>`
 arrives later in the completion `<task-notification>` — do not append
 until that notification has landed. Only if no `<usage>` is ever
-surfaced: pass empty strings for the cost fields and use the main-session
-wall-clock since the 4A dispatch as `--duration-ms` (the appender
-requires an integer there; `""` is rejected).
+surfaced: still run the parser (it emits nulls) and pass the main-session
+wall-clock since the 4A dispatch as an explicit `--duration-ms` (the
+appender requires an integer there).
 
-Parse `<usage>` per-field (same tolerant approach as `/wiki-ingest`
-step 13 — for each field in `{total_tokens, input_tokens,
-cache_creation_input_tokens, cache_read_input_tokens, output_tokens,
-tool_uses, duration_ms}`, run `<field>:\s*(\d+)` against the
-`<usage>...</usage>` content). Missing fields → null. `status` is
-`applied` if step 5A produced a commit, `no_changes` if it was skipped.
+Parse it with the shared parser (never regex it by hand):
+
+```bash
+# <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
+python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
+  --agent-id <agent-id> --out .claude/tmp/usage-overview.json <<'USAGE'
+<every <usage>...</usage> block for this operation, verbatim>
+USAGE
+```
+
+`status` is `applied` if step 5A produced a commit, `no_changes` if it
+was skipped.
 `--commit-hash` is `content_hash` from 5A (`""` for `no_changes`).
 
 ```bash
@@ -201,13 +207,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
   --mode soft \
   --ingest-count-at-run <curr_n> \
   --status <applied|no_changes> \
-  --total-tokens <N or ""> \
-  --input-tokens <N or ""> \
-  --cache-creation-input-tokens <N or ""> \
-  --cache-read-input-tokens <N or ""> \
-  --output-tokens <N or ""> \
-  --tool-uses <N or ""> \
-  --duration-ms <N> \
+  --usage-json .claude/tmp/usage-overview.json \
   --commit-hash <short-hash or "">
 ```
 
@@ -362,11 +362,19 @@ is already deleted by the curator.
 
 Wait for both passes' `<usage>` blocks (same rule as 6A — a background
 dispatch surfaces `<usage>` in its completion notification, not the
-launch ack). Mode B emits two `<usage>` blocks (one per pass). Parse each block
-per-field (same tolerant approach as Mode A) and **aggregate across
-passes** for the row's cost fields (file-checkpoint two-pass rule:
-one telemetry row per operation) — sum every numeric field
-across the two passes; `duration_ms` sums the two passes' wall-clocks.
+launch ack). Mode B emits two `<usage>` blocks (one per pass), from two
+different agents. Feed **both** blocks and **both** agent ids to one parser
+call; it sums every field, `duration_ms` included (file-checkpoint two-pass
+rule: one telemetry row per operation):
+
+```bash
+# <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
+python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
+  --agent-id <pass-1-id> --agent-id <pass-2-id> --out .claude/tmp/usage-overview-full.json <<'USAGE'
+<every <usage>...</usage> block for this operation, verbatim>
+USAGE
+```
+
 `commit_hash` is `content_hash` from 5B (Pass 1 doesn't commit).
 `status` is `applied` if Pass 2 wrote and committed, `cancelled` if
 Pass 2 returned status `cancelled` (skip the commit entirely).
@@ -377,13 +385,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
   --trigger "<reasons string OR user-invoked>" \
   --ingest-count-at-run <N> \
   --status <applied|cancelled> \
-  --total-tokens <sum or ""> \
-  --input-tokens <sum or ""> \
-  --cache-creation-input-tokens <sum or ""> \
-  --cache-read-input-tokens <sum or ""> \
-  --output-tokens <sum or ""> \
-  --tool-uses <sum or ""> \
-  --duration-ms <sum> \
+  --usage-json .claude/tmp/usage-overview-full.json \
   --commit-hash <short-hash or "">
 ```
 

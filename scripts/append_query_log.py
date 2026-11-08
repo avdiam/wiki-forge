@@ -113,6 +113,8 @@ import sys
 from datetime import datetime
 
 from _log_writer import (
+    add_usage_json_arg,
+    inject_usage_argv,
     append_jsonl,
     optional_float,
     optional_int,
@@ -208,7 +210,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="Count of clarifying questions the router asked (0 normally). Null on non-router rows.",
     )
-    return p.parse_args(argv)
+    add_usage_json_arg(p)
+    return p.parse_args(inject_usage_argv(argv))
 
 
 def build_row(args: argparse.Namespace) -> dict:

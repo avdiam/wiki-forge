@@ -51,7 +51,7 @@ import argparse
 import sys
 from datetime import datetime
 
-from _log_writer import append_jsonl, optional_int, resolve_wiki_root, split_slugs
+from _log_writer import add_usage_json_arg, inject_usage_argv, append_jsonl, optional_int, resolve_wiki_root, split_slugs
 
 
 VALID_SOURCE_TYPES = {"article", "paper", "gist", "blog", "docs", "transcript", "notes", "other"}
@@ -79,7 +79,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--tool-uses", type=optional_int, default=None, help="From <usage> block; '' or 'null' allowed")
     p.add_argument("--duration-ms", type=int, required=True, help="Wall-clock ms for the ingest")
     p.add_argument("--commit-hash", required=True)
-    return p.parse_args(argv)
+    add_usage_json_arg(p)
+    return p.parse_args(inject_usage_argv(argv))
 
 
 def build_row(args: argparse.Namespace) -> dict:

@@ -69,7 +69,7 @@ import json
 import sys
 from datetime import datetime
 
-from _log_writer import append_jsonl, optional_int, optional_str, resolve_wiki_root, strict_bool
+from _log_writer import add_usage_json_arg, inject_usage_argv, append_jsonl, optional_int, optional_str, resolve_wiki_root, strict_bool
 
 
 VALID_LINT_TYPES = {"mechanical", "full"}
@@ -119,7 +119,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--duration-ms", type=int, required=True, help="Wall-clock ms")
     p.add_argument("--commit-hash", type=optional_str, default=None,
                    help="Only populated when the lint produced a commit (fixes applied)")
-    return p.parse_args(argv)
+    add_usage_json_arg(p)
+    return p.parse_args(inject_usage_argv(argv))
 
 
 def build_row(args: argparse.Namespace) -> dict:

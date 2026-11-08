@@ -191,15 +191,20 @@ Field values depend on which path handled the query:
   JSON (step 3 already has it)
 - `filed_as` → parse from the librarian's `Filed as:` footer line (slug or
   `Not filed` → null)
-- Cost fields (`total_tokens`, `input_tokens`, `cache_creation_input_tokens`,
-  `cache_read_input_tokens`, `output_tokens`, `tool_uses`, `duration_ms`) →
-  parse the `<usage>...</usage>` block the Agent tool appends after the
-  librarian's content. Extract each field independently with
-  `<field>:\s*(\d+)` against the block content rather than a single
-  multi-group regex — so format drift doesn't lose the row. Pass `""`
-  for any field that doesn't match. If the block is missing entirely,
-  pass `""` for all cost fields and fall back to main-session wall-clock
-  for `duration_ms`.
+- Cost fields → run the librarian's `<usage>` block (tool result, or the
+  completion notification for a background dispatch) through the shared
+  parser and pass `--usage-json` to the appender. Never regex the block by
+  hand. If no block arrived, add `--duration-ms <main-session wall-clock>`
+  explicitly (it overrides the file):
+
+  ```bash
+  # <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
+  python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
+    --agent-id <agent-id> --out .claude/tmp/usage-query.json <<'USAGE'
+  <every <usage>...</usage> block for this operation, verbatim>
+  USAGE
+  ```
+
 - `query_variations` → JSON-encoded array of the variations passed to
   `--queries-json` (excluding the canonical first element); read directly
   from the `query_variations` field of the `hybrid_search.py` output.
@@ -214,15 +219,12 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --pages-consulted "<comma-sep slugs>" \
   --top-score <float or ""> \
   --filed-as "<synthesis-slug or "">" \
-  --total-tokens <N or ""> \
-  --input-tokens <N or ""> \
-  --cache-creation-input-tokens <N or ""> \
-  --cache-read-input-tokens <N or ""> \
-  --output-tokens <N or ""> \
-  --tool-uses <N or ""> \
+  --usage-json .claude/tmp/usage-query.json \
   --duration-ms <N> \
   --query-variations '<JSON array string or "">'
 ```
+
+Path A (inline): drop `--usage-json`; `--duration-ms` is the wall-clock. Path B: drop `--duration-ms` unless no `<usage>` block arrived.
 
 If this invocation was routed from `/wiki-ask`, add `--routed-from ask` to the command above.
 

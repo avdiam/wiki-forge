@@ -194,3 +194,64 @@ def write_rows(log_path: Path, rows: list[dict]) -> None:
     with log_path.open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+# ---------- --usage-json (shared by the Agent-dispatch appenders) ----------
+# `parse_agent_usage.py` writes one JSON with every cost field. Appenders that
+# log a subagent dispatch (ingest, lint, query, overview) accept
+# `--usage-json <path>` and expand it into their ordinary cost flags before
+# argparse runs, so each parser's contract (incl. required --duration-ms)
+# stays unchanged. Explicit flags on the command line win over the file.
+
+USAGE_FLAG_FIELDS = (
+    ("--total-tokens", "total_tokens"),
+    ("--input-tokens", "input_tokens"),
+    ("--cache-creation-input-tokens", "cache_creation_input_tokens"),
+    ("--cache-read-input-tokens", "cache_read_input_tokens"),
+    ("--output-tokens", "output_tokens"),
+    ("--tool-uses", "tool_uses"),
+    ("--duration-ms", "duration_ms"),
+)
+
+
+def add_usage_json_arg(p: argparse.ArgumentParser) -> None:
+    """Document --usage-json in --help (expanded earlier by inject_usage_argv)."""
+    p.add_argument("--usage-json", metavar="PATH",
+                   help="JSON from parse_agent_usage.py; fills any cost flag not given explicitly")
+
+
+def inject_usage_argv(argv: list[str]) -> list[str]:
+    """Replace `--usage-json PATH` (or `--usage-json=PATH`) with cost flags.
+
+    A flag already present in argv is left alone. Null values in the JSON are
+    skipped, so the appender's own default (None) applies — except
+    --duration-ms, which the caller must then pass explicitly.
+    """
+    out: list[str] = []
+    path = None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--usage-json" and i + 1 < len(argv):
+            path = argv[i + 1]
+            i += 2
+            continue
+        if a.startswith("--usage-json="):
+            path = a.split("=", 1)[1]
+            i += 1
+            continue
+        out.append(a)
+        i += 1
+    if not path:
+        return out
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    present = {a.split("=", 1)[0] for a in out if a.startswith("--")}
+    for flag, field in USAGE_FLAG_FIELDS:
+        if flag in present:
+            continue
+        val = data.get(field)
+        if val is None:
+            continue
+        out += [flag, str(val)]
+    return out

@@ -58,16 +58,20 @@ Counts: <JSON object>
 Fixes committed: <short-hash or "none">
 ```
 
-**Parse the `<usage>` block** the Agent tool appends after the report.
-Extract each field independently with `<field>:\s*(\d+)` so format drift
-doesn't lose the row — fields: `total_tokens`, `input_tokens`,
-`cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`,
-`tool_uses`, `duration_ms`. Missing fields → empty string when forwarded
-to `append_lint_log.py` (the script accepts `""` and stores null).
+**Parse the `<usage>` block(s)** with the shared parser; never regex them
+by hand (the harness's syntax has changed before). The block is in the
+Agent tool result, or in the completion notification for a background
+dispatch. A fix-application turn resumes the same agent and produces a
+second block: include every block, and the parser sums all fields,
+`duration_ms` included (each block covers only its own turn):
 
-If the subagent dispatched more than once in this run (fix-application
-turn), aggregate every numeric token field and `tool_uses` across all
-turns; use the final turn's `duration_ms` if present, else sum.
+```bash
+# <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
+python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
+  --agent-id <agent-id> --out .claude/tmp/usage-lint.json <<'USAGE'
+<every <usage>...</usage> block for this operation, verbatim>
+USAGE
+```
 
 **Append the `log.md` entry** — always, whether fixes applied or not.
 Clean runs MUST reset the wake-up drill's cadence counter (which scans
@@ -93,13 +97,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_lint_log.py" \
   --counts '<Counts JSON from footer>' \
   --verdict <Verdict from footer> \
   --semantic-pass-ran true \
-  --total-tokens <N or ""> \
-  --input-tokens <N or ""> \
-  --cache-creation-input-tokens <N or ""> \
-  --cache-read-input-tokens <N or ""> \
-  --output-tokens <N or ""> \
-  --tool-uses <N or ""> \
-  --duration-ms <N or ""> \
+  --usage-json .claude/tmp/usage-lint.json \
   --commit-hash "<short-hash if Fixes committed != 'none', else ''>"
 ```
 

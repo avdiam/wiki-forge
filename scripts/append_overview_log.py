@@ -58,7 +58,7 @@ import argparse
 import sys
 from datetime import datetime
 
-from _log_writer import append_jsonl, optional_int, optional_str, resolve_wiki_root
+from _log_writer import add_usage_json_arg, inject_usage_argv, append_jsonl, optional_int, optional_str, resolve_wiki_root
 
 
 VALID_MODES = {"soft", "full"}
@@ -94,7 +94,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="Wall-clock ms for the whole operation (sum of passes for Mode B)")
     p.add_argument("--commit-hash", type=optional_str, default=None,
                    help="Null when status=no_changes or cancelled")
-    return p.parse_args(argv)
+    add_usage_json_arg(p)
+    return p.parse_args(inject_usage_argv(argv))
 
 
 def build_row(args: argparse.Namespace) -> dict:

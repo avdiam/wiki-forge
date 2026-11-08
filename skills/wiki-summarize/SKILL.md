@@ -207,8 +207,8 @@ Write one row to `wiki/.meta/query_log.jsonl`. Field values:
 - `--pages-consulted` — parse from the librarian's footer `Pages consulted: [[…]]` via regex `\[\[([^\]]+)\]\]` (same as `/wiki-query` Path B)
 - `--top-score` — Shape B: top result's normalized `score` from `hybrid_search.py` JSON; Shape A: `""` (no search score)
 - `--filed-as` — parse from librarian's `Filed as:` footer line (slug or `Not filed` → null)
-- Cost fields — parse independently from the `<usage>` block via `<field>:\s*(\d+)`. Pass `""` for any field that doesn't match. If the block is missing, pass `""` for all and fall back to main-session wall-clock for `duration_ms`.
-- `--duration-ms` — `<usage>` block's value, or main-session wall-clock fallback.
+- Cost fields — pipe the librarian's `<usage>` block into `parse_agent_usage.py` (same command as `/wiki-query` step 6, with `--agent-id` and `--out .claude/tmp/usage-summarize.json`) and pass `--usage-json`. Never regex the block by hand.
+- `--duration-ms` — only when no `<usage>` block arrived: the main-session wall-clock (overrides the file).
 - `--query-variations ""` — `/wiki-summarize` does not expand queries (single-topic surveys).
 - If this invocation was routed from `/wiki-ask`, add `--routed-from ask`.
 
@@ -220,13 +220,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
   --pages-consulted "<comma-sep slugs>" \
   --top-score <float or ""> \
   --filed-as "<synthesis-slug or "">" \
-  --total-tokens <N or ""> \
-  --input-tokens <N or ""> \
-  --cache-creation-input-tokens <N or ""> \
-  --cache-read-input-tokens <N or ""> \
-  --output-tokens <N or ""> \
-  --tool-uses <N or ""> \
-  --duration-ms <N>
+  --usage-json .claude/tmp/usage-summarize.json
 ```
 
 Telemetry is observational — if the appender exits non-zero, mention it briefly
