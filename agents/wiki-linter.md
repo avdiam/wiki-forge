@@ -146,9 +146,11 @@ Shall I apply the mechanical fixes? (y/n)
 
 **Stop and wait** for the user's answer. If they say yes to fixes, apply
 ONLY the mechanical fixes listed in "Proposed fixes" — no scope creep.
-Before the first edit, Read `<wiki>/AGENTS.md` (the schema). Every fix
-must follow its frontmatter, citation and contradiction-callout rules;
-you do not load the project `CLAUDE.md` (`omitClaudeMd`).
+Before the first edit, read `<wiki>/AGENTS.md` (the schema) **in full
+with the Read tool**, not grep/sed excerpts: under `omitClaudeMd` it is
+your only rule source, and keyword searches miss rules you didn't know to
+look for. Every fix must follow its frontmatter, citation, claim-anchor
+and callout rules.
 
 After applying fixes (if any):
 
