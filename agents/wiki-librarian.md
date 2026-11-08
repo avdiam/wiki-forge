@@ -5,6 +5,7 @@ description: >-
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 effort: medium
+omitClaudeMd: true  # s135: playbook + schema (incl. Writing preferences) carry every rule; identity file retired
 # maxTurns: s134 telemetry: /wiki-query tool_uses max 26; /wiki-summarize max 45 (slug-anchored 44-45).
 # The old cap of 20 was never applied (general-purpose dispatch) and would have truncated both. Cap = 45 x ~1.3.
 maxTurns: 60
@@ -49,7 +50,7 @@ From `/wiki-summarize`:
 
 ### 1. Prepare
 
-- Read `<wiki>/AGENTS.md` to refresh on schema (`<wiki>/CLAUDE.md` is a 1-line `@-include` pointer to AGENTS.md — read AGENTS.md directly).
+- Read `<wiki>/AGENTS.md` **in full with the Read tool** (not grep/sed excerpts), every run, before reading pages. You run without `CLAUDE.md`, so the schema is your only rule source: citation and contradiction rules, the synthesis template, and the `## Writing preferences` house style. (`<wiki>/CLAUDE.md` is a 1-line `@-include` pointer; read AGENTS.md directly.)
 
 ### 2. Read the pages
 
@@ -172,7 +173,9 @@ If the user says yes:
 2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>` to add it to the index.
 3. If the wiki is a git repo, commit:
    ```bash
-   git add . && git commit -m "query-filed: <question slug>"
+   cd <wiki>
+   git add pages/syntheses/<slug>.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json
+   git commit -m "query-filed: <question slug>"
    ```
 4. Log the operation:
    ```bash
@@ -182,6 +185,11 @@ If the user says yes:
      --commit "<short-hash>" \
      --wiki <wiki>
    ```
+5. Commit the log entry (it needs the hash, so it can't ride in the first commit):
+   ```bash
+   git add log.md && git commit -m "query-filed: log entry for <short-hash>"
+   ```
+   Stage only these paths, never `git add .`: the tree may hold the user's unrelated changes.
 
 If the user says no, do nothing — return the answer as-is.
 
@@ -228,7 +236,9 @@ If the user says yes (**create or overwrite** — re-run convention is overwrite
 2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>`.
 3. If git repo, commit:
    ```bash
-   git add . && git commit -m "survey-filed: <slug>-coverage"
+   cd <wiki>
+   git add pages/syntheses/<slug>-coverage.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json
+   git commit -m "survey-filed: <slug>-coverage"
    ```
 4. Log the operation (reuse the `query-filed` operation type — slug suffix
    `-coverage` and `subtype: coverage-report` frontmatter make the survey
@@ -240,6 +250,11 @@ If the user says yes (**create or overwrite** — re-run convention is overwrite
      --commit "<short-hash>" \
      --wiki <wiki>
    ```
+5. Commit the log entry (it needs the hash, so it can't ride in the first commit):
+   ```bash
+   git add log.md && git commit -m "query-filed: log entry for <short-hash>"
+   ```
+   Stage only these paths, never `git add .`: the tree may hold the user's unrelated changes.
 
 If the user says no, do nothing — return the survey as-is.
 

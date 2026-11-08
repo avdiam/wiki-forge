@@ -4,6 +4,7 @@ description: Pure executor for wiki ingestion. Receives a complete approved plan
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: opus
 effort: low
+omitClaudeMd: true  # s135: playbook + schema (incl. Writing preferences) carry every rule; identity file retired
 # maxTurns: s134 telemetry, 297 ingests: tool_uses p95 56, p99 72 (one 176 outlier). 100 >= p99 x 1.3; kept.
 # model: opus is the fallback; /wiki-ingest passes sonnet|opus per dispatch (dispatch param wins).
 maxTurns: 100
@@ -50,7 +51,9 @@ the source.
 
 ### 1. Read the schema
 
-Read `<wiki>/AGENTS.md` in full. The schema governs how you write — field
+Read `<wiki>/AGENTS.md` **in full with the Read tool** (not grep/sed
+excerpts). You run without `CLAUDE.md`, so the schema is your only rule
+source, including its `## Writing preferences` house style. It governs how you write — field
 meanings, page templates, frontmatter rules, the contradiction-callout
 syntax, and the "prefer edits over creates" discipline. Honor it exactly.
 (`<wiki>/CLAUDE.md` is just a 1-line `@-include` pointer to AGENTS.md;
