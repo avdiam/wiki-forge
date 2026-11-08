@@ -176,6 +176,25 @@ Use Obsidian `[[wikilinks]]` for every internal reference. Targets resolve by sl
 11. **Listicles and surveys:** write the source page and the taxonomy concepts
     they organize; don't spawn thin entity stubs for every item listed.
 
+## Writing preferences
+
+House style for every page an agent writes or edits: ingest, query filing,
+lint fixes, overview. It applies to new and edited text; don't restyle
+untouched passages. A new wiki starts with these defaults. Edit them here,
+never in a user's `CLAUDE.md`: page-writing agents run without it.
+
+- **Language:** English, US spelling (`summarize`, `behavior`).
+- **Tone:** neutral and encyclopedic. Attribute opinions to their source
+  ("Hightower argues…"), never adopt them in the wiki's own voice.
+- **No first person.** Pages never say "I" or "we".
+- **Terse:** lead with the claim; no filler, no throat-clearing intros, no
+  closing recaps.
+- **Dates:** `YYYY-MM-DD` in prose as well as frontmatter ("shipped
+  2026-04-12", not "April 12th").
+- **Numbers:** exact figures with units and a date where they can change
+  (`12K stars (2026-04)`), not hedged words ("about twelve thousand").
+- **Punctuation:** em dashes are allowed.
+
 ## Templates
 
 ### Source summary template

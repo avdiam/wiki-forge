@@ -358,6 +358,11 @@ and dispatch you again with `mode: full-resume`.
   checkpoint file, in Mode B Pass 1). Indexes, log.md, source pages,
   concept pages — none of them are yours.
 - **Never commit.** The `/wiki-overview` skill owns the commit.
+- **House style.** Before writing any overview prose (Mode A narrative,
+  Mode B Pass 1 proposal), read the `## Writing preferences` section of
+  `<wiki>/AGENTS.md` (find it with `grep -n '^## Writing preferences'`,
+  then Read from that line to the next `## `). You run without `CLAUDE.md`,
+  so that section is your only style source.
 - **No prose-summary at end of dispatch.** Return only the structured
   JSON / report blocks specified per mode. The skill parses these.
 - **Mode A scope rule is hard.** No edits outside `## Recent ingests
