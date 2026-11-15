@@ -37,7 +37,10 @@ user approval.
 
 ### 3. Relay
 Return the report to the user. If the linter asked about applying fixes,
-relay the offer and the user's answer back to the subagent.
+relay the offer and the user's answer back to the subagent (SendMessage to
+its agent ID), **quoted verbatim and labeled with its origin**
+(`User reply (verbatim, AskUserQuestion answer): "<reply>"`). Subagents
+refuse paraphrased approvals as agent-originated (s136).
 
 ### 4. Append telemetry — log.md entry + lint_log.jsonl row
 
@@ -155,7 +158,7 @@ ingests, aligned with the lint cadence.
 
 ```bash
 # Count ingests since the last mechanical-refresh marker in overview.md
-prev_n=$(grep -oP '_Mechanical refresh at ingest #\K\d+' wiki/overview.md | head -1)
+prev_n=$(grep -o '_Mechanical refresh at ingest #[0-9]*' wiki/overview.md | head -1 | grep -o '[0-9]*$')
 curr_n=$(awk '/^## \[.*\] ingest / {c++} END {print c+0}' wiki/log.md)
 prev_n=${prev_n:-0}
 delta=$((curr_n - prev_n))

@@ -53,7 +53,7 @@ The script in step 3A will replace this marker with a new one — once it
 runs, the previous value is gone unless you've stashed it.
 
 ```bash
-prev_n=$(grep -oP '_Mechanical refresh at ingest #\K\d+' wiki/overview.md | head -1)
+prev_n=$(grep -o '_Mechanical refresh at ingest #[0-9]*' wiki/overview.md | head -1 | grep -o '[0-9]*$')
 prev_n=${prev_n:-0}
 ```
 
@@ -88,7 +88,7 @@ identical to the last refresh. Skip the curator dispatch and exit.
 ### 3A.1. Read the new marker
 
 ```bash
-curr_n=$(grep -oP '_Mechanical refresh at ingest #\K\d+' wiki/overview.md | head -1)
+curr_n=$(grep -o '_Mechanical refresh at ingest #[0-9]*' wiki/overview.md | head -1 | grep -o '[0-9]*$')
 ```
 
 If `curr_n − prev_n < 1`, no new ingests have landed since last refresh —

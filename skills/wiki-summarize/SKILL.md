@@ -165,6 +165,11 @@ stale: false
 Re-run convention is **overwrite** — `<slug>-coverage.md` is the canonical
 report; old versions live in `git log`.
 
+Relay the filing question to the user; on opt-in, resume the librarian with
+the user's reply **quoted verbatim and labeled with its origin**
+(`User reply (verbatim, main-session turn): "<reply>"`). The librarian
+refuses a paraphrased approval (s136).
+
 ### 6. Log query telemetry
 
 Write one row to `wiki/.meta/query_log.jsonl`. Field values:

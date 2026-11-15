@@ -159,7 +159,12 @@ If yes (and handling inline):
 3. If git repo, stage only what this filing touched (never `git add .`): `git -C <wiki> add pages/syntheses/<slug>.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json && git -C <wiki> commit -m "query-filed: <slug>"`
 4. Log: `python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" query-filed --title "..." --created "syntheses/<slug>" --commit "<hash>" --wiki <wiki>`
 
-If the librarian was dispatched, relay the filing question and decision.
+If the librarian was dispatched, relay the filing question to the user,
+then resume the librarian (SendMessage to its agent ID) with the user's
+reply **quoted verbatim and labeled with its origin**, e.g.
+`User reply (verbatim, main-session turn): "yes, file it"`. A paraphrase
+("the user approved filing") reads as agent-originated, and the librarian
+correctly refuses to file on it (s136).
 
 ### 6. Log query telemetry (before relay)
 

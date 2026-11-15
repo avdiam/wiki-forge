@@ -158,6 +158,10 @@ After applying fixes (if any):
 
 1. Re-run `update_index.py`
 2. Commit only the wiki: `git add <wiki> && git commit -m "lint: <short description>"`
+3. Delete the graph stash from the project root: `rm -f .claude/tmp/wiki-graph.json`. It
+   predates your fix commit, so its orphan/edge counts are stale; the
+   chained `/wiki-overview --soft` rebuilds the graph inline when the stash
+   is absent (s136: it would otherwise publish pre-fix stats).
 
 **Do not append to `log.md` or `lint_log.jsonl` yourself.** Telemetry is
 owned by the dispatching `/wiki-lint` skill (SKILL.md step 4) — same shape
