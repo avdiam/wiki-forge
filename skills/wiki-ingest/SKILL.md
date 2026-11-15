@@ -369,6 +369,7 @@ Use the Agent tool:
 ```text
 Source: <raw vault path>
 Wiki root: <absolute path to wiki/>
+References: <this skill's base directory>/references
 
 Approved plan:
 <paste the entire block from step 11 verbatim — Key takeaways,
@@ -409,6 +410,7 @@ Return your structured report.
 
 Notes on the prompt shape:
 
+- **`References:`** is this skill's `references/` directory as an absolute path. The agent Reads rare-branch files from it on demand (agents can't rely on `${CLAUDE_PLUGIN_ROOT}` expanding in their shell).
 - **Pass the brief by path.** The agent reads the JSON file itself; pasting it costs output tokens and invites transcription errors.
 - **Do not paste the full source content.** The agent reads the raw file directly via the `Source:` path. Pasting it doubles token cost in the fork.
 - **Do not paste page-discovery results.** The plan's CREATE/EDIT lines name the exact pages to touch — that's the only discovery output the agent needs. The agent does NOT re-discover.

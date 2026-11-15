@@ -18,14 +18,30 @@ injected section (matched by `## Ingests N–M` header) rather than
 appending a duplicate. Section is inserted just before `## Stats` when no
 prior occurrence is found.
 
+Curator handoff (s137, script audit Wave 3): the curator never opens the
+~56 KB overview.md. `--brief` prints what it needs (the skeleton bullets, each
+source page's `summary:` and tags, the overview's heading outline, the last
+section titles); the curator writes a fill JSON and `--fill` applies it,
+touching only the placeholder tokens inside the window's section. The Mode A
+scope rule is enforced here: wrong ingest numbers, missing or extra entries,
+multi-line text, leftover placeholders, or wikilinks to pages that don't
+exist are refused (exit 1) and nothing is written.
+
+Fill JSON:
+    {"section_title": "Observability sweep",
+     "synthesis": {"322": "first OTel-spans anchor, extends [[agent-observability]]"}}
+
 Usage:
     python emit_recent_ingests_skeleton.py --wiki wiki --from 213 --to 221
     python emit_recent_ingests_skeleton.py --wiki wiki --from 213 --to 221 --dry-run
+    python emit_recent_ingests_skeleton.py --wiki wiki --from 213 --to 221 --brief
+    python emit_recent_ingests_skeleton.py --wiki wiki --from 213 --to 221 --fill fill.json
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -248,6 +264,114 @@ def inject(overview: Path, section: str, n_from: int, n_to: int) -> tuple[str, s
     return action, new_text
 
 
+# ---------- curator handoff: --brief / --fill ----------
+
+HEADING_RE = re.compile(r"^(#{2,3}) (.+?)[ 	]*$", re.MULTILINE)
+INGEST_SECTION_RE = re.compile(r"^## Ingests (\d+)[–\-](\d+)\b(.*)$")
+SUMMARY_MAX = 400
+
+
+def section_span(text: str, n_from: int, n_to: int):
+    m = re.search(rf"^## Ingests {n_from}[–\-]{n_to}\b.*?(?=^## |\Z)", text, re.DOTALL | re.MULTILINE)
+    return (m.start(), m.end()) if m else None
+
+
+def build_brief(wiki: Path, n_from: int, n_to: int) -> str:
+    overview = (wiki / "overview.md").read_text(encoding="utf-8")
+    span = section_span(overview, n_from, n_to)
+    if not span:
+        sys.exit(f"no '## Ingests {n_from}–{n_to}' section in overview.md; emit the skeleton first")
+    section = overview[span[0]:span[1]].rstrip()
+
+    outline, titles = [], []
+    for m in HEADING_RE.finditer(overview):
+        level, text = m.group(1), m.group(2)
+        im = INGEST_SECTION_RE.match(m.group(0))
+        if im:
+            if int(im.group(1)) != n_from:
+                titles.append(m.group(0))
+            continue
+        outline.append(("  " if level == "###" else "") + text)
+
+    entries = parse_log_ingests(wiki / "log.md")
+    lines = [f"# Soft-refresh brief: ingests {n_from}–{n_to}", "",
+             "## Overview outline (existing threads; connect to these)", *[f"- {o}" for o in outline], "",
+             "## Previous section titles (tone and continuity)", *[f"- {t}" for t in titles[-3:]], "",
+             "## Section to fill (skeleton as injected)", section, "",
+             "## Per-ingest context"]
+    for i, entry in enumerate(entries[n_from - 1:n_to]):
+        # Re-ingests list the source page under Updated, not Created.
+        slug = find_source_slug(entry.get("created", [])) or find_source_slug(entry.get("updated", []))
+        fm, _ = load_source_page(wiki, slug) if slug else ({}, "")
+        summary = str(fm.get("summary", "")).strip().strip('"')
+        if len(summary) > SUMMARY_MAX:
+            summary = summary[:SUMMARY_MAX].rsplit(" ", 1)[0] + " …"
+        tags = fm.get("tags") or []
+        lines.append(f"- #{n_from + i} source [[{slug}]]" if slug else f"- #{n_from + i} (no source page)")
+        if summary:
+            lines.append(f"  summary: {summary}")
+        if tags:
+            lines.append(f"  tags: {', '.join(tags) if isinstance(tags, list) else tags}")
+        if entry.get("note"):
+            lines.append(f"  note: {entry['note']}")
+    return "\n".join(lines) + "\n"
+
+
+def page_exists(wiki: Path, target: str) -> bool:
+    slug = target.split("#")[0].strip()
+    if not slug:
+        return False
+    if (wiki / f"{slug}.md").exists():
+        return True
+    return any((wiki / "pages" / d / f"{slug}.md").exists()
+               for d in ("sources", "concepts", "entities", "comparisons", "syntheses"))
+
+
+def apply_fill(wiki: Path, n_from: int, n_to: int, fill: dict):
+    """Return (new_overview_text, problems). Text is unchanged when problems is non-empty."""
+    text = (wiki / "overview.md").read_text(encoding="utf-8")
+    problems = []
+    span = section_span(text, n_from, n_to)
+    if not span:
+        return text, [f"no '## Ingests {n_from}–{n_to}' section in overview.md"]
+    section = text[span[0]:span[1]]
+
+    title = str(fill.get("section_title", "")).strip()
+    synth = {str(k): str(v).strip() for k, v in (fill.get("synthesis") or {}).items()}
+    expected = {str(n) for n in range(n_from, n_to + 1)}
+    if not title:
+        problems.append("section_title is empty")
+    missing = sorted(expected - set(synth), key=int)
+    extra = sorted(set(synth) - expected)
+    if missing:
+        problems.append(f"synthesis missing ingests: {', '.join(missing)}")
+    if extra:
+        problems.append(f"synthesis has ingests outside {n_from}–{n_to}: {', '.join(extra)}")
+    for key, val in [("section_title", title)] + [(f"#{k}", v) for k, v in synth.items()]:
+        if not val and key != "section_title":
+            problems.append(f"{key}: empty synthesis")
+        if "\n" in val:
+            problems.append(f"{key}: must be one line")
+        if SYNTHESIS_PLACEHOLDER in val or SECTION_PLACEHOLDER in val:
+            problems.append(f"{key}: contains a placeholder token")
+        for target in WIKILINK_RE.findall(val):
+            if not page_exists(wiki, target):
+                problems.append(f"{key}: [[{target}]] does not resolve to a page")
+    if section.count(SECTION_PLACEHOLDER) != 1:
+        problems.append(f"section header must hold exactly one {SECTION_PLACEHOLDER} (already filled?)")
+
+    new_section = section.replace(SECTION_PLACEHOLDER, title, 1)
+    for n in sorted(expected & set(synth), key=int):
+        bullet_re = re.compile(rf"^(- \*\*#{n} — .*?){re.escape(SYNTHESIS_PLACEHOLDER)}", re.MULTILINE)
+        val = synth[n].rstrip(".")
+        new_section, k = bullet_re.subn(lambda m, v=val: m.group(1) + v, new_section, count=1)
+        if k != 1:
+            problems.append(f"#{n}: no bullet with a {SYNTHESIS_PLACEHOLDER} placeholder")
+    if problems:
+        return text, problems
+    return text[:span[0]] + new_section + text[span[1]:], []
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--wiki", default="wiki", help="wiki root (default: wiki)")
@@ -258,9 +382,25 @@ def main() -> None:
         action="store_true",
         help="print the skeleton to stdout; do not modify overview.md",
     )
+    ap.add_argument("--brief", action="store_true",
+                    help="print the curator brief for an already-emitted section")
+    ap.add_argument("--fill", metavar="JSON",
+                    help="apply the curator's fill JSON to the section's placeholders")
     args = ap.parse_args()
 
     wiki = Path(args.wiki).resolve()
+    if args.brief:
+        print(build_brief(wiki, args.n_from, args.n_to), end="")
+        return
+    if args.fill:
+        fill = json.loads(Path(args.fill).read_text(encoding="utf-8"))
+        new_text, problems = apply_fill(wiki, args.n_from, args.n_to, fill)
+        if problems:
+            print("fill refused; overview.md unchanged:\n" + "\n".join(f"- {p}" for p in problems))
+            sys.exit(1)
+        (wiki / "overview.md").write_text(new_text, encoding="utf-8")
+        print(f"filled ## Ingests {args.n_from}–{args.n_to}: title + {args.n_to - args.n_from + 1} synthesis tails")
+        return
     section = build_section(wiki, args.n_from, args.n_to)
 
     if args.dry_run:

@@ -110,6 +110,7 @@ Use the Agent tool to spawn the wiki-librarian:
 
 ```text
 Survey mode: true
+Survey instructions: <this skill's base directory>/references/librarian-survey.md
 
 Context for this run:
 - Topic: <user input>
@@ -124,7 +125,7 @@ Pages to read:
 - ...
 
 Read these specific pages in full and produce the five-section
-topic-coverage survey per the survey-mode block in your playbook
+topic-coverage survey per the survey instructions file
 (Themes / Agreements / Disagreements / Coverage gaps / Structural
 footprint). Offer to file as syntheses/<slug>-coverage.md (overwrite
 on re-run).

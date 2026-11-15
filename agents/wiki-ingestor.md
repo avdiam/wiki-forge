@@ -41,6 +41,8 @@ The dispatching skill puts these in your prompt verbatim:
   - New categories proposed
 - `User emphasis / skip hints:` — free-form guidance the user added on approval, or "none"
 - `Verify-clearing decisions:` — one line per EDIT page that the takeaway gate's `### verify: true re-evaluation` block surfaced, in the form `<slug> — <Y | N | P: "<narrowed callout text>">`. Or `"none"` if no flagged pages were in scope this ingest. Step 3b applies these per-page after writing the EDIT.
+- `Contradiction-resolution decisions:` — one line per pair in the form `<slug-a>|<slug-b> — <a_wins | b_wins | both_stand | defer> [aggregator: <slug>]`, or `"none"`.
+- `References: <absolute path>` — the `/wiki-ingest` skill's `references/` directory. Rare branches live there; Read a file only when its branch fires (drift re-ingest, verify-clearing, contradiction resolution, late-contradiction HALT). Written as `<References>/<file>` below.
 - `Source brief:` — path to a JSON file written by `ingest_preflight.py`. **Read it first** (it is small). It carries `title_guess`, `word_count`, `sha256_short`, `merge_mode`, `existing_summary`, `suggested_slug`, `source_type`, `quality` and `preview`. Leave the file in place: the skill deletes it after logging. (Older dispatches pasted the JSON inline; treat inline JSON the same way.)
 
 If the dispatch prompt is missing the `Approved plan:` block, halt and
@@ -74,31 +76,11 @@ summary page (`existing_summary` path) instead of creating a new source
 page. Treat this as the only deviation from a fresh ingest; the rest of
 step 3 still applies.
 
-**Drift-triggered re-ingest** — a specific shape of `merge_mode`. Check
-the existing source page's frontmatter: if `source_drifted: true` is
-present (set by `check_source_freshness.py` when upstream content shifted
-from the recorded baseline; `compose_drift_queue.py` lists the re-capture
-work — `/wiki-capture` for fetchable URLs, a `clip_handoff.py` handoff to
-the user's Web Clipper for auth-required ones), this re-ingest is the closing leg of a
-drift cycle and needs three extras on top of the normal merge:
-
-- Title the new section `## Re-ingest <date> — drift re-capture` (not
-  just `## Re-ingest <date>`) so the audit trail makes the trigger
-  visible to anyone reading the source page later.
-- Clear the `source_drifted: true` field from the source page's
-  frontmatter, AND remove the `> [!WARNING] Source drift detected`
-  callout from the body if present. The drift has been addressed by
-  this re-ingest — leaving the flag stale would re-fire `check_drifted_sources`
-  lint on every subsequent pass.
-- Update `source_hash:` on the source page to the new `sha256_short`
-  from the brief. The hash field carries the content-identity of the
-  most recently ingested version, not the original capture; the merge
-  append handles the version history in the body.
-
-A manual re-ingest of the same source (re-running `/wiki-ingest` on an
-unchanged-or-edited vault file without a drift cycle in between) follows
-the plain `## Re-ingest <date>` convention — no drift suffix, no
-frontmatter cleanup required beyond the normal `last_updated:` bump and
+**Drift-triggered re-ingest.** If `merge_mode: true` and the existing
+source page's frontmatter has `source_drifted: true`, Read
+`<References>/ingestor-drift-reingest.md` and follow it (section title
+suffix, clearing the drift flag and callout, `source_hash` refresh). A plain
+manual re-ingest needs only the normal `last_updated:` bump and
 `source_hash:` refresh.
 
 #### 2b. Extract write-side specifications
@@ -246,24 +228,8 @@ gap it fills); leave **`## Pages updated`** empty until step 3e.
   **Typed-edge obligation (active).** Whenever you write a `> [!WARNING] Contradiction Detected:` callout — whether plan-listed or late-found — also populate the `contradicts:` frontmatter on the touched page with quoted-flow wikilinks to the contradicting page(s). Add the inverse edge to each referenced page's `contradicts:` field so the relationship is symmetric (the `check_asymmetric_contradictions` lint flags one-way edges). Canonical YAML: `contradicts: ["[[other-slug]]"]`. Same pattern when surfacing supersession (entity X replaces entity Y): write `supersedes: ["[[Y]]"]` on X and `superseded_by: ["[[X]]"]` on Y, with `status: deprecated` on Y. The `check_invalid_typed_links` lint flags wikilinks in these fields that don't resolve. Per-ingest cost is near-zero — the wikilinks are already in the callout you're writing.
 - **Claim-tag markers (concept / entity / comparison / synthesis pages only).** Apply `*[INFERRED]*` after claims you synthesized across sources or inferred from one. Apply `*[AMBIGUOUS]*` after a specific contested or single-source claim where `verify: true` would be too coarse (the rest of the page is solid; one claim is the issue). Untagged claims are implicitly EXTRACTED — do not mark verbatim or near-verbatim source content. Skip on source pages entirely. The `excessive_ambiguous` lint flags pages with more than 3 `*[AMBIGUOUS]*` markers. Per wiki/AGENTS.md "Claim-tag markers" rule.
 - **Claim-ID anchors (opt-in, same page scope as the markers above).** Append `{#claim-<slug>}` (slug `[a-z0-9-]+`) after a claim's terminal punctuation — after any `*[TAG]*` marker — to make it directly addressable as `[[page-slug#claim-<slug>]]` for `/wiki-trace`. Add one **only by judgment**, to a load-bearing claim worth referencing directly (likely to be traced, cited across pages, or subject to a contradiction cascade) — **not** to every sentence; flag-as-exception, like the tag markers. Applies to EXTRACTED and tagged claims alike; forward-only (no backfill of legacy pages). Keep slugs unique within a page — the `claim_id_issues` lint flags per-page duplicates and malformed slugs. Per wiki/AGENTS.md "Claim-ID anchors" rule. **When you anchor an *at-risk* claim** (page `verify: true`, or the claim tagged AMBIGUOUS/INFERRED), it feeds the `cascade_review` lint — and on a **multi-source page** the cascade can only pin that claim to its source if it carries an **inline attribution** (the supporting quote ending `— [[source-id]]`, which entity pages already require). So pair an at-risk anchor with its attribution quote; without one, a synthesized multi-source claim is reported unattributable rather than guessed.
-- **`verify: true` re-evaluation (closes the loop with `/wiki-corroborate`).** Inspect the dispatch prompt's `Verify-clearing decisions:` block for a line matching this page's slug. Apply the user's choice as part of the EDIT body, AND **track every slug+decision in working state** (Y, P, AND N) for the post-commit telemetry backfill in step 5 — every decision is audit-visible, not just Y. The backfill defers past the late-contradiction rollback boundary so a halt-and-rollback doesn't leave a phantom stamp against changes that never reached HEAD.
-  - **Y (Clear).** Remove the `verify: true` line from the page's frontmatter; delete the inline `⚠ needs verification:` callout from the body (or its `> [!WARNING] needs verification:` blockquote variant — match either shape). Bump `confidence:` one tier (e.g., 0.7 → 0.8), capped at 1.0.
-  - **N (Retain).** Leave `verify: true` and the inline callout intact. New source still gets added to `sources:` and the `### From <source>` evidence subsection lands as usual; the flagged claim is just not yet considered corroborated.
-  - **P (Partial: "<new text>").** Keep `verify: true`; rewrite the inline callout to use the user-supplied narrower text. The new callout body replaces everything after `⚠ needs verification:` (or the `> [!WARNING]` blockquote variant) up to the first blank line / next-block marker.
-  - **Page not listed in the decisions block.** Treat as N (no decision = no change). Do not auto-clear under any circumstance. **Do not** include unlisted slugs in the telemetry backfill — only slugs with explicit Y/P/N decisions get logged.
-
-  Skip this bullet entirely when the dispatch prompt's `Verify-clearing decisions:` is `none` — most ingests don't touch flagged pages.
-
-- **Contradiction resolution (closes the loop with `/wiki-resolve-contradictions`).** Inspect the dispatch prompt's `Contradiction-resolution decisions:` block for any line whose `<slug-a>|<slug-b>` pair_key touches this page. Apply the user's outcome as part of the EDIT body, AND **track every pair_key+outcome in working state** (a_wins, b_wins, both_stand, AND defer — every decision is audit-visible) for the post-commit telemetry backfill in step 5.
-
-  - **a_wins / b_wins.** Identify the **aggregator page** that should carry the Resolved callout: (i) if the dispatch line has an explicit `[aggregator: <slug>]` hint, use that page; (ii) otherwise, prefer the concept / entity / comparison side of the pair (source pages are not aggregators); (iii) for source↔source pairs without a hint, the aggregator is the concept/entity page already cited by both — DO NOT guess. The ingestor cannot ask the user mid-execution (it runs in a fork and only communicates via the final report). When the aggregator is ambiguous, **halt this pair's resolution only** (other pairs proceed normally): leave both `contradicts:` lists untouched, do NOT add a Resolved callout, and surface the ambiguity in the final structured report under an `Unresolved pairs:` line per pair, naming both candidate aggregators if more than one concept/entity cites both sources. The user re-dispatches with an explicit `[aggregator:]` hint on the next ingest touching either side. On the aggregator (when unambiguous), append a `> [!NOTE] Resolved: <one-sentence claim summary> stands per [[<source-slug>]] (this ingest).` callout near the existing `## Contradictions` section (or the disputed claim's evidence subsection if no `## Contradictions` heading exists). Then remove `[[<other-slug>]]` from the winning side's `contradicts:` frontmatter list, AND remove `[[<winning-slug>]]` from the losing side's `contradicts:` frontmatter list — symmetric edge removal in one pass. If the resulting list is empty, drop the `contradicts:` field entirely (rather than leaving `contradicts: []` — keeps the lint surface clean).
-  - **both_stand.** Remove the symmetric edge from both sides' `contradicts:` lists (same drop-empty rule as above). On each side, add a `## Related` entry pointing to the other side with the annotation `(disagreement examined — both positions stand; see [[<source-slug>]])`. If `## Related` doesn't exist on a page, create it as a new top-level section near the page's end. No Resolved callout is added — NPOV's "describe, don't resolve" frame.
-  - **defer.** No edits to either side. The pair_key+outcome still gets tracked for telemetry — defer is an explicit decision, not a no-op.
-  - **Pair not listed in the decisions block.** Treat as defer (no decision = no change). Do not auto-resolve under any circumstance. **Do** include unlisted pairs touched by this ingest in the telemetry backfill with outcome=`defer` — surface the implicit defer so analysis can distinguish "user actively deferred" from "pair was never surfaced." (Caveat: if no `### Contradiction resolution` block was emitted in the takeaway, there are no implicit-defer pairs to track — skip telemetry entirely.)
-
-  `superseded_by:` is NOT used by this flow. It remains reserved for its original entity-version use case (`gpt-3 → superseded_by: [[gpt-4]]`); evidential disagreements use the callout + edge-removal mechanic above.
-
-  Skip this bullet entirely when the dispatch prompt's `Contradiction-resolution decisions:` is `none` — most ingests don't touch pages with active `contradicts:` edges.
+- **`verify: true` decisions.** If the dispatch's `Verify-clearing decisions:` is not `none`, Read `<References>/ingestor-verify-clearing.md` and apply it to each listed page (Y/N/P edits, plus the post-commit telemetry backfill in step 5). Never clear a flag that isn't listed.
+- **Contradiction-resolution decisions.** If the dispatch's `Contradiction-resolution decisions:` is not `none`, Read `<References>/ingestor-contradiction-resolution.md` and apply it to each pair (a_wins / b_wins / both_stand / defer edits, plus the post-commit telemetry backfill in step 5). Never auto-resolve an unlisted pair.
 
 #### 3c. CREATE lines — for each `CREATE <path>` in the plan
 
@@ -307,30 +273,7 @@ is the **only** agent-side probe.
 Two thresholds:
 
 - **≤ 5 NEW contradictions** (i.e. not in the plan's Contradictions block): add a per-page `> [!WARNING] Contradiction Detected:` callout at the relevant claim, count it, continue. Surface the count in your final report. **Apply the typed-edge obligation from 3b** — populate `contradicts:` frontmatter with the symmetric inverse on both pages.
-- **> 5 NEW contradictions:** HALT immediately. Roll back **surgically** — touch only the files in `WRITE_LIST` (built during 3a–3d), never the broader working tree. This preserves any unrelated pending wiki/ edits the user may have had in flight when the ingest started.
-  ```bash
-  # Pseudocode — translate to a real bash loop with WRITE_LIST populated as a bash array:
-  for f in "${WRITE_LIST[@]}"; do
-    if git -C <wiki> ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
-      git -C <wiki> restore -- "$f"      # tracked file: revert to HEAD
-    else
-      rm -f "<wiki>/$f"                   # untracked file: delete the page the agent created
-    fi
-  done
-  ```
-  The list is dedup-safe (`git restore` is idempotent; `rm -f` tolerates missing files), so a path written twice (e.g., source page touched in 3a and again in 3e) needs no special handling. If a single restore/rm errors, continue the loop — partial rollback of the rest is preferable to leaving everything in flight.
-  Do **not** run step 4 (index regen), do **not** commit, do **not** append to log. Return:
-  ```text
-  HALT: late-discovered contradictions exceeded threshold (>5).
-  Plan-listed contradictions: <N>
-  New contradictions found during writes: <M>
-  Conflict list:
-  - [[page-1]] — <claim>
-  - [[page-2]] — ...
-  Rollback complete. No commit, no log entry.
-  ```
-  The user will redirect — re-run the takeaway pass with the new
-  contradictions in scope, or escalate as paradigm-shifting material.
+- **> 5 NEW contradictions:** HALT immediately. Read `<References>/ingestor-late-contradiction-halt.md` and follow it: surgical rollback of `WRITE_LIST` only, no index regen, no commit, no log, and the HALT report format.
 
 ### 4. Regenerate the index
 
@@ -371,58 +314,11 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" ingest \
   --wiki <wiki>
 ```
 
-**Post-commit verify-clearing telemetry backfill.** For each slug tracked
-during step 3b's verify-clearing decision (Y, P, AND N — every decision is
-audit-visible), stamp the decision on the most-recent matching
-`corroborate_log.jsonl` row:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_corroborate_log.py" --wiki <wiki> --backfill-ingest \
-  --page-slug <slug> --decision <Y|P|N>
-```
-
-The script targets the most recent row matching `page_slug` regardless of
-`user_action` state — parallel-path captures (e.g., the user picked the
-source via `/wiki-triage` instead of `/wiki-corroborate` → `/wiki-capture`)
-still close the loop. The script always sets `flag_decision_at_ingest`;
-on Y it additionally stamps `flag_cleared_at_ingest` with the current
-timestamp. P and N leave `flag_cleared_at_ingest` null but the decision
-field captures the action so per-decision telemetry analysis is possible.
-Same shape as a telemetry repair: a row written before its fact was
-known gets stamped afterwards, never by amending a commit. If no matching row exists (e.g., the user never ran
-`/wiki-corroborate` on this slug — the source surfaced via the normal
-ingest queue), the script returns non-zero — note in the report and
-continue. Telemetry is observational, not a contract; firing post-commit
-avoids a phantom stamp if a late contradiction rolled back the writes.
-Skip entirely when no verify-clearing decisions fired in this ingest.
-
-**Post-commit contradiction-resolution telemetry backfill.** For each
-`pair_key`+`outcome` tracked during step 3b's contradiction-resolution
-decisions (a_wins, b_wins, both_stand, AND defer — every decision is
-audit-visible), stamp the outcome on the most-recent matching
-`contradiction_log.jsonl` row:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_contradiction_log.py" --wiki <wiki> --backfill-ingest \
-  --pair-key "<slug-a>|<slug-b>" --outcome <a_wins|b_wins|both_stand|defer>
-```
-
-The script targets the most recent row matching `pair_key` regardless of
-`user_action` state — manual-edit paths (no `/wiki-capture` roundtrip)
-still close the loop. The script always sets `outcome`; on
-`a_wins`/`b_wins`/`both_stand` it additionally stamps
-`resolved_at_ingest` with the current timestamp. `defer` leaves
-`resolved_at_ingest` null but the outcome field captures the action so
-per-decision telemetry analysis is possible. If no matching row exists
-(the user never ran `/wiki-resolve-contradictions` on this pair — the
-ingest happened to touch a page with an existing `contradicts:` edge),
-the script returns non-zero — note in the report and continue.
-Rollback protection is structural: step 5 is post-commit, so a
-late-contradiction rollback (>5 NEW contradictions, surgical
-`git restore` + `rm -f` per § Late-contradiction handling) never
-reaches this backfill — no phantom stamps against changes that never
-reached HEAD. Same shape as the verify-clearing backfill above. Skip
-entirely when no contradiction-resolution decisions fired in this ingest.
+**Post-commit telemetry backfills.** If verify-clearing or
+contradiction-resolution decisions fired, run the backfill step from the
+same reference file you followed in step 3b. These run post-commit on
+purpose: a late-contradiction rollback never reaches them, so no phantom
+stamps. Skip entirely when neither block fired (most ingests).
 
 ### 6. Mechanical lint
 
