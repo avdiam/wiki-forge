@@ -87,6 +87,22 @@ class TestCorroborateBackfillCost(unittest.TestCase):
                 # flags_in_batch is the batch size, auto-stamped on every row.
                 self.assertEqual(r["flags_in_batch"], 3)
 
+    def test_backfill_ingest_no_row_is_clean_skip(self):
+        # s138: a normal-queue ingest's verify decision has no corroborate row;
+        # that's an expected skip (exit 0, file untouched), not an error.
+        with tempfile.TemporaryDirectory() as d:
+            wiki = _make_wiki(Path(d))
+            args = ["--wiki", str(wiki), "--backfill-ingest", "--page-slug", "never-searched", "--decision", "N"]
+            self.assertEqual(corr.main(args), 0)  # no log file at all
+            self._seed_batch(wiki, "b-1", ["alpha"])
+            before = (wiki / ".meta" / "corroborate_log.jsonl").read_text(encoding="utf-8")
+            self.assertEqual(corr.main(args), 0)  # log exists, no matching slug
+            self.assertEqual((wiki / ".meta" / "corroborate_log.jsonl").read_text(encoding="utf-8"), before)
+            # A matching row is still stamped, N included.
+            self.assertEqual(corr.main(["--wiki", str(wiki), "--backfill-ingest",
+                                        "--page-slug", "alpha", "--decision", "N"]), 0)
+            self.assertEqual(_read(wiki, "corroborate_log.jsonl")[-1]["flag_decision_at_ingest"], "N")
+
     def test_initial_write_has_null_new_fields(self):
         with tempfile.TemporaryDirectory() as d:
             wiki = _make_wiki(Path(d))

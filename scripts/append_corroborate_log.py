@@ -125,7 +125,9 @@ Usage:
     # flag_cleared_at_ingest with the current timestamp; on P/N leaves it
     # null. flag_decision_at_ingest is always set so N/P decisions are
     # audit-visible too. Matches deferred rows as well as captured rows so
-    # parallel-path captures (e.g., /wiki-triage) close the loop.
+    # parallel-path captures (e.g., /wiki-triage) close the loop. No matching
+    # row (page never searched by /wiki-corroborate) prints "skipped: ..."
+    # and exits 0 — the normal-queue case, not an error.
     python append_corroborate_log.py --wiki <wiki-root> --backfill-ingest \\
         --page-slug claude-managed-agents --decision Y
 
@@ -269,7 +271,9 @@ def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
     flag_cleared_at_ingest is set only on Y. Matches any user_action so
     parallel-path captures (e.g., the user picked the source via
     /wiki-triage instead of /wiki-corroborate -> /wiki-capture) still
-    close the corroborate-log loop. Returns row index."""
+    close the corroborate-log loop. Returns row index, or None when the page
+    was never searched by /wiki-corroborate (the common normal-queue case:
+    nothing to stamp, not an error)."""
     for i in range(len(rows) - 1, -1, -1):
         r = rows[i]
         if r.get("page_slug") == args.page_slug:
@@ -278,7 +282,7 @@ def _backfill_ingest(rows: list[dict], args: argparse.Namespace) -> int:
             if args.decision == "Y":
                 r["flag_cleared_at_ingest"] = now_iso
             return i
-    raise SystemExit(f"error: no row for page_slug={args.page_slug!r} to backfill")
+    return None
 
 
 def _backfill_cost(rows: list[dict], args: argparse.Namespace) -> int:
@@ -325,6 +329,11 @@ def main(argv: list[str]) -> int:
 
     if args.backfill or args.backfill_ingest or args.backfill_cost:
         rows = read_rows(log_path)
+        if not rows and args.backfill_ingest:
+            # s138: a normal-queue ingest has no corroborate row to stamp; exit 0
+            # so the ingestor doesn't report an expected miss as a failure.
+            print(f"skipped: no corroborate_log row for page_slug={args.page_slug} (nothing to stamp)")
+            return 0
         if not rows:
             print(f"error: {log_path} is empty — nothing to backfill", file=sys.stderr)
             return 2
@@ -344,6 +353,9 @@ def main(argv: list[str]) -> int:
                 print("error: --backfill-ingest requires --decision Y|P|N", file=sys.stderr)
                 return 2
             idx = _backfill_ingest(rows, args)
+            if idx is None:
+                print(f"skipped: no corroborate_log row for page_slug={args.page_slug} (nothing to stamp)")
+                return 0
             write_rows(log_path, rows)
             print(f"backfilled row {idx} decision={args.decision} for page_slug={args.page_slug}")
         return 0

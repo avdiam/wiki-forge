@@ -34,7 +34,10 @@ field captures the action so per-decision telemetry analysis is possible.
 Same shape as a telemetry repair: a row written before its fact was
 known gets stamped afterwards, never by amending a commit. If no matching row exists (e.g., the user never ran
 `/wiki-corroborate` on this slug — the source surfaced via the normal
-ingest queue), the script returns non-zero — note in the report and
+ingest queue), the script prints `skipped: no corroborate_log row …` and
+exits 0. That is the expected normal-queue case: don't report it as a
+failure; one report line `Verify-clearing: <slug> — <decision>` is
+enough. A non-zero exit is a real error: note it in the report and
 continue. Telemetry is observational, not a contract; firing post-commit
 avoids a phantom stamp if a late contradiction rolled back the writes.
 Skip entirely when no verify-clearing decisions fired in this ingest.
