@@ -143,6 +143,17 @@ class TestCloseIngest(unittest.TestCase):
         self.assertTrue(log[1].startswith(h))
         self.assertEqual(git(self.repo.root, "status", "--porcelain"), "")
 
+    def test_report_list_prose_bullets(self):
+        # s138 live run: `path: description` bullets leaked prose into pages_updated.
+        report = ("Updated:\n"
+                  "- C:/Projects/X/wiki/pages/concepts/agents-md.md: the \"decisions\" section. Confidence 0.87 → 0.88.\n"
+                  "- C:/Projects/X/wiki/pages/concepts/goal.md: under \"Distinction from external/pattern-level loops\", x\n"
+                  "- [[claude-code-skills]] — added rules\n"
+                  "- pages/concepts/ralph-loop.md (new section)\n"
+                  "- Seb has no page, so plain text\n")
+        self.assertEqual(close_operation.report_list(report, "Updated"),
+                         ["agents-md", "goal", "claude-code-skills", "ralph-loop"])
+
     def test_missing_commit_line_logs_nothing(self):
         code, out = run_close(["ingest", "--wiki", str(self.repo.wiki),
                                "--source", "vault/Clippings/2026-11-02-new-source.md"],

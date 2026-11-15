@@ -110,6 +110,9 @@ def footer_value(text: str, key: str) -> str | None:
     return hits[-1] if hits else None
 
 
+SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
+
+
 def stem(entry: str) -> str:
     entry = entry.strip().strip("`").strip()
     entry = re.sub(r"^\[\[|\]\]$", "", entry)
@@ -123,8 +126,11 @@ def report_list(text: str, header: str) -> list:
         return []
     out = []
     for line in m.group(1).splitlines():
-        s = stem(re.sub(r"^[ \t]*[-*] ", "", line).split(" — ")[0].split(" (")[0])
-        if s and s not in out:
+        # Bullets come as `path — note`, `path (note)` or `path: note` (s138 live run);
+        # cut at the first separator, then keep only slug-shaped stems.
+        entry = re.split(r" — |: | \(", re.sub(r"^[ \t]*[-*] ", "", line), maxsplit=1)[0]
+        s = stem(entry)
+        if SLUG_RE.fullmatch(s) and s not in out:
             out.append(s)
     return out
 
@@ -159,6 +165,8 @@ def run_appender(script: str, argv: list, warnings: list) -> bool:
 def read_stdin(enabled: bool) -> str:
     if not enabled or sys.stdin is None or sys.stdin.isatty():
         return ""
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8")  # Windows defaults to cp1252: "→" arrived as "â†’" (s138)
     return sys.stdin.read()
 
 
