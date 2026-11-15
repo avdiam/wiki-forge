@@ -74,7 +74,9 @@ kebab-slug of the topic (Shape B). Strip non-alphanumeric chars and
 collapse whitespace to dashes — same shape as `/wiki-query`'s synthesis
 slugs.
 
-If the user says yes (**create or overwrite** — re-run convention is overwrite):
+When the coordinator instructs you to file (it relays the user's decision;
+see the playbook's step 4 "Who decides") — **create or overwrite**, re-run
+convention is overwrite:
 
 1. Write `pages/syntheses/<slug>-coverage.md` using the synthesis template from
    AGENTS.md, extended with the coverage-report fields:

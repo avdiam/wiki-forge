@@ -158,12 +158,15 @@ If yes (and handling inline):
 3. If git repo, stage only what this filing touched (never `git add .`): `git -C <wiki> add pages/syntheses/<slug>.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json && git -C <wiki> commit -m "query-filed: <slug>"`
 4. Log: `python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" query-filed --title "..." --created "syntheses/<slug>" --commit "<hash>" --wiki <wiki>`
 
-If the librarian was dispatched, relay the filing question to the user,
-then resume the librarian (SendMessage to its agent ID) with the user's
-reply **quoted verbatim and labeled with its origin**, e.g.
-`User reply (verbatim, main-session turn): "yes, file it"`. A paraphrase
-("the user approved filing") reads as agent-originated, and the librarian
-correctly refuses to file on it (s136).
+If the librarian was dispatched, you are the user gate: relay the filing
+question to the user, then resume the librarian (SendMessage to its agent
+ID) with a plain **instruction**, not a consent claim, e.g. `File it as
+pages/syntheses/<slug>.md.` or `Don't file.` Carry any user edits ("file it
+but drop section X") as instructions. Don't quote the user's reply or say
+"the user approved": the librarian takes filing orders from the coordinator
+by design, and a message framed as relayed user approval (even a verbatim
+quote) invites a refusal, because agent messages can't stand in for user
+consent (s138).
 
 ### 6. Close the operation (query_log row + telemetry commit)
 

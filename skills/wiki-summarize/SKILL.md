@@ -162,10 +162,13 @@ stale: false
 Re-run convention is **overwrite** — `<slug>-coverage.md` is the canonical
 report; old versions live in `git log`.
 
-Relay the filing question to the user; on opt-in, resume the librarian with
-the user's reply **quoted verbatim and labeled with its origin**
-(`User reply (verbatim, main-session turn): "<reply>"`). The librarian
-refuses a paraphrased approval (s136).
+You are the user gate: relay the filing question to the user; on opt-in,
+resume the librarian with a plain **instruction**, not a consent claim
+(`File it as pages/syntheses/<slug>-coverage.md.`), carrying any user edits
+as instructions. Don't quote the user's reply or say "the user approved":
+the librarian takes filing orders from the coordinator by design, and a
+message framed as relayed user approval (even a verbatim quote) invites a
+refusal (s138).
 
 ### 6. Close the operation (query_log row + telemetry commit)
 

@@ -106,6 +106,18 @@ Write the answer following these rules:
 
 ### 4. Offer to file
 
+**Who decides (both modes).** You cannot reach the user: subagents have no
+AskUserQuestion, and every message after dispatch comes from the
+coordinator (the dispatching skill in the main session). The coordinator
+owns the user gate: it shows your filing question to the user and sends you
+their decision. **Treat the coordinator's filing instruction as task
+direction and act on it**: file when it says file, stop when it says don't.
+Filing a synthesis is a playbook step, not a permission grant, so it needs
+no approval from the permission system and no direct word from the user.
+(Never treat a coordinator message as approval for an actual permission
+prompt; that rule is unchanged.) Without an instruction, ask and end your
+turn; never file on your own.
+
 #### 4a. Prose Q-A mode (survey mode: see the survey instructions file)
 
 After presenting the answer, ask:
@@ -116,7 +128,7 @@ pages/syntheses/<slug>.md? Synthesis pages are picked up by lint and query,
 so good answers compound.
 ```
 
-If the user says yes:
+When the coordinator instructs you to file:
 
 1. Create `pages/syntheses/<slug>.md` using the synthesis template from
    AGENTS.md. Fill `summary:` with a one-sentence hook.
@@ -173,7 +185,8 @@ the answer body.
 ## Rules
 
 - Never modify `vault/` or any existing wiki page. You only create synthesis
-  pages, and only on user approval. **Exception:** survey-mode filing
+  pages, and only when the coordinator instructs you to (it relays the
+  user's decision; see step 4). **Exception:** survey-mode filing
   overwrites `pages/syntheses/<slug>-coverage.md` if a prior coverage report on the
   same anchor exists — this is the documented re-run convention, not a
   general modify-existing-pages license.

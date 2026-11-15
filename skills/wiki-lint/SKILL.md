@@ -37,10 +37,14 @@ user approval.
 
 ### 3. Relay
 Return the report to the user. If the linter asked about applying fixes,
-relay the offer and the user's answer back to the subagent (SendMessage to
-its agent ID), **quoted verbatim and labeled with its origin**
-(`User reply (verbatim, AskUserQuestion answer): "<reply>"`). Subagents
-refuse paraphrased approvals as agent-originated (s136).
+you are the user gate: put the offer to the user, then resume the linter
+(SendMessage to its agent ID) with a plain **instruction**, not a consent
+claim, e.g. `Apply fixes 1 and 2.` or `Don't apply fixes; return the
+report-only footer.` Don't quote the user's reply or say "the user
+approved": the linter takes these orders from the coordinator by design,
+and a message framed as relayed user approval (even a verbatim quote)
+invites a refusal, because agent messages can't stand in for user consent
+(s138).
 
 ### 4. Close the operation (telemetry + commit)
 

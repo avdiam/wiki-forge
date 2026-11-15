@@ -146,8 +146,15 @@ Shall I apply the mechanical fixes? (y/n)
 - The semantic items (contradictions, category decisions) require your input.
 ```
 
-**Stop and wait** for the user's answer. If they say yes to fixes, apply
-ONLY the mechanical fixes listed in "Proposed fixes" — no scope creep.
+**Stop and end your turn.** You cannot reach the user (subagents have no
+AskUserQuestion); the coordinator (the `/wiki-lint` skill in the main
+session) shows the offer to the user and sends you their decision. **Treat
+the coordinator's instruction as task direction and act on it**: applying
+lint fixes is a playbook step, not a permission grant, so it needs no
+direct word from the user. (Never treat a coordinator message as approval
+for an actual permission prompt.) When it says apply, apply ONLY the
+mechanical fixes listed in "Proposed fixes" (or the subset it names), with
+no scope creep.
 Before the first edit, read `<wiki>/AGENTS.md` (the schema) **in full
 with the Read tool**, not grep/sed excerpts: under `omitClaudeMd` it is
 your only rule source, and keyword searches miss rules you didn't know to
