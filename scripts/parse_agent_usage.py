@@ -32,7 +32,9 @@ Optional transcript enrichment (`--agent-id`, repeatable): reads
   they cost ~10x a cache read),
 - `models`: the distinct per-message `model` values (the model that actually
   ran; never trust `.meta.json`'s `pickedEffortModel`),
-- `assistant_turns`, and `tool_uses` when no block supplied it.
+- `assistant_turns`, and `tool_uses` when no block supplied it,
+- `duration_ms` when no block supplied it: the sum of the transcript's
+  per-turn time spans (`duration_source: "transcript"`).
 
 Output: one JSON object on stdout (and to `--out` if given), with every
 appender cost field present (null when unknown). Pass that file to an
@@ -49,6 +51,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import glob
 import json
 import os
@@ -132,12 +135,18 @@ def read_transcript(path: str) -> dict:
     turns = 0
     tool_uses = 0
     seen: set = set()
+    spans: dict = {}  # promptId -> [first_ts, last_ts]; one entry per turn
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             try:
                 rec = json.loads(line)
             except ValueError:
                 continue
+            ts = _parse_ts(rec.get("timestamp"))
+            if ts is not None:
+                span = spans.setdefault(rec.get("promptId"), [ts, ts])
+                span[0] = min(span[0], ts)
+                span[1] = max(span[1], ts)
             if rec.get("type") != "assistant":
                 continue
             msg = rec.get("message") or {}
@@ -158,7 +167,19 @@ def read_transcript(path: str) -> dict:
             content = msg.get("content")
             if isinstance(content, list):
                 tool_uses += sum(1 for c in content if isinstance(c, dict) and c.get("type") == "tool_use")
-    return {"sums": sums, "models": models, "assistant_turns": turns, "tool_uses": tool_uses}
+    span_ms = sum(int((b - a).total_seconds() * 1000) for a, b in spans.values()) if spans else None
+    return {"sums": sums, "models": models, "assistant_turns": turns, "tool_uses": tool_uses,
+            "span_ms": span_ms}
+
+
+def _parse_ts(raw):
+    """ISO-8601 transcript timestamp ('...Z') -> aware datetime, or None."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        return _dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def enrich(result: dict, agent_ids: list, cwd: str, projects_root: str | None = None) -> dict:
@@ -166,6 +187,7 @@ def enrich(result: dict, agent_ids: list, cwd: str, projects_root: str | None = 
     models: list = []
     turns = 0
     tool_uses = 0
+    span_ms = None
     missing = []
     found = 0
     for aid in agent_ids:
@@ -180,6 +202,8 @@ def enrich(result: dict, agent_ids: list, cwd: str, projects_root: str | None = 
         models += [m for m in t["models"] if m not in models]
         turns += t["assistant_turns"]
         tool_uses += t["tool_uses"]
+        if t.get("span_ms") is not None:
+            span_ms = (span_ms or 0) + t["span_ms"]
     if found:
         for f in TRANSCRIPT_TOKEN_FIELDS:
             if result.get(f) is None:
@@ -188,6 +212,12 @@ def enrich(result: dict, agent_ids: list, cwd: str, projects_root: str | None = 
             result["tool_uses"] = tool_uses
         result["models"] = models
         result["assistant_turns"] = turns
+        # No <usage> block (or one without duration): fall back to the
+        # transcript's per-turn time spans, so no caller needs wall-clock
+        # bookkeeping. Gaps between resumed turns are excluded.
+        if result.get("duration_ms") is None and span_ms is not None:
+            result["duration_ms"] = span_ms
+            result["duration_source"] = "transcript"
     if missing:
         result["missing_transcripts"] = missing
     return result

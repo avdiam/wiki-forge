@@ -42,113 +42,35 @@ its agent ID), **quoted verbatim and labeled with its origin**
 (`User reply (verbatim, AskUserQuestion answer): "<reply>"`). Subagents
 refuse paraphrased approvals as agent-originated (s136).
 
-### 4. Append telemetry — log.md entry + lint_log.jsonl row
+### 4. Close the operation (telemetry + commit)
 
 The agent does NOT append to `log.md` or `lint_log.jsonl`. It returns the
-report with a trailing machine-parsable footer, plus the Agent tool
-appends a `<usage>` block. This skill consumes both and invokes the two
-appenders directly — same pattern as `/wiki-ingest` step 13 and
-`/wiki-overview` step 6A (skill owns telemetry; agent owns the work).
-
-**Parse the agent's footer** (last block of the report):
-
-```
-Ingests at run: <N>
-Total pages: <N>
-Verdict: <clean | issues>
-Verdict-summary: <human-readable summary>
-Counts: <JSON object>
-Fixes committed: <short-hash or "none">
-```
-
-**Parse the `<usage>` block(s)** with the shared parser; never regex them
-by hand (the harness's syntax has changed before). The block is in the
-Agent tool result, or in the completion notification for a background
-dispatch. A fix-application turn resumes the same agent and produces a
-second block: include every block, and the parser sums all fields,
-`duration_ms` included (each block covers only its own turn):
+report with a trailing machine-parsable footer (`Ingests at run`, `Total
+pages`, `Verdict`, `Verdict-summary`, `Counts`, `Fixes committed`), and the
+Agent tool appends a `<usage>` block. One call consumes both. Pipe **every**
+Agent result for this lint into it verbatim: a fix-application turn resumes
+the same agent and returns a second result with its own `<usage>` block, and
+every block is summed, `duration_ms` included. For a background dispatch, use
+the completion notification.
 
 ```bash
 # <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
-python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
-  --agent-id <agent-id> --out .claude/tmp/usage-lint.json <<'USAGE'
-<every <usage>...</usage> block for this operation, verbatim>
-USAGE
+python "${CLAUDE_PLUGIN_ROOT}/scripts/close_operation.py" lint --wiki <wiki> \
+  --agent-id <agent-id> <<'RESULT'
+<every Agent result for this lint, verbatim, including each <usage>...</usage>>
+RESULT
 ```
 
-**Append the `log.md` entry** — always, whether fixes applied or not.
-Clean runs MUST reset the wake-up drill's cadence counter (which scans
-`log.md` for `^## \[.*?\] lint ` entries), so this call is non-negotiable.
-Treat `Fixes committed: none` as empty-string `--commit` (the script omits
-the commit line when blank):
+The script:
 
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" lint \
-  --title "<Verdict-summary from footer>" \
-  --commit "<short-hash if Fixes committed != 'none', else ''>" \
-  --wiki <wiki>
-```
+- **Parses the footer strictly.** A missing or malformed field exits 2 and writes nothing; surface the parsing failure to the user. A missed row is recoverable; a misclassified one is not (s75: a `note`-tagged line broke the drill's lint counter).
+- **Appends the `log.md` lint entry**, always. Clean runs must reset the wake-up drill's cadence counter, which scans `log.md` for `^## \[.*?\] lint `. `Fixes committed: none` becomes an empty commit line.
+- **Appends the `lint_log.jsonl` row** (`full`, semantic pass ran) with the cost fields from `<usage>` and the transcript.
+- **Commits telemetry separately, never as an amend** (the row records the fix commit's hash; an amend would orphan it, s132): `lint: telemetry for <fix hash>` when fixes were committed, else `lint: <verdict-summary> at ingest #<N> — <pages> pages`.
 
-**Append the `lint_log.jsonl` row** — always:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_lint_log.py" \
-  --wiki <wiki> \
-  --lint-type full \
-  --ingest-count-at-run <Ingests at run from footer> \
-  --total-pages <Total pages from footer> \
-  --counts '<Counts JSON from footer>' \
-  --verdict <Verdict from footer> \
-  --semantic-pass-ran true \
-  --usage-json .claude/tmp/usage-lint.json \
-  --commit-hash "<short-hash if Fixes committed != 'none', else ''>"
-```
-
-If the footer is malformed or missing required fields, stop and surface
-the parsing failure to the user — do not invoke either appender with
-placeholder values. A missed row is recoverable; a misclassified one is
-not (session 75, 2026-05-22 — a `note`-tagged line broke the lint
-counter for the wake-up drill until hand-corrected).
-
-### 5. Commit telemetry — always a separate commit, never an amend
-
-After step 4 the working tree has dirty entries in `wiki/log.md` (the
-`lint` entry this skill appended) and `wiki/.meta/lint_log.jsonl` (the
-row this skill appended). The agent does NOT commit telemetry itself —
-this skill owns it. Never amend the linter's fix-commit to fold these in:
-the row records that commit's hash, and an amend would rewrite it,
-orphaning the recorded hash (session 132 — same bug as `/wiki-ingest`
-step 13 and `/wiki-overview` step 6A had).
-
-Branch on the agent's trailing footer line `Fixes committed: <hash or "none">`:
-
-(a) **Fixes committed** (hash present). HEAD is the linter's `lint: ...`
-fix-commit (per agent playbook Pass C). Commit the telemetry on top of it:
-
-```bash
-if ! git diff --quiet wiki/log.md wiki/.meta/lint_log.jsonl; then
-    git add wiki/log.md wiki/.meta/lint_log.jsonl
-    git commit -m "lint: telemetry for <fix-commit hash>"
-fi
-```
-
-(b) **No fixes** (footer reads `Fixes committed: none`). No linter commit
-exists; HEAD is some unrelated prior commit. Create a fresh telemetry
-commit so the lint pass has its own audit-trail entry:
-
-```bash
-if ! git diff --quiet wiki/log.md wiki/.meta/lint_log.jsonl; then
-    git add wiki/log.md wiki/.meta/lint_log.jsonl
-    git commit -m "lint: <verdict-summary> at ingest #<N> — <total-pages> pages"
-fi
-```
-
-Use the agent's report footer to fill `<verdict-summary>` (e.g. `"clean
-full pass"` or `"3 flags, no fixes applied"`), `<N>` (Ingests at run),
-and `<total-pages>` (Total pages).
-
-The diff-quiet gate is defensive in both branches — covers the case
-where the agent's appenders failed and produced no telemetry rows.
+Output is one JSON line: `row`, `log_entry`, `fix_commit`, `telemetry_commit`,
+`verdict`, `ingest_count`, `usage`, `warnings`. Report `warnings` in one line;
+never retry.
 
 ### 6. Chain to /wiki-overview --soft (when due)
 

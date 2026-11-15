@@ -213,6 +213,9 @@ Pure stdlib Python (except search deps). Shipped in the plugin's `scripts/` dire
 | `graph_analyzer.py` | Wikilink topology: hubs, sinks, orphans, connected components |
 | `hybrid_search.py` | BM25 + ONNX semantic + RRF fusion with tag/alias boosting |
 | `ingest_source.py` | Source pre-processing: title extraction, word count, merge detection |
+| `ingest_preflight.py` | All `/wiki-ingest` pre-flight checks in one call: exclusion rule, filename normalization, brief, hash dedup, pre-screen, secret scan, model pick, triage lookup |
+| `close_operation.py` | Closes every operation: parses the agent's report + `<usage>`, appends the telemetry row, commits it separately (never an amend), ticks the triage checkbox |
+| `parse_agent_usage.py` | Parses Agent `<usage>` blocks; enriches token counts, model and duration from the subagent transcript |
 | `setup_search.py` | Downloads ONNX model + tokenizer from HuggingFace |
 
 All scripts work standalone from the command line — no AI tool required.

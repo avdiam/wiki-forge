@@ -26,10 +26,9 @@ Expect a natural-language question. If empty, ask what the user wants to know.
 
 ### 3. Check wiki size and decide strategy
 
-**Before** branching to Path A or Path B, record the main-session wall-clock
-start time. Both paths write a telemetry row in step 6; Path A relies on
-wall-clock entirely (no subagent dispatched, no `<usage>` block), and
-Path B uses it as a fallback if the Agent tool's `<usage>` is malformed.
+**Before** branching to Path A or Path B, note the main-session wall-clock
+start time. Path A's telemetry row needs it (no subagent, no `<usage>`
+block); Path B's duration comes from `<usage>` or the subagent transcript.
 
 Run the threshold check:
 
@@ -166,83 +165,43 @@ reply **quoted verbatim and labeled with its origin**, e.g.
 ("the user approved filing") reads as agent-originated, and the librarian
 correctly refuses to file on it (s136).
 
-### 6. Log query telemetry (before relay)
+### 6. Close the operation (query_log row + telemetry commit)
 
-Write one row to `wiki/.meta/query_log.jsonl`. Schema documented in the
-[`append_query_log.py`](../../scripts/append_query_log.py)
-module docstring (`python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --help`).
-Field values depend on which path handled the query:
+Run this after step 5's filing decision, so the filed slug is known. One call
+writes the `query_log.jsonl` row and commits it on its own as `query:
+telemetry` (explicit path; never `git add .`, never an amend of a filing
+commit). Schema: `append_query_log.py --help`.
 
-**Path A (inline — small wiki):**
-
-- `search_mode` → `inline`
-- `pages_consulted` → slugs of pages you actually read in step 3 / Path A
-- `top_score` → `""` (null — no hybrid_search was run)
-- `filed_as` → synthesis slug if the user approved filing in step 5, else `""`
-- All cost fields (`total_tokens`, `input_tokens`,
-  `cache_creation_input_tokens`, `cache_read_input_tokens`,
-  `output_tokens`, `tool_uses`) → `""` (null — no subagent dispatched)
-- `duration_ms` → main-session wall-clock from step 3 to here
-- `query_variations` → `""` (null — Path A does not expand queries)
-
-**Path B (librarian dispatch — large wiki):**
-
-- `search_mode` → value from the `hybrid_search.py` JSON output
-  (`hybrid` / `hybrid_zvec` / `bm25_only`)
-- `pages_consulted` → parse from the librarian's footer line:
-  `Pages consulted: [[slug1]], [[slug2]], [[slug3]]` — extract slugs via
-  regex `\[\[([^\]]+)\]\]`
-- `top_score` → the top result's normalized `score` from the hybrid_search
-  JSON (step 3 already has it)
-- `filed_as` → parse from the librarian's `Filed as:` footer line (slug or
-  `Not filed` → null)
-- Cost fields → run the librarian's `<usage>` block (tool result, or the
-  completion notification for a background dispatch) through the shared
-  parser and pass `--usage-json` to the appender. Never regex the block by
-  hand. If no block arrived, add `--duration-ms <main-session wall-clock>`
-  explicitly (it overrides the file):
-
-  ```bash
-  # <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
-  python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
-    --agent-id <agent-id> --out .claude/tmp/usage-query.json <<'USAGE'
-  <every <usage>...</usage> block for this operation, verbatim>
-  USAGE
-  ```
-
-- `query_variations` → JSON-encoded array of the variations passed to
-  `--queries-json` (excluding the canonical first element); read directly
-  from the `query_variations` field of the `hybrid_search.py` output.
-  Pass `""` (null) if N=1.
-
-Then append:
+**Path B (librarian dispatch).** Pipe the librarian's result verbatim. The
+script parses `Pages consulted: [[…]]` and `Filed as:` (`Not filed` → null)
+from the footer and the cost fields from `<usage>` plus the transcript:
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
-  --query "<raw query string>" \
-  --search-mode <inline|hybrid|hybrid_zvec|bm25_only> \
-  --pages-consulted "<comma-sep slugs>" \
-  --top-score <float or ""> \
-  --filed-as "<synthesis-slug or "">" \
-  --usage-json .claude/tmp/usage-query.json \
-  --duration-ms <N> \
-  --query-variations '<JSON array string or "">'
+# <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
+python "${CLAUDE_PLUGIN_ROOT}/scripts/close_operation.py" query --wiki <wiki> \
+  --query "<raw query string>" --search-mode <hybrid|hybrid_zvec|bm25_only> \
+  --top-score <top result's normalized score> \
+  --query-variations '<JSON array of the variations beyond the canonical query, or omit if N=1>' \
+  --agent-id <agent-id> <<'RESULT'
+<the librarian's result, verbatim, including <usage>...</usage>>
+RESULT
 ```
 
-Path A (inline): drop `--usage-json`; `--duration-ms` is the wall-clock. Path B: drop `--duration-ms` unless no `<usage>` block arrived.
+`--search-mode`, `--top-score` and the variations come from the
+`hybrid_search.py` JSON in step 3.
 
-If this invocation was routed from `/wiki-ask`, add `--routed-from ask` to the command above.
-
-Commit the row on its own (never `git add .`; never amend a filing commit):
+**Path A (inline).** There is no agent result. Pass the fields yourself:
 
 ```bash
-git -C <wiki> add .meta/query_log.jsonl && git -C <wiki> commit -m "query: telemetry"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/close_operation.py" query --wiki <wiki> \
+  --query "<raw query string>" --search-mode inline \
+  --pages-consulted "<comma-sep slugs you read>" --filed-as "<synthesis-slug or ''>" \
+  --duration-ms <main-session wall-clock from step 3>
 ```
 
-Run this step after step 5's filing decision, so `--filed-as` carries the slug.
-
-Telemetry is observational — if the appender exits non-zero, mention it
-briefly in the relay but do NOT retry and do NOT fail the query.
+If this invocation was routed from `/wiki-ask`, add `--routed-from ask`.
+Telemetry is observational: report `warnings` briefly in the relay, but do
+NOT retry and do NOT fail the query.
 
 ### 7. Relay
 

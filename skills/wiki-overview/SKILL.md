@@ -176,59 +176,31 @@ Root-relative paths, no `cd` (a bare `cd wiki` leaks into every later
 step's relative paths). `content_hash` is final — nothing amends this
 commit, so the hash recorded in 6A stays resolvable in history.
 
-### 6A. Append to overview_log.jsonl + telemetry commit
+### 6A. Close the operation (overview_log row + telemetry commit)
 
-**Wait for the curator's `<usage>` block first.** When the Agent dispatch
-in 4A returns synchronously, `<usage>` is in the tool result. When it runs
-in the background, the tool result is only a launch ack and `<usage>`
-arrives later in the completion `<task-notification>` — do not append
-until that notification has landed. Only if no `<usage>` is ever
-surfaced: still run the parser (it emits nulls) and pass the main-session
-wall-clock since the 4A dispatch as an explicit `--duration-ms` (the
-appender requires an integer there).
+**Wait for the curator's `<usage>` block first.** It is in the Agent tool
+result for a synchronous dispatch, or in the completion `<task-notification>`
+for a background one. Do not close until that notification has landed. If no
+block ever arrives, close anyway: duration falls back to the transcript.
 
-Parse it with the shared parser (never regex it by hand):
+`--status` is `applied` if step 5A produced a commit, else `no_changes`.
+`--commit` is `content_hash` from 5A (omit it for `no_changes`). The ingest
+count is read from `log.md` unless you pass `--ingest-count <curr_n>`.
 
 ```bash
 # <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
-python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
-  --agent-id <agent-id> --out .claude/tmp/usage-overview.json <<'USAGE'
-<every <usage>...</usage> block for this operation, verbatim>
-USAGE
+python "${CLAUDE_PLUGIN_ROOT}/scripts/close_operation.py" overview --wiki wiki \
+  --mode soft --status <applied|no_changes> --commit <content_hash> \
+  --ingest-count <curr_n> --agent-id <agent-id> <<'RESULT'
+<the curator's result, verbatim, including <usage>...</usage>>
+RESULT
 ```
 
-`status` is `applied` if step 5A produced a commit, `no_changes` if it
-was skipped.
-`--commit-hash` is `content_hash` from 5A (`""` for `no_changes`).
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
-  --mode soft \
-  --ingest-count-at-run <curr_n> \
-  --status <applied|no_changes> \
-  --usage-json .claude/tmp/usage-overview.json \
-  --commit-hash <short-hash or "">
-```
-
-If the appender exits non-zero, mention briefly and move on. Telemetry
-failure does NOT roll back the operation.
-
-**Commit the row separately — never amend 5A.** Amending the content
-commit to fold the row in rewrites its hash, so the row would point at
-an orphaned pre-amend commit (every `overview_log.jsonl` hash through
-ingest #321 did — session 132). A separate telemetry commit keeps the
-recorded hash valid:
-
-```bash
-if ! git diff --quiet wiki/.meta/overview_log.jsonl; then
-    git add wiki/.meta/overview_log.jsonl
-    git commit -m "overview: telemetry for soft refresh at ingest #<curr_n>"
-fi
-```
-
-The diff-quiet gate is defensive — no-op when the appender failed. The
-`no_changes` path commits its row too, so it never sits dirty into the
-next operation.
+The script appends the row and commits it on its own as `overview: telemetry
+for soft refresh at ingest #<curr_n>`. It never amends 5A: an amend rewrites
+the hash the row records (s132). The `no_changes` row is committed too, so it
+never sits dirty into the next operation. Report any `warnings` in one line;
+telemetry failure never rolls back the operation.
 
 ### 7A. Relay
 
@@ -357,53 +329,29 @@ content_hash=$(git rev-parse --short HEAD)
 If status is `cancelled`, skip the note and the commit. The checkpoint
 is already deleted by the curator.
 
-### 6B. Append to overview_log.jsonl + telemetry commit
+### 6B. Close the operation (overview_log row + telemetry commit)
 
-Wait for both passes' `<usage>` blocks (same rule as 6A — a background
-dispatch surfaces `<usage>` in its completion notification, not the
-launch ack). Mode B emits two `<usage>` blocks (one per pass), from two
-different agents. Feed **both** blocks and **both** agent ids to one parser
-call; it sums every field, `duration_ms` included (file-checkpoint two-pass
-rule: one telemetry row per operation):
+Wait for both passes' `<usage>` blocks (same rule as 6A). Mode B has two
+results from two different agents: pipe **both** verbatim and pass **both**
+agent ids, and the script sums every field, `duration_ms` included
+(file-checkpoint two-pass rule: one telemetry row per operation).
 
-```bash
-# <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
-python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
-  --agent-id <pass-1-id> --agent-id <pass-2-id> --out .claude/tmp/usage-overview-full.json <<'USAGE'
-<every <usage>...</usage> block for this operation, verbatim>
-USAGE
-```
-
-`commit_hash` is `content_hash` from 5B (Pass 1 doesn't commit).
-`status` is `applied` if Pass 2 wrote and committed, `cancelled` if
-Pass 2 returned status `cancelled` (skip the commit entirely).
+`--status` is `applied` if Pass 2 wrote and committed, else `cancelled`.
+`--commit` is `content_hash` from 5B (Pass 1 doesn't commit). `--ingest-count`
+is the count at Pass-1 dispatch (the script reads `log.md` if omitted).
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_overview_log.py" --wiki wiki \
-  --mode full \
-  --trigger "<reasons string OR user-invoked>" \
-  --ingest-count-at-run <N> \
-  --status <applied|cancelled> \
-  --usage-json .claude/tmp/usage-overview-full.json \
-  --commit-hash <short-hash or "">
+python "${CLAUDE_PLUGIN_ROOT}/scripts/close_operation.py" overview --wiki wiki \
+  --mode full --status <applied|cancelled> --commit <content_hash> \
+  --trigger "<reasons string OR user-invoked>" --ingest-count <N> \
+  --agent-id <pass-1-id> --agent-id <pass-2-id> <<'RESULT'
+<both passes' results, verbatim, including both <usage>...</usage> blocks>
+RESULT
 ```
 
-`<N>` is the ingest count snapshot at Pass-1 dispatch (use
-`grep -c "^## \[.*\] ingest" wiki/log.md` if you didn't capture it
-upstream).
-
-**Commit the row separately — never amend 5B** (same reason as 6A: an
-amend orphans the hash the row records):
-
-```bash
-if ! git diff --quiet wiki/.meta/overview_log.jsonl; then
-    git add wiki/.meta/overview_log.jsonl
-    git commit -m "overview: telemetry for full rewrite at ingest #<N>"
-fi
-```
-
-The `cancelled` row is committed the same way; the diff-quiet gate covers
-the appender-failed path.
+The row is committed on its own as `overview: telemetry for full rewrite at
+ingest #<N>`, never as an amend of 5B; a `cancelled` row is committed the
+same way.
 
 ### 7B. Relay
 

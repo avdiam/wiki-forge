@@ -41,7 +41,7 @@ The dispatching skill puts these in your prompt verbatim:
   - New categories proposed
 - `User emphasis / skip hints:` — free-form guidance the user added on approval, or "none"
 - `Verify-clearing decisions:` — one line per EDIT page that the takeaway gate's `### verify: true re-evaluation` block surfaced, in the form `<slug> — <Y | N | P: "<narrowed callout text>">`. Or `"none"` if no flagged pages were in scope this ingest. Step 3b applies these per-page after writing the EDIT.
-- `Source brief:` — JSON from `${CLAUDE_PLUGIN_ROOT}/scripts/ingest_source.py` (carries `title_guess`, `word_count`, `sha256_short`, `merge_mode`, `existing_summary`, `suggested_slug`, `preview`)
+- `Source brief:` — path to a JSON file written by `ingest_preflight.py`. **Read it first** (it is small). It carries `title_guess`, `word_count`, `sha256_short`, `merge_mode`, `existing_summary`, `suggested_slug`, `source_type`, `quality` and `preview`. Leave the file in place: the skill deletes it after logging. (Older dispatches pasted the JSON inline; treat inline JSON the same way.)
 
 If the dispatch prompt is missing the `Approved plan:` block, halt and
 return — your dispatcher is misconfigured. Do not synthesize a plan from

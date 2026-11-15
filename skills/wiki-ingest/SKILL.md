@@ -45,67 +45,36 @@ If no argument given: ask the user which file, or offer to scan `vault/`
 Find `wiki/CLAUDE.md` in the current directory or upward. If none found,
 tell the user, suggest `/wiki-init`, stop.
 
-### 3. Pre-process the source
+### 3. Pre-flight (one call)
 
-#### 3a. Filename normalization gate (Layer 2, defensive)
-
-Before invoking `ingest_source.py`, verify the raw source path is canonical
-(`^\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md$`). Bulk Chrome-extension drops, manual
-drops (the Obsidian Web Clipper names files `<published-date>-<Title Case>.md`),
-and any future capture path that bypasses `/wiki-capture` can carry filenames with apostrophes, spaces, em-dashes, or
-non-ASCII. The wiki-side gate ensures the rest of the pipeline operates on
-a canonical name; the standalone `${CLAUDE_PLUGIN_ROOT}/scripts/normalize_vault.py` is the
-bulk pre-flight that handles the same case in batch.
-
-If the path is non-canonical, run the normalizer scoped to the single file's
-parent content directory (cheap — content directories are small, and this
-keeps the rename blast radius to one folder rather than the whole vault):
+Every deterministic pre-write check runs in one script: the ingest-exclusion
+rule, filename normalization, the `ingest_source` brief, the content-hash
+dedup probe, `pre_screen`, `check_secrets`, the model pick and the triage-batch
+lookup.
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/normalize_vault.py" <vault>/<content-dir>   # e.g. vault/Clippings
+python "${CLAUDE_PLUGIN_ROOT}/scripts/ingest_preflight.py" --wiki <wiki> --source "<raw-file>"
 ```
 
-`normalize_vault.py` accepts either the vault root (walks every content
-dir) or a single content dir directly (e.g. `vault/Clippings`); pass the
-file's parent dir here. (Pointing it at a `.`/`_`-prefixed dir is a no-op
-by design — skip stubs and protocol files are never normalized.)
+- **Exit 2** means the input is bad or excluded (a `.`/`_`-prefixed vault segment, or `not_a_source: true`). Surface `error` and stop. Excluded files are refused before any rename.
+- **Exit 1** means a slug collision on rename. Surface `error` and stop; collision resolution is a manual call.
+- **Exit 0** returns a compact JSON report. From here on, use `source` as `<raw-file>`: it is the canonical name if the script renamed the file. Keep `brief_path`, `model`, `word_count` and `secrets` for later steps.
 
-The script halts on slug collisions; if it does, surface the message to the
-user and stop the ingest — collision resolution is a manual call, not
-automatic. On success, re-derive `<raw-file>` to the new canonical name
-before continuing to `ingest_source.py`. Mention the rename in the takeaway
-block at step 11 (`renamed: <original> → <canonical>`) so the user sees it
-in the approval gate; the commit message in the agent's step 6 records it
-implicitly via `git add ../<vault_source>` (the new name is already what
-git tracks).
+Then handle each entry in `gates`, in this order. An empty list means go straight to step 6.
 
-If the path is already canonical, this step is a no-op.
+- **`renamed`.** A non-canonical Web Clipper name was renamed to `YYYY-MM-DD-<kebab-slug>.md` (with `git mv` if tracked). Contents are untouched. Report it in the step-11 block as `renamed: <renamed_from> → <source>`.
+- **`merge_mode`.** The source was previously ingested (`existing_summary`). Ask whether to proceed, which triggers the agent's APPEND-`## Re-ingest <date>` mode, or skip. On skip, log a `note` via `append_log.py` and exit.
+- **`duplicate`.** Go to step 4.
+- **`pre_screen_warn` / `pre_screen_auto_skip` / `pre_screen_error`.** Go to step 5.
+- **`secrets_high` / `secrets_low`.** These are handled at the step-11 gate (step 10.5).
 
-#### 3b. Pre-process
+The script writes the full brief to `brief_path`. The ingestor reads it from
+that path, and step 13 consumes and deletes it. Never paste or retype it.
 
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/ingest_source.py" --wiki <wiki> --source <raw-file> --json
-```
+### 4. Duplicate gate (`duplicate`)
 
-Keep the returned JSON brief — it carries `title_guess`, `word_count`,
-`sha256_short`, `existing_summary` / `merge_mode`, `suggested_slug`, and a
-1200-char preview. You'll pass it to the agent in step 12 verbatim.
-
-If `merge_mode: true`, this source was previously ingested. Tell the user
-the existing summary path and ask whether to proceed (which will trigger
-the agent's APPEND-`## Re-ingest <date>` mode) or skip. On skip, log a
-`note` entry via `append_log.py` and exit.
-
-### 4. Content-hash dedup probe
-
-Before touching anything else, check whether another vault file produced a
-byte-identical source page:
-
-```bash
-grep -l "^source_hash: <sha256_short>" <wiki>/pages/sources/*.md
-```
-
-If a match is found, present:
+`duplicates` lists source pages whose `source_hash` equals this file's
+`sha256_short`. Present:
 
 ```text
 Possible duplicate: <raw-file> has the same content hash (<sha256_short>) as
@@ -118,31 +87,21 @@ Options:
   3. Investigate — tell me what's different and I'll decide after.
 ```
 
-On **skip**: write a stub to `vault/.skipped/<slug>.md` with
-`reason: "duplicate"` and `folded_into: <matched-source-slug>`, log a
-`note` entry via `append_log.py`, exit. On **re-ingest**: continue, and
-note the override in the dispatch prompt at step 12. On **investigate**:
-stay in step 4 until the user decides.
+- **Skip:** write a stub to `vault/.skipped/<slug>.md` with `reason: "duplicate"` and `folded_into: <matched-source-slug>`, log a `note` via `append_log.py`, and exit.
+- **Re-ingest:** continue, and note the override in the dispatch prompt at step 12.
+- **Investigate:** stay in step 4 until the user decides.
 
-If no match, continue.
+### 5. Pre-screen gate
 
-### 5. Pre-screen for relevance and quality
+`pre_screen` carries the verdict and its reasons. It checks tag overlap with
+the wiki's vocabulary, domain keyword density, promotional patterns and the
+author watchlist.
 
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/pre_screen.py" --wiki <wiki> --source <raw-file> --json
-```
-
-The script checks `source_tags` overlap with the wiki's tag vocabulary,
-keyword density against domain terms, promotional signal patterns, and
-author watchlist. Verdict drives flow:
-
-- **`pass`** (exit 0) → continue to step 6. No user output needed.
-- **`warn`** (exit 1) → present reasons + override option:
+- **`pre_screen_warn`:** present the reasons and offer to proceed or skip:
 
   ```text
   Pre-screening flagged this source:
   - <reason 1>
-  - <reason 2>
   Tag overlap: <N> | Domain score: <X%> | Promo signals: <N>
 
   Options:
@@ -150,24 +109,11 @@ author watchlist. Verdict drives flow:
     2. Skip — record as skipped and move on.
   ```
 
-  On **proceed**: continue. On **skip**: use the skip protocol (below) and
-  exit.
+- **`pre_screen_auto_skip`:** present the reasons and recommend skipping: "Skipping unless you override. Say "proceed" to force the takeaway pass." Skip on silence or "skip". On "proceed", note the override in the dispatch prompt at step 12.
+- **`pre_screen_error`:** surface the reason and stop.
 
-- **`auto-skip`** (exit 2) → present reasons and recommend skip:
-
-  ```text
-  Pre-screening recommends SKIP:
-  - <reason 1>
-  Tag overlap: <N> | Domain score: <X%> | Promo signals: <N>
-
-  Skipping unless you override. Say "proceed" to force the takeaway pass.
-  ```
-
-  On silence or "skip": skip protocol + exit. On "proceed": continue, note
-  the override in the dispatch prompt at step 12.
-
-**Skip protocol (used here and in step 11).** Wiki-side skip stubs go in
-`vault/.skipped/<slug>.md`. Reasons accepted:
+**Skip protocol (used here and in step 11).** Skip stubs go in
+`vault/.skipped/<slug>.md`. Accepted reasons:
 
 - Capture-upstream set: `paywall-fragment` / `404` / `spam` / `duplicate`
 - Wiki-downstream additions: `off-domain` / `promotional` / `shallow` / `already-folded` (the last with a `folded_into: <wiki-page-slug>` field).
@@ -178,12 +124,8 @@ After writing the stub:
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" note --title "skipped: <slug>" --note "reason: <reason>" --wiki <wiki>
 ```
 
-Exit without dispatching.
-
-The pre-screener is a **fast deterministic filter** (no LLM tokens, runs
-in milliseconds). It catches clearly off-domain and heavily promotional
-content before the takeaway pass spends time reading. It is NOT a
-substitute for the takeaway pass — borderline cases still need human
+Exit without dispatching. The pre-screener is a fast deterministic filter,
+not a substitute for the takeaway pass: borderline cases still need human
 judgment at step 11.
 
 ### 6. Read the raw source file
@@ -311,18 +253,15 @@ Contradicted pages:
 
 Do not proceed unless the user explicitly tells you to override.
 
-### 10.5. Pre-write secret scan
+### 10.5. Secret scan (from pre-flight)
 
-Run the deterministic stdlib scanner against the source file:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/check_secrets.py" --wiki wiki "<source-path>"
-```
-
-Handle the findings per [references/secret-scan.md](references/secret-scan.md)
-(read it whenever there is at least one finding): `high` findings HALT at the
-step-11 gate until the user acknowledges each one; `low` findings only are a
-soft warning; no findings is reported as `clean` under § Secrets scan.
+`secrets` in the step-3 report carries the `check_secrets.py` result: counts
+of `high` and `low` findings, plus up to 5 redacted findings. If either count
+is non-zero, read [references/secret-scan.md](references/secret-scan.md).
+`high` findings HALT at the step-11 gate until the user acknowledges each one;
+`low` findings alone are a soft warning; no findings is reported as `clean`
+under § Secrets scan. To see every finding, rerun
+`python "${CLAUDE_PLUGIN_ROOT}/scripts/check_secrets.py" --wiki <wiki> "<raw-file>"`.
 
 ### 11. Present takeaways and WAIT for free-form approval
 
@@ -415,17 +354,10 @@ If the user is silent, ask once more; do not assume tacit approval.
 
 ### 12. Dispatch the wiki-ingestor agent
 
-**Before** calling the Agent tool, record the main-session wall-clock
-start time (used for the telemetry `--duration-ms` fallback in step 13 if
-the `<usage>` block is missing).
-
-Model selection (priority order — first match wins):
-
-1. **`"sonnet"`** if the raw vault file's frontmatter has `quality: listicle` OR `word_count` from the step-3 brief is < 1200.
-
-2. **`"opus"`** otherwise.
-
-> Overview regeneration was previously bundled into the ingestor (every 5th ingest, dispatched as opus). It now lives in the dedicated `/wiki-overview` skill and is triggered separately — no longer a model-selection input here. The ingestor never edits `overview.md`.
+Model: use `model` from the step-3 report. It is `"sonnet"` when the raw
+file's frontmatter has `quality: listicle` or `word_count` < 1200, and
+`"opus"` otherwise. The ingestor never edits `overview.md`; overview
+refreshes run through `/wiki-overview`.
 
 Use the Agent tool:
 
@@ -460,8 +392,7 @@ line per pair in the form:
                       page that should carry the Resolved callout)
 Or "none" if the takeaway didn't surface any contradiction-resolution blocks.>
 
-Source brief:
-<paste the JSON from step 3 verbatim>
+Source brief: <brief_path from step 3>
 
 Honor the approved plan. The plan's Contradictions list tells you which
 pages need > [!WARNING] Contradiction Detected: callouts and what to put
@@ -478,126 +409,40 @@ Return your structured report.
 
 Notes on the prompt shape:
 
+- **Pass the brief by path.** The agent reads the JSON file itself; pasting it costs output tokens and invites transcription errors.
 - **Do not paste the full source content.** The agent reads the raw file directly via the `Source:` path. Pasting it doubles token cost in the fork.
 - **Do not paste page-discovery results.** The plan's CREATE/EDIT lines name the exact pages to touch — that's the only discovery output the agent needs. The agent does NOT re-discover.
 
-### 13. Log ingest telemetry
+### 13. Close the operation (telemetry + triage tick)
 
-Parse two blocks from the Agent tool's return and write one row to
-`<wiki>/.meta/ingest_log.jsonl`. Schema in the `append_ingest_log.py`
-module docstring (`python "${CLAUDE_PLUGIN_ROOT}/scripts/append_ingest_log.py" --help`).
-
-**Block A — `<usage>` metadata.** The harness reports the dispatch's cost
-in a `<usage>` block: in the Agent tool result for a foreground dispatch, or
-in the completion `<task-notification>` for a background one (wait for it).
-Its syntax has changed over time (`total_tokens: N, …` → `<subagent_tokens>N</subagent_tokens>…`),
-so never regex it by hand. Pipe it to the parser with the agent's id; the id
-also recovers per-call token counts and the model that actually ran from the
-subagent transcript:
+One call parses the agent's report, logs the `ingest_log.jsonl` row, makes the
+telemetry commit and ticks the triage checkbox. Pipe **every** Agent result
+for this ingest into it verbatim: the structured report and the `<usage>`
+block. For a background dispatch, use the completion notification and wait
+for it. Use a quoted heredoc, so nothing in the report is shell-expanded:
 
 ```bash
 # <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
-python "${CLAUDE_PLUGIN_ROOT}/scripts/parse_agent_usage.py" \
-  --agent-id <agent-id> --out .claude/tmp/usage-ingest.json <<'USAGE'
-<every <usage>...</usage> block for this operation, verbatim>
-USAGE
+python "${CLAUDE_PLUGIN_ROOT}/scripts/close_operation.py" ingest --wiki <wiki> \
+  --agent-id <agent-id> --brief <brief_path> <<'RESULT'
+<the agent's full result, verbatim, including <usage>...</usage>>
+RESULT
 ```
 
-Then pass `--usage-json .claude/tmp/usage-ingest.json` to the appender. If
-no block ever arrived, still run the parser (it emits nulls) and pass
-`--duration-ms <main-session wall-clock from step 12>` explicitly; an
-explicit flag always overrides the file. Telemetry is observational, not
-a contract: null fields are preferable to losing the row.
+What the script does, so you don't repeat it by hand:
 
-**Block B — the agent's structured report** (from its step 8). Extract:
+- **Created/updated slugs** come from `git show --name-status` on the reported `Commit:`, unioned with the report's lists, as bare stems.
+- **Cost fields** come from the `<usage>` block, enriched from the subagent transcript. Duration falls back to the transcript's turn spans when no block arrived; `--duration-ms` overrides both.
+- **Source fields:** `source_type` comes from the raw file's frontmatter (missing or invalid values log `article`, or `paper` under `Research Papers/`, with a warning). `word_count` comes from the brief.
+- **Telemetry commit.** The row (plus the ingestor's `log.md` entry and mechanical `lint_log` row) gets its own commit, `ingest: telemetry for <hash>`, with explicit paths. It never amends the agent's commit: an amend rewrites the hash the row records (s132).
+- **Triage tick.** If the source is an unchecked article in the active `dev/ingest-triage-*.md`, the script ticks it, rolls up the batch box when the batch is done, and commits `triage: tick <slug> (Batch N — d/t)`. Deleting a finished triage file stays a deliberate step, so `all_complete` is only reported.
 
-- `pages_created` — comma-join slugs from the `Created:` list (without `.md`)
-- `pages_updated` — comma-join slugs from the `Updated:` list
-- `contradictions_flagged` — total integer (plan + late-found) after `Contradictions recorded:`
-- `commit_hash` — short hash after `Commit:`
+Output is one JSON line: `row`, `content_commit`, `telemetry_commit`,
+`created`, `updated`, `contradictions`, `usage` (with `non_cached`),
+`triage`, `warnings`.
 
-Carry forward from earlier steps:
-
-- `source_path` — from step 1
-- `source_type` — the raw vault file's `source_type:` frontmatter value
-- `source_word_count` — `word_count` from the step-3 brief
-
-Append the row:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_ingest_log.py" --wiki <wiki> \
-  --source-path "<source_path>" \
-  --source-type <source_type> \
-  --source-word-count <N> \
-  --pages-created "<comma-sep slugs>" \
-  --pages-updated "<comma-sep slugs>" \
-  --contradictions-flagged <N> \
-  --usage-json .claude/tmp/usage-ingest.json \
-  --commit-hash <short-hash>
-```
-
-If the appender exits non-zero, mention it briefly in the relay and move
-on. Do NOT retry; do NOT fail the ingest on telemetry failure.
-
-**Commit the telemetry separately — never amend the agent's commit.**
-The appender writes to `wiki/.meta/ingest_log.jsonl` AFTER the agent's
-commit — left as-is, the row stays dirty until a later session backfills
-it, misattributing ingest N's telemetry to ingest N+1's commit. Folding
-it in with `git commit --amend` is wrong too: the amend rewrites the
-agent's commit hash, so the row's `commit_hash` points at an orphaned
-pre-amend commit (most `ingest_log` hashes through ingest #321 did —
-session 132). Give the row its own commit:
-
-```bash
-if ! git diff --quiet wiki/.meta/ingest_log.jsonl wiki/log.md wiki/.meta/lint_log.jsonl; then
-    git add wiki/.meta/ingest_log.jsonl wiki/log.md wiki/.meta/lint_log.jsonl
-    git commit -m "ingest: telemetry for <commit_hash>"
-fi
-```
-
-The diff-quiet gate is defensive (no-op when the appender failed or when
-nothing actually changed). `<commit_hash>` is the agent's reported hash —
-the last commit of the ingest when the README-ingest pattern produced a
-fix-up commit (per step 8 of the ingestor playbook).
-
-### 13.5. Tick the triage batch checkbox (when this source came from a triage batch)
-
-If this ingest is part of an active triage batch, record per-article
-progress so a mid-batch stop is never mistaken for an unstarted batch. This
-is a no-op for one-off ingests (the grep in sub-step 2 returns nothing).
-
-1. **Find the active triage file** — the newest `dev/ingest-triage-*.md`
-   whose frontmatter `status:` is `active` (ignore `*-archived*` /
-   `*-superseded*`). None found → skip the whole step.
-2. **Locate the unchecked article line** for this source's slug
-   (`<suggested_slug>` from the step-3 brief, e.g.
-   `2026-05-16-claude-agent-sdk-iterative-refinement-loops`):
-   ```bash
-   grep -n "^- \[ \] \*\*\`<slug>.md\`\*\*" <triage-file>
-   ```
-   No match → the source wasn't a batch article (one-off, or already
-   ticked); skip the rest of the step.
-3. **Tick it** — flip that single line's `- [ ]` to `- [x]` with the Edit
-   tool (exact-match the one line; never `replace_all`).
-4. **Batch-completion roll-up** — if the article's `## Batch N` body now has
-   zero remaining `- [ ]` lines, also flip that batch's
-   `- [ ] **Batch N** — …` line in the `## Status checklist` to `- [x]`.
-5. **Commit the tick on its own** — the triage file lives in `dev/`,
-   separate from the wiki content the agent already committed, so don't fold
-   it into the ingest commit:
-   ```bash
-   git add <triage-file>
-   git commit -m "triage: tick <slug> (Batch N — <done>/<total>)"
-   ```
-6. **All-batches-done?** If this tick completed the file's last unchecked
-   batch box, the triage file's own Cleanup trigger applies — surface it in
-   step 14's relay ("Batch N complete; triage file ready to remove") rather
-   than auto-deleting here. Deletion stays a deliberate step.
-
-The wake-up drill's "Batch X next / First up" pointer reads these checkboxes
-(via `drill_state.py`, which skips ticked articles and self-heals a missed
-tick by also skipping any slug that already has a source page). Ticking here
-is what keeps that pointer honest across sessions.
+- **Exit 2** (no `Commit:` line: a HALT/rollback) logs nothing. That is correct; relay the HALT.
+- **`warnings`** (an appender failure, for example) are reported in one line. Never retry, and never fail the ingest on telemetry.
 
 ### 14. Relay the result
 
@@ -609,8 +454,8 @@ Summarize the agent's report to the user in the main chat:
 - Overview refreshed (yes/no)
 - Commit hash
 - Mechanical lint findings (the key non-zero counts, or "clean")
-- Telemetry row appended (ok / failed — one line)
-- Triage progress (only if this source was a batch article): ticked `<slug>` — Batch N now <done>/<total>; flag batch or whole-triage completion when reached.
+- Telemetry row appended (`row` ok, or the `warnings` — one line)
+- Triage progress (only when `triage` is non-null): ticked `<slug>` — Batch N now <done>/<total>; flag `batch_complete` / `all_complete` ("triage file ready to remove").
 - Cadence reminder if the agent's report flagged a 10th/20th/30th post-lint ingest — suggest `/wiki-lint` now.
 
 If the agent returned a HALT (late contradictions exceeded 5, rollback
@@ -624,7 +469,7 @@ paradigm-shifting material that warrants discussion.
 - **Approval gate stays in main session.** The user's reply pattern is free-form ("emphasize X, skip Y"); structured-question tools don't capture it. Do not delegate the gate to the agent via `AskUserQuestion`.
 - **One agent per file.** Never batch multiple files into a single ingestor call — it bloats context and causes cross-contamination.
 - **`all new` runs sequentially.** Run takeaway + approval + dispatch for each file in order. Do not parallelize — git commits, `log.md` append, and index regeneration race.
-- **Subagent fallback.** If the `wiki-ingestor` subagent is unavailable, fall back to running its playbook inline — but only the agent's steps 1–8 (its execute-and-commit logic). Do not re-do the SKILL's steps 3–11 work; the plan from step 11 is sufficient.
+- **Subagent fallback.** If the `wiki-ingestor` subagent is unavailable, fall back to running its playbook inline — but only the agent's execute-and-commit steps. Do not re-do the SKILL's steps 3–11 work; the plan from step 11 is sufficient. Close with step 13, passing the inline report and `--duration-ms`.
 - **Follow-up questions** about an ingest can be answered from the subagent's returned report without re-dispatching.
 - **Discovery is grep + hybrid_search, not Read.** Full-index Read() is the rare fallback flagged in step 7c — never the default.
 

@@ -51,7 +51,7 @@ All three are maintained by scripts or agents; never hand-edit them.
 
 Each script in the wiki-forge plugin's `scripts/` directory documents its own contract via module docstring + argparse `--help` (`python ${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py --help`). Specifically:
 
-- Telemetry JSONL row schemas live in their owner `append_*_log.py` (`append_ingest_log.py`, `append_query_log.py`, `append_lint_log.py`, `append_overview_log.py`, `append_freshness_log.py`, `append_corroborate_log.py`). The Agent-dispatch appenders (ingest, query, lint, overview) take `--usage-json` from `parse_agent_usage.py`, which owns `<usage>`-block parsing.
+- Telemetry JSONL row schemas live in their owner `append_*_log.py` (`append_ingest_log.py`, `append_query_log.py`, `append_lint_log.py`, `append_overview_log.py`, `append_freshness_log.py`, `append_corroborate_log.py`). Skills never call them by hand: `close_operation.py <ingest|lint|overview|query|summarize|graph|ask>` parses the agent report and `<usage>` block (via `parse_agent_usage.py`), runs the appender and commits the row separately.
 - `.meta/lint-config.json` schema lives in `lint_wiki.py`; `.meta/secret-patterns.json` in `check_secrets.py`.
 - `hybrid_search.py` and `graph_analyzer.py` document their modes at the top of each script.
 

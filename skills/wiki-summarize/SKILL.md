@@ -41,10 +41,6 @@ to survey.
 - Find `wiki/CLAUDE.md` in the current directory or upward.
 - If none: tell the user, suggest `/wiki-init`.
 
-Record the main-session wall-clock start time before retrieval — the telemetry
-row in step 6 needs `duration_ms` even if the librarian's `<usage>` is missing
-or malformed.
-
 ### 3. Two-shape retrieval
 
 Try slug resolution first; fall through to fuzzy search on miss. One script
@@ -170,36 +166,28 @@ the user's reply **quoted verbatim and labeled with its origin**
 (`User reply (verbatim, main-session turn): "<reply>"`). The librarian
 refuses a paraphrased approval (s136).
 
-### 6. Log query telemetry
+### 6. Close the operation (query_log row + telemetry commit)
 
-Write one row to `wiki/.meta/query_log.jsonl`. Field values:
-
-- `--query-skill summarize`
-- `--query "<raw user topic>"`
-- `--search-mode <slug-anchored|hybrid>` (Shape A → `slug-anchored`; Shape B → `hybrid`)
-- `--pages-consulted` — parse from the librarian's footer `Pages consulted: [[…]]` via regex `\[\[([^\]]+)\]\]` (same as `/wiki-query` Path B)
-- `--top-score` — Shape B: top result's normalized `score` from `hybrid_search.py` JSON; Shape A: `""` (no search score)
-- `--filed-as` — parse from librarian's `Filed as:` footer line (slug or `Not filed` → null)
-- Cost fields — pipe the librarian's `<usage>` block into `parse_agent_usage.py` (same command as `/wiki-query` step 6, with `--agent-id` and `--out .claude/tmp/usage-summarize.json`) and pass `--usage-json`. Never regex the block by hand.
-- `--duration-ms` — only when no `<usage>` block arrived: the main-session wall-clock (overrides the file).
-- `--query-variations ""` — `/wiki-summarize` does not expand queries (single-topic surveys).
-- If this invocation was routed from `/wiki-ask`, add `--routed-from ask`.
+Pipe the librarian's result verbatim. The script parses `Pages consulted:
+[[…]]` and `Filed as:` (`Not filed` → null) from the footer and the cost
+fields from `<usage>` plus the transcript (duration falls back to the
+transcript if no block arrived). It commits the row on its own as
+`summarize: telemetry` (explicit path, never `git add .`).
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_query_log.py" --wiki <wiki> \
-  --query-skill summarize \
-  --query "<raw topic>" \
-  --search-mode <slug-anchored|hybrid> \
-  --pages-consulted "<comma-sep slugs>" \
-  --top-score <float or ""> \
-  --filed-as "<synthesis-slug or "">" \
-  --usage-json .claude/tmp/usage-summarize.json
+# <agent-id>: the agentId in the Agent tool result (launch ack for background runs)
+python "${CLAUDE_PLUGIN_ROOT}/scripts/close_operation.py" summarize --wiki <wiki> \
+  --query "<raw topic>" --search-mode <slug-anchored|hybrid> \
+  [--top-score <Shape B: top result's normalized score>] \
+  --agent-id <agent-id> <<'RESULT'
+<the librarian's result, verbatim, including <usage>...</usage>>
+RESULT
 ```
 
-Commit the row on its own: `git -C <wiki> add .meta/query_log.jsonl && git -C <wiki> commit -m "summarize: telemetry"` (never `git add .`).
-
-Telemetry is observational — if the appender exits non-zero, mention it briefly
-in the relay but do NOT retry and do NOT fail the survey.
+Shape A → `slug-anchored` with no `--top-score`; Shape B → `hybrid`.
+`/wiki-summarize` does not expand queries. If this invocation was routed from
+`/wiki-ask`, add `--routed-from ask`. Telemetry is observational: report
+`warnings` briefly in the relay, but do NOT retry and do NOT fail the survey.
 
 ### 7. Relay
 

@@ -168,7 +168,7 @@ owned by the dispatching `/wiki-lint` skill (SKILL.md step 4) — same shape
 as `/wiki-ingest` step 13 and `/wiki-overview` step 6A. Your job ends at
 the fix-commit (if any) plus the structured footer below; the skill
 consumes the footer + the `<usage>` block and invokes both appenders from
-the main session. This is non-negotiable: prior contract drift where the
+the main session (via `close_operation.py lint`). This is non-negotiable: prior contract drift where the
 agent deferred the appenders and the skill assumed the agent had run them
 produced a misclassified `note`-tagged log line that broke the wake-up
 drill's lint counter (session 75, 2026-05-22).
