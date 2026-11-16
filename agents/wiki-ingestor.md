@@ -212,7 +212,7 @@ gap it fills); leave **`## Pages updated`** empty until step 3e.
 Body first (Edit), frontmatter last (`fm_edit.py`, see **Frontmatter bookkeeping** below):
 
 - Append a new `### From <source title>` subsection under `## Evidence`. Extract the substantive content this source contributes — not a paraphrase of the whole source, just the part that updates this specific page.
-- **Decide the frontmatter changes as you go** (applied in one pass afterwards): the raw vault path joins `sources:`; `last_updated:` becomes today; `confidence:` moves (typically upward, +0.1 — more sources = more confidence; capped at 1.0); **`tags:` and `aliases:` grow** with any terminology the source uses that the page lacks (they are the primary retrieval mechanism: a page that can't be found is a page that doesn't exist).
+- **Decide the frontmatter changes as you go** (applied in one pass afterwards): the raw vault path joins `sources:`; `last_updated:` becomes today; `confidence:` moves **only when this source actually corroborates the page's claims** (judge per page: an independent source that backs the claims → up, e.g. +0.1; a passing mention, the same author again or a tangential source → leave it; capped at 1.0). Never bump every EDIT page by default: hub pages are edited on most ingests and would drift to 1.0 regardless of support; **`tags:` and `aliases:` grow** with any terminology the source uses that the page lacks (they are the primary retrieval mechanism: a page that can't be found is a page that doesn't exist).
 - **On entity pages:** if the source carries explicit lifecycle signal (deprecation notice, "last released N years ago", acquisition, rebranding, shutdown), set or update `status:` — one of `active | experimental | consolidating | deprecated | discontinued`. Don't manufacture signal from thin tone.
 - **If the plan's Contradictions block named this page**, append a callout at the relevant claim:
   ```
@@ -229,13 +229,13 @@ Body first (Edit), frontmatter last (`fm_edit.py`, see **Frontmatter bookkeeping
 **Frontmatter bookkeeping (after the body Edits).** Never hand-edit these fields; `fm_edit.py` changes only the fields named and keeps every other line byte-for-byte. Run it **after** your last body Edit on a page: it rewrites the file, so an Edit afterwards needs a fresh Read. Every op applies to every page named, so the shared ops take **one call for all EDIT pages**:
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/fm_edit.py" <wiki> <edit-slug-1> <edit-slug-2> <edit-slug-3> --add-source "<vault_source>" --touch --confidence +0.1
+python "${CLAUDE_PLUGIN_ROOT}/scripts/fm_edit.py" <wiki> <edit-slug-1> <edit-slug-2> <edit-slug-3> --add-source "<vault_source>" --touch
 ```
 
-Then one call per page only for what differs, e.g. new tags/aliases, a status change or a contradiction edge:
+Then one call per page only for what differs, e.g. a confidence change you judged warranted, new tags/aliases, a status change or a contradiction edge (confidence never goes in the shared call):
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/fm_edit.py" <wiki> <slug> --add-tags "tag-a,tag-b" --add-aliases "alias-a" --set status=deprecated --contradicts <other-slug>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/fm_edit.py" <wiki> <slug> --confidence +0.1 --add-tags "tag-a,tag-b" --add-aliases "alias-a" --set status=deprecated --contradicts <other-slug>
 ```
 
 Other ops: `--confidence 0.8` (absolute), `--uncontradict <slug>` (removes the edge on both sides; an emptied field is dropped), `--clear-verify` (drops `verify:` and bumps confidence one tier; you still delete the body callout). A bad slug writes nothing and exits 1. Each changed page prints one line naming what changed, inverse-edge pages included.
