@@ -34,6 +34,17 @@ for "oldest-flagged"). The shape:
     ]
 
 Used by `/wiki-corroborate` to drive its per-flag WebSearch loop.
+
+Age filter (`--older-than N`): keeps flags whose page `last_updated` is at
+least N days before `--as-of` (default: today). There is no flag-set date in
+frontmatter, so age is measured from the page's last touch: a flag is set at
+or before that touch, which makes `today - last_updated` a LOWER bound on the
+flag's real age. Every flag `--older-than N` returns has truly waited >= N
+days; a page edited recently without clearing its flag reads as young. Pages
+with no parseable `last_updated` are never counted as aged.
+
+`verify_queue_summary()` is the same scan reduced to counts, for the wake-up
+drill (`drill_state.py` → `run_drill.py` `verify_queue` field).
 """
 from __future__ import annotations
 
@@ -41,6 +52,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -128,6 +140,52 @@ def _read_pages(wiki_root: Path) -> list[dict]:
     return out
 
 
+def age_days(last_updated, as_of: date) -> int | None:
+    """Days from `last_updated` (ISO date or date object) to `as_of`; None if unparseable."""
+    if last_updated is None:
+        return None
+    if isinstance(last_updated, date):
+        d = last_updated
+    else:
+        try:
+            d = date.fromisoformat(str(last_updated).strip()[:10])
+        except ValueError:
+            return None
+    return (as_of - d).days
+
+
+def filter_older_than(pages: list[dict], days: int, as_of: date) -> list[dict]:
+    """Flags whose age (from `last_updated`, a lower bound) is >= `days`."""
+    out = []
+    for p in pages:
+        a = age_days(p.get("last_updated"), as_of)
+        if a is not None and a >= days:
+            out.append(p)
+    return out
+
+
+def verify_queue_summary(wiki_root: Path, older_than: int = 60, as_of: date | None = None) -> dict:
+    """Counts-only view of the queue for the wake-up drill.
+
+    {"total", "aged", "older_than_days", "oldest_days", "oldest_slug",
+     "aged_buckets": {"A","B","C"}}. `aged` uses the lower-bound age (see module doc).
+    """
+    as_of = as_of or date.today()
+    pages = _read_pages(wiki_root)
+    aged = filter_older_than(pages, older_than, as_of)
+    ages = [(age_days(p.get("last_updated"), as_of), p["page_slug"]) for p in pages]
+    ages = [x for x in ages if x[0] is not None]
+    oldest = max(ages) if ages else (None, None)
+    return {
+        "total": len(pages),
+        "aged": len(aged),
+        "older_than_days": older_than,
+        "oldest_days": oldest[0],
+        "oldest_slug": oldest[1],
+        "aged_buckets": {b: sum(1 for r in aged if r["page_bucket"] == b) for b in ("A", "B", "C")},
+    }
+
+
 def _apply_filters(pages: list[dict], args: argparse.Namespace) -> list[dict]:
     if args.single:
         target = args.single.strip().strip("[").strip("]").removesuffix(".md")
@@ -155,14 +213,29 @@ def main(argv: list[str]) -> int:
     g.add_argument("--all", action="store_true", help="Emit all flags")
     p.add_argument("--total-only", action="store_true",
                    help="Print just the total count to stdout (for cheap counting)")
+    p.add_argument("--older-than", type=int, metavar="N",
+                   help="Keep only flags whose page last_updated is >= N days old "
+                        "(a lower bound on flag age). Applied before --single/--batch/--all; "
+                        "`total` then counts the aged subset.")
+    p.add_argument("--as-of", metavar="YYYY-MM-DD",
+                   help="Reference date for --older-than (default: today)")
     args = p.parse_args(argv)
 
     wiki_root = Path(args.wiki).resolve()
     if not (wiki_root / "CLAUDE.md").is_file():
         print(f"error: {wiki_root} does not look like a wiki root (no CLAUDE.md)", file=sys.stderr)
         return 2
+    if args.older_than is not None and args.older_than < 0:
+        raise SystemExit(f"error: --older-than must be >= 0 (got: {args.older_than})")
+    try:
+        as_of = date.fromisoformat(args.as_of) if args.as_of else date.today()
+    except ValueError:
+        raise SystemExit(f"error: --as-of must be YYYY-MM-DD (got: {args.as_of!r})")
 
     pages = _read_pages(wiki_root)
+    queue_total = len(pages)
+    if args.older_than is not None:
+        pages = filter_older_than(pages, args.older_than, as_of)
     if args.total_only:
         print(len(pages))
         return 0
@@ -174,6 +247,10 @@ def main(argv: list[str]) -> int:
         "buckets_total": {b: sum(1 for r in pages if r["page_bucket"] == b) for b in ("A", "B", "C")},
         "flags": selected,
     }
+    if args.older_than is not None:
+        out["older_than_days"] = args.older_than
+        out["as_of"] = as_of.isoformat()
+        out["queue_total"] = queue_total
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
 

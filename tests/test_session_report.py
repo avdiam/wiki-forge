@@ -92,6 +92,33 @@ class TestRender(unittest.TestCase):
         stale = _drill(backlog={"pending": 9, "state": "stale", "stale_count": 2, "triage_created": "2026-11-01"})
         self.assertIn("- Backlog: 9 pending, triage STALE — 2 new since 2026-11-01", sr.render(_data(drill=stale)))
 
+    def test_verify_field_and_offer(self):
+        vq = {"total": 119, "aged": 113, "older_than_days": 60, "oldest_days": 202, "oldest_slug": "x"}
+        out = sr.render(_data(drill=_drill(verify_queue=vq)))
+        self.assertIn("- Backlog: all clear\n- Verify: 119 flagged — 113 untouched ≥60d (oldest 202d)\n", out)
+        self.assertIn("Offer: drain the oldest 10 flags with /wiki-corroborate --batch 1-10? (113 untouched ≥60d)", out)
+        self.assertNotIn("backlog offer line", out)  # health offer, survives dev mode
+
+    def test_verify_no_aged_no_offer_and_empty_queue(self):
+        young = {"total": 5, "aged": 0, "older_than_days": 60, "oldest_days": 12}
+        out = sr.render(_data(drill=_drill(verify_queue=young)))
+        self.assertIn("- Verify: 5 flagged — 0 untouched ≥60d (oldest 12d)", out)
+        self.assertNotIn("Offer:", out)
+        out = sr.render(_data(drill=_drill(verify_queue={"total": 0, "aged": 0, "oldest_days": None})))
+        self.assertIn("- Verify: queue empty", out)
+        self.assertNotIn("- Verify:", sr.render(_data()))  # older drill JSON without the field
+
+    def test_verify_offer_ranks_after_lint_and_overview(self):
+        drill = _drill(lint_counter=11, lint_overdue=True,
+                       overview={"stale_by": 12, "should_rewrite": False, "trigger_reasons": []},
+                       verify_queue={"total": 9, "aged": 9, "older_than_days": 60, "oldest_days": 90})
+        offers = [l for l in sr.render(_data(drill=drill)).splitlines() if l.startswith("Offer:")]
+        self.assertEqual(len(offers), 2)
+        self.assertNotIn("/wiki-corroborate", "".join(offers))
+        drill["lint_overdue"] = False
+        offers = [l for l in sr.render(_data(drill=drill)).splitlines() if l.startswith("Offer:")]
+        self.assertIn("/wiki-corroborate", offers[1])
+
     def test_hub_and_lease(self):
         hub = {"reachable": True, "registered": True, "status": "offline", "last_seen_age_s": 8}
         out = sr.render(_data(hub=hub))

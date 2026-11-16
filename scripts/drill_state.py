@@ -33,6 +33,14 @@ Output JSON shape (keys are stable; downstream parsers depend on them):
         "reasons":         [<str>, ...],    # short reason strings for fired triggers (banner text)
         "last_audit_date": <str | null>,    # ISO date of the last audit (from scale-audit-config.json)
         "configured":      <bool>           # whether a .meta/scale-audit-config.json baseline exists
+    },
+    "verify_queue": {                       # `verify: true` flag ages (list_verify_flags.verify_queue_summary)
+        "total":           <int>,           # flagged concept/entity/comparison/synthesis pages
+        "aged":            <int>,           # flags whose page last_updated is >= older_than_days old
+        "older_than_days": <int>,           # VERIFY_AGE_DAYS (60)
+        "oldest_days":     <int | null>,    # age of the least-recently-touched flagged page
+        "oldest_slug":     <str | null>,
+        "aged_buckets":    {"A","B","C"}    # aged count per remediation bucket
     }
   }
 
@@ -63,6 +71,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_overview_triggers import evaluate as evaluate_overview_triggers  # noqa: E402
 from scale_audit_probes import evaluate as evaluate_scale_audit  # noqa: E402
 from source_backlog import collect_source_hashes, compute_backlog  # noqa: E402
+from list_verify_flags import verify_queue_summary  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -71,6 +80,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 LINT_OVERDUE_THRESHOLD = 10
 OVERVIEW_FRESH_THRESHOLD = 10  # < 10 ⇒ "fresh"; ≥ 10 surfaces the soft-refresh offer
+VERIFY_AGE_DAYS = 60  # script-audit event tail: "verify: true pending > 60 days"
 
 OVERVIEW_MARKER_RE = re.compile(
     r"(?:Mechanical refresh|Last full rewrite) at ingest #(\d+)",
@@ -274,6 +284,9 @@ def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
     # come from .meta/scale-audit-config.json so a latched trigger stops nagging
     # once an audit resets the baseline. Drives the ⚙ SCALE AUDIT DUE banner.
     scale_audit = evaluate_scale_audit(wiki_root)
+    # Verify-flag ages (~0.1s page walk). Age is a lower bound measured from
+    # last_updated; see list_verify_flags' module doc.
+    verify_queue = verify_queue_summary(wiki_root, older_than=VERIFY_AGE_DAYS)
 
     return {
         "lint_counter": lint_counter,
@@ -282,6 +295,7 @@ def build_state(wiki_root: Path, graph_json_arg: str | None) -> dict:
         "overview": overview,
         "backlog": backlog,
         "scale_audit": scale_audit,
+        "verify_queue": verify_queue,
     }
 
 

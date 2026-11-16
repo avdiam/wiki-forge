@@ -35,6 +35,12 @@ Output JSON shape:
         "batch_label":       <str | null>,
         "batch_first_slug":  <str | null>,
         "stale_count":       <int>
+    },
+    "scale_audit":  {...},   # Mode 7 re-audit detection (see drill_state.py)
+    "verify_queue": {        # verify-flag ages; age is a lower bound from last_updated
+        "total": <int>, "aged": <int>, "older_than_days": 60,
+        "oldest_days": <int | null>, "oldest_slug": <str | null>,
+        "aged_buckets": {"A": <int>, "B": <int>, "C": <int>}
     }
   }
 
