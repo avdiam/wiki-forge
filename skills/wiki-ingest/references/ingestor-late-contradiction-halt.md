@@ -16,7 +16,7 @@
   rm -f <wiki>/<untracked path 1> <wiki>/<untracked path 2> ...
   ```
   Skip a command whose path list is empty. Deduplicate `WRITE_LIST` first (a path written twice, e.g. the source page touched in 3a and again in 3e, appears once). If one command errors, still run the other: partial rollback is better than leaving everything in flight. A denial is the exception: stop and report it per the playbook rule, listing the paths not yet rolled back.
-  Do **not** run step 4 (index regen), do **not** commit, do **not** append to log. Return:
+  Do **not** run step 4 (`ingest_commit.py`: no index regen, no commit, no log). Return:
   ```text
   HALT: late-discovered contradictions exceeded threshold (>5).
   Plan-listed contradictions: <N>

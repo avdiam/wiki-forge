@@ -284,7 +284,9 @@ def close_ingest(a, wiki: Path, text: str, warnings: list) -> dict:
             "--contradictions-flagged", str(contra_n), "--commit-hash", commit]
     argv += cost_argv(usage, a.duration_ms, warnings)
     ok = run_appender("append_ingest_log.py", argv, warnings)
-    tcommit = commit_paths(wiki, [".meta/ingest_log.jsonl", "log.md", ".meta/lint_log.jsonl"],
+    tcommit = commit_paths(wiki, [".meta/ingest_log.jsonl", "log.md", ".meta/lint_log.jsonl",
+                            # rows stamped by ingest_commit.py --verify-decision / --contradiction-outcome
+                            ".meta/corroborate_log.jsonl", ".meta/contradiction_log.jsonl"],
                            f"ingest: telemetry for {commit}")
 
     slug = brief.get("suggested_slug") or Path(source).stem

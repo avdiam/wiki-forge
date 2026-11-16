@@ -436,7 +436,7 @@ What the script does, so you don't repeat it by hand:
 - **Created/updated slugs** come from `git show --name-status` on the reported `Commit:`, unioned with the report's lists, as bare stems.
 - **Cost fields** come from the `<usage>` block, enriched from the subagent transcript. Duration falls back to the transcript's turn spans when no block arrived; `--duration-ms` overrides both.
 - **Source fields:** `source_type` comes from the raw file's frontmatter (missing or invalid values log `article`, or `paper` under `Research Papers/`, with a warning). `word_count` comes from the brief.
-- **Telemetry commit.** The row (plus the ingestor's `log.md` entry and mechanical `lint_log` row) gets its own commit, `ingest: telemetry for <hash>`, with explicit paths. It never amends the agent's commit: an amend rewrites the hash the row records (s132).
+- **Telemetry commit.** The row (plus the ingestor's `log.md` entry, mechanical `lint_log` row and any `corroborate_log` / `contradiction_log` backfill stamps) gets its own commit, `ingest: telemetry for <hash>`, with explicit paths. It never amends the agent's commit: an amend rewrites the hash the row records (s132).
 - **Triage tick.** If the source is an unchecked article in the active `dev/ingest-triage-*.md`, the script ticks it, rolls up the batch box when the batch is done, and commits `triage: tick <slug> (Batch N — d/t)`. Deleting a finished triage file stays a deliberate step, so `all_complete` is only reported.
 
 Output is one JSON line: `row`, `content_commit`, `telemetry_commit`,
