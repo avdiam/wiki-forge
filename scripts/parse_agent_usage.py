@@ -135,7 +135,14 @@ def read_transcript(path: str) -> dict:
     turns = 0
     tool_uses = 0
     seen: set = set()
-    spans: dict = {}  # promptId -> [first_ts, last_ts]; one entry per turn
+    # One [first_ts, last_ts] span per turn. A turn starts at each record
+    # whose non-null promptId differs from the current turn's (the dispatch
+    # prompt, then each SendMessage resume). Assistant records carry
+    # promptId None, so they belong to the turn they follow; keying spans by
+    # promptId alone merged them into one span that covered every relay and
+    # wait gap between turns (s139: durations 2.5-4x real).
+    spans: list = []
+    cur_pid = object()
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             try:
@@ -144,7 +151,12 @@ def read_transcript(path: str) -> dict:
                 continue
             ts = _parse_ts(rec.get("timestamp"))
             if ts is not None:
-                span = spans.setdefault(rec.get("promptId"), [ts, ts])
+                pid = rec.get("promptId")
+                if not spans or (pid is not None and pid != cur_pid):
+                    spans.append([ts, ts])
+                    if pid is not None:
+                        cur_pid = pid
+                span = spans[-1]
                 span[0] = min(span[0], ts)
                 span[1] = max(span[1], ts)
             if rec.get("type") != "assistant":
@@ -167,7 +179,7 @@ def read_transcript(path: str) -> dict:
             content = msg.get("content")
             if isinstance(content, list):
                 tool_uses += sum(1 for c in content if isinstance(c, dict) and c.get("type") == "tool_use")
-    span_ms = sum(int((b - a).total_seconds() * 1000) for a, b in spans.values()) if spans else None
+    span_ms = sum(int((b - a).total_seconds() * 1000) for a, b in spans) if spans else None
     return {"sums": sums, "models": models, "assistant_turns": turns, "tool_uses": tool_uses,
             "span_ms": span_ms}
 

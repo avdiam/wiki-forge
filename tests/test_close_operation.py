@@ -349,6 +349,36 @@ class TestUsageTranscriptDuration(unittest.TestCase):
             self.assertEqual(res2["duration_ms"], 7)
             self.assertNotIn("duration_source", res2)
 
+    def test_resume_gap_excluded_real_shape(self):
+        # Real transcripts: assistant records carry no promptId; only user
+        # records (dispatch, tool results, coordinator resumes) do. s139
+        # regression: keying spans by promptId merged every assistant record
+        # into one span covering the relay/wait gap.
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = str(Path(tmp) / "proj")
+            d = Path(tmp) / "projects" / parse_agent_usage.project_slug(cwd) / "sess" / "subagents"
+            d.mkdir(parents=True)
+            recs = [
+                {"type": "user", "promptId": "p1", "timestamp": "2026-11-16T10:00:00.000Z"},
+                {"type": "assistant", "timestamp": "2026-11-16T10:00:05.000Z",
+                 "message": {"id": "m1", "content": [{"type": "tool_use"}]}},
+                {"type": "user", "promptId": "p1", "timestamp": "2026-11-16T10:00:06.000Z"},
+                {"type": "assistant", "timestamp": "2026-11-16T10:00:20.000Z",
+                 "message": {"id": "m2"}},
+                # Coordinator resume 10 minutes later (user relay + wait).
+                {"type": "user", "promptId": "p2", "isMeta": True, "timestamp": "2026-11-16T10:10:20.000Z"},
+                {"type": "assistant", "timestamp": "2026-11-16T10:10:30.000Z",
+                 "message": {"id": "m3"}},
+                {"type": "user", "promptId": "p3", "isMeta": True, "timestamp": "2026-11-16T10:20:00.000Z"},
+                {"type": "assistant", "timestamp": "2026-11-16T10:20:05.000Z",
+                 "message": {"id": "m4"}},
+            ]
+            (d / "agent-abc.jsonl").write_text("\n".join(json.dumps(r) for r in recs), encoding="utf-8")
+            res = parse_agent_usage.parse_usage_text("")
+            parse_agent_usage.enrich(res, ["abc"], cwd, str(Path(tmp) / "projects"))
+            self.assertEqual(res["duration_ms"], 20000 + 10000 + 5000)
+            self.assertEqual(res["tool_uses"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
