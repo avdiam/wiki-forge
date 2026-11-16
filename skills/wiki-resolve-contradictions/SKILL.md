@@ -108,9 +108,9 @@ transcript is the cost surface, read after the fact.
 python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost_probe.py" --emit-marker
 ```
 
-Capture `start_line` and `batch_id`; hold both for steps 4.6 and 4.7. (If the
-probe errors, skip instrumentation silently — run the loop, write rows without
-`--batch-id`, skip step 4.7. Cost telemetry is best-effort.)
+Capture `batch_id` (it encodes `start_line`); hold it for steps 4.3 and 4.5.
+(If the probe errors, skip instrumentation silently — run the loop without
+`--batch-id`, skip step 4.5. Cost telemetry is best-effort.)
 
 ### 4. Per-pair loop
 
@@ -155,51 +155,35 @@ frontmatter is the only structural anchor"`. Source↔source pairs are
 Make one WebSearch tool call per pair with the prompt from § 4.1.
 Capture the returned URLs + titles + descriptions.
 
-#### 4.3 — Tier-classify the URLs
+#### 4.3 — Classify, format and log (one call)
 
-Mirror `/wiki-corroborate` § 4.3 verbatim — pipe the WebSearch URLs
-through `classify_credibility` via inline Python heredoc:
+Same script as `/wiki-corroborate` § 4.3, `resolve` mode. Pass this pair's
+WebSearch results on stdin, one per line as `<url> <title>`:
 
 ```bash
-WIKI_RC_URLS=$(cat <<'URLS_EOF'
-<one URL per line, from this pair's WebSearch>
-URLS_EOF
-)
-python - "$WIKI_RC_URLS" "<wiki>" "${CLAUDE_PLUGIN_ROOT}/scripts" <<'PY'
-import json, sys
-from pathlib import Path
-urls_blob, wiki_root = sys.argv[1], sys.argv[2]
-sys.path.insert(0, sys.argv[3])  # ${CLAUDE_PLUGIN_ROOT}/scripts (wiki/.scripts retired s103)
-from extract_page_metadata import classify_credibility, _load_credibility_lists
-
-tiers = _load_credibility_lists()
-out = []
-for url in urls_blob.splitlines():
-    u = url.strip()
-    if not u:
-        continue
-    out.append({"url": u, "tier": classify_credibility(u, tiers)})
-print(json.dumps(out, ensure_ascii=False))
-PY
+python "${CLAUDE_PLUGIN_ROOT}/scripts/classify_candidates.py" <wiki> resolve --pair "<pair_key>" --index <N>/<M> --batch-id "<batch_id>" <<'CANDIDATES'
+<url> <title>
+<url> <title>
+CANDIDATES
 ```
 
-Result: list of `{url, tier}` with tier ∈
-`tier_1 | tier_2 | tier_3 | denylist | unclassified`.
+Add `--include-tier-3` when the user passed it; omit `--batch-id` only if
+step 3.5 was skipped; with no results, run it with an empty heredoc.
 
-#### 4.4 — Filter and annotate
+The script reads the pair (paths, shape, both `last_updated`, the callout
+excerpt) from the same code as `list_contradictions.py`; classifies,
+filters (`denylist` always dropped, `tier_3` unless `--include-tier-3`) and
+orders the candidates exactly as corroborate does; marks a candidate either
+side already cites with `(already in wiki — cited by side A | B)`; prints
+the per-pair block below; prints the coverage-gate prompt above 60%
+unclassified; and writes the `contradiction_log.jsonl` row (post-filter
+counts, `candidate_domains`, `batch_id`,
+`skill_version: resolve-contradictions-v2`; `user_action` starts
+`deferred` and `outcome` `pending`, backfilled later by `/wiki-capture` and
+the ingestor). Exit 3 with `Logged: ERROR …` = the row failed (tell the
+user, continue); exit 1 = bad input (no such `contradicts:` pair).
 
-Same surfacing rules as `/wiki-corroborate`:
-
-- **Drop** anything classified `denylist`.
-- **Drop** `tier_3` UNLESS `--include-tier-3` was passed.
-- **Keep** `tier_1`, `tier_2`, `unclassified`.
-- For `unclassified`: annotate `(unclassified — propose tier?)`.
-
-If the filtered set is empty, the per-pair block's candidate list shows
-`(no candidates above tier-3 — try --include-tier-3?)`. Still emit the
-block; still write a telemetry row.
-
-#### 4.5 — Format the per-pair block
+Block shape (printed by the script; relay it as is):
 
 ```text
 ═══════════════════════════════════════════════
@@ -207,66 +191,21 @@ block; still write a telemetry row.
        ↕ contradicts ↕
        <pair_b_path>
        shape: <shape> | A: <last_updated_a> | B: <last_updated_b>
-       ⚠ disagreement: <callout_excerpt wrapped at ~70 cols, or "no inline callout — structural edge only">
+       ⚠ disagreement: <callout excerpt, or "no inline callout — structural edge only">
 
        [<tier>] <url>
                 "<title>"
        ...
 
-       ───────────────────────────────────────────
-       Resolution outcomes (HITL — user decides at /wiki-ingest gate):
-         [a_wins]     side A's claim stands; aggregator edited with
-                      `> [!NOTE] Resolved: …` callout citing the new
-                      source; contradicts: edge removed from both sides
-         [b_wins]     mirror — side B's claim stands
-         [both_stand] genuine disagreement preserved; contradicts: edge
-                      downgraded to mutual `## Related` cross-link
-                      annotated `(disagreement examined — both
-                      positions stand)`
-         [defer]      no decision today; edge stays
-
-       Fallback rubric (Jadad four-criterion, when candidates exist
-       for both sides):
-         1. Relevance         — most directly addresses the disputed claim
-         2. Recency           — methodology/data is more current
-         3. Comprehensiveness — broader coverage of the disputed scope
-         4. Low-bias          — cleaner authorship / credibility chain
-
-       Default posture (Wikipedia NPOV): describe, don't resolve.
+       Resolution outcomes (a_wins / b_wins / both_stand / defer),
+       Jadad four-criterion fallback rubric, NPOV default posture
 ```
 
-Tier annotations: `[tier-1]` / `[tier-2]` / `[tier-3]` (if shown) /
-`[unclassified — propose tier?]`. URL on the header line, title on
-the line below indented under the URL. Ordering within a block: tier_1
-first, then tier_2, then tier_3 (if shown), then unclassified.
+#### 4.4 — Coverage gate (mirrors `/wiki-corroborate` § 4.4)
 
-When a candidate URL matches a source already in either side's
-`sources:` frontmatter, append `(already in wiki — cited by side A | B)`
-to the title line. Cross-check by reading both pages' frontmatter once
-at loop entry.
-
-#### 4.5b — Coverage gate (mirrors `/wiki-corroborate` § 4.5b)
-
-After emitting the per-pair block but BEFORE writing the telemetry row,
-evaluate classifier coverage on the filtered candidate set:
-
-```python
-total = len(filtered_candidates)
-unclassified = sum(1 for c in filtered_candidates if c["tier"] == "unclassified")
-unclassified_ratio = unclassified / total if total else 0
-```
-
-If `unclassified_ratio > 0.60`, surface to the user:
-
-```text
-⚠ Classifier coverage gap: <unclassified> of <total> candidates are unclassified.
-Propose tiers for the unclassified set now? Y/N
-```
-
-**Threshold rationale.** Inherited from `/wiki-corroborate` (tuned 2026-05-12
-from 29-row dataset; see session 55 narrative). The threshold and
-cascade-update flow are identical — see `wiki-corroborate/SKILL.md`
-§ 4.5b for the full mechanics. On `Y`, prompt per unclassified domain,
+When the output ends with the `⚠ Classifier coverage gap` prompt, ask the
+user. Threshold and cascade-update flow are identical — see
+`wiki-corroborate/SKILL.md` § 4.4. On `Y`, prompt per listed domain,
 collect `1 / 2 / 3 / denylist / skip`, write accepted entries to
 `url_classifier_lists.json` in one atomic edit, commit with:
 
@@ -274,67 +213,22 @@ collect `1 / 2 / 3 / denylist / skip`, write accepted entries to
 telemetry: extend url_classifier_lists.json — <N> domains from <pair_key> coverage gate
 ```
 
-On `N` or silence, proceed to § 4.6. Skip when `total == 0`.
+On `N` or silence, continue the loop.
 
-#### 4.6 — Append a telemetry row
+#### 4.5 — Close the cost-measurement window
 
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_contradiction_log.py" --wiki <wiki> \
-  --pair-key "<key>" \
-  --pair-a-slug "<a>" --pair-a-type "<type-a>" \
-  --pair-b-slug "<b>" --pair-b-type "<type-b>" \
-  --shape "<shape>" \
-  --callout-excerpt "<excerpt, JSON-quoted if needed>" \
-  --candidates-returned <N filtered candidates> \
-  --candidates-by-tier '{"tier_1":N,"tier_2":N,"tier_3":N,"unclassified":N}' \
-  --candidate-urls '[{"url":"<url>","tier":"<tier>"}, ...]' \
-  --include-tier-3-flag <true|false> \
-  --batch-id "<batch_id from step 3.5>" --skill-version "resolve-contradictions-v2"
-```
-
-Pass `--batch-id` (from step 3.5) on every per-pair row so step 4.7 can
-backfill the invocation cost onto them. Omit it only if step 3.5 was skipped.
-`user_action` defaults to `deferred` and `outcome` defaults to `pending`
-on the initial write. Both fields are backfilled later — `/wiki-capture`
-flips `user_action` to `captured`; the ingestor sets `outcome` (one of
-`a_wins | b_wins | both_stand | defer`) on the user's takeaway-gate reply.
-
-Pass `--candidates-returned` as the count of items shown to the user
-(post-filter), not the raw WebSearch count. `--candidate-urls` takes the
-same `[{url, tier}, ...]` list as `/wiki-corroborate` — domains are
-extracted via `_domain_from_url`; pass `'[]'` when WebSearch failed.
-
-#### 4.7 — Close the cost-measurement window
-
-Run **once**, after the per-pair loop (skip if step 3.5 was skipped). Probe the
-window opened at 3.5, then stamp the invocation cost onto every row of this batch:
+Run **once**, after the per-pair loop (skip if step 3.5 was skipped):
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost_probe.py" --since-line <start_line>
-```
-
-Read `total_tokens`, `tool_uses`, `duration_ms`, `websearch_calls`,
-`context_tokens_post_pass`, `context_tokens_pre_pass`, `context_growth`,
-`output_tokens_pass` from the JSON, then:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/append_contradiction_log.py" --wiki <wiki> --backfill-cost \
-  --batch-id "<batch_id>" \
-  --total-tokens <total_tokens> --tool-uses <tool_uses> \
-  --duration-ms <duration_ms> --websearch-calls <websearch_calls> \
-  --context-tokens-post <context_tokens_post_pass> \
-  --context-tokens-pre <context_tokens_pre_pass> \
-  --context-growth <context_growth> \
-  --output-tokens-pass <output_tokens_pass>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/classify_candidates.py" <wiki> close resolve --batch-id "<batch_id>"
 ```
 
 Same surface, batch-unit convention, and ROI rationale as `/wiki-corroborate`
-§ 4.7 — the two skills' cost telemetry is pooled for the inline-vs-fork
-decision. The backfill auto-stamps `flags_in_batch` (here = pairs in the batch);
-the gate reads per-invocation `context_growth` for context discipline and
-per-pair `total_tokens / flags_in_batch` for throughput, with `websearch_calls`
-descriptive only. Pass `context_growth` as `null` if the probe found no
-pre-window anchor.
+§ 4.5 — the two skills' cost telemetry is pooled for the inline-vs-fork
+decision. `flags_in_batch` here = pairs in the batch; the gate reads
+per-invocation `context_growth` for context discipline and per-pair
+`total_tokens / flags_in_batch` for throughput, with `websearch_calls`
+descriptive only.
 
 ### 5. Footer
 
@@ -421,14 +315,14 @@ not worth pre-emptive design.
 - **Tier-3 default-suppressed.** `--include-tier-3` is the explicit
   user opt-in.
 - **Cascade-update on user confirmation.** Identical to
-  `/wiki-corroborate` § 4.5b — lists never grow silently.
+  `/wiki-corroborate` § 4.4 — lists never grow silently.
 - **Re-running on the same pair is fine.** No filter cache — newly-
   published adjudicating sources may have arrived. Cost is borne by the
   user via "skip this pair, next."
-- **WebSearch failure → continue.** Emit a per-pair block with
-  `(websearch failed: <error>)` in place of the candidate list. Still
-  write the telemetry row with `--candidates-returned 0` for audit
-  visibility. Don't abort the whole batch.
+- **WebSearch failure → continue.** Run step 4.3 with an empty heredoc
+  (the row logs zero candidates, for audit visibility) and add
+  `(websearch failed: <error>)` under the block. Don't abort the whole
+  batch.
 - **`superseded_by:` is NOT used by this flow.** That field is reserved
   for its original entity-version use case (e.g., `gpt-3 →
   superseded_by: [[gpt-4]]`). The current corpus has zero such pairs;

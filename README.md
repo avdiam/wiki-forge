@@ -216,6 +216,7 @@ Pure stdlib Python (except search deps). Shipped in the plugin's `scripts/` dire
 | `ingest_preflight.py` | All `/wiki-ingest` pre-flight checks in one call: exclusion rule, filename normalization, brief, hash dedup, pre-screen, secret scan, model pick, triage lookup |
 | `ingest_commit.py` | The ingestor's write-phase close in one call: index regen, explicit-path commit with Created/Updated derived from git, log entry, verify/contradiction telemetry backfills, mechanical lint |
 | `fm_edit.py` | Line-preserving frontmatter edits across pages: add source, touch, confidence, tags/aliases, symmetric `contradicts:` edges, verify-clearing |
+| `classify_candidates.py` | `/wiki-corroborate` + `/wiki-resolve-contradictions` per-item close: credibility-tier classify, filter, ordered block with already-cited marks, coverage gate, telemetry row; `close` stamps the batch's transcript cost |
 | `close_operation.py` | Closes every operation: parses the agent's report + `<usage>`, appends the telemetry row, commits it separately (never an amend), ticks the triage checkbox |
 | `parse_agent_usage.py` | Parses Agent `<usage>` blocks; enriches token counts, model and duration from the subagent transcript |
 | `setup_search.py` | Downloads ONNX model + tokenizer from HuggingFace |
