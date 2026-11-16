@@ -58,8 +58,11 @@ Then run the graph analyzer for structural topology, **stashing the
 output to `.claude/tmp/wiki-graph.json` for downstream reuse**:
 
 ```bash
-mkdir -p .claude/tmp && python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_analyzer.py" <wiki> --json | tee .claude/tmp/wiki-graph.json
+python "${CLAUDE_PLUGIN_ROOT}/scripts/graph_analyzer.py" <wiki> --out .claude/tmp/wiki-graph.json
 ```
+
+`--out` writes the JSON stash (creating `.claude/tmp/`) and prints the same
+JSON, so no `mkdir`, pipe or `tee` is needed.
 
 This returns: total pages/edges, top hubs (outbound and inbound), orphans,
 sinks (dead-end pages with no outbound links), connected components (isolated
@@ -163,8 +166,10 @@ and callout rules.
 
 After applying fixes (if any):
 
-1. Re-run `update_index.py`
-2. Commit only the wiki: `git add <wiki> && git commit -m "lint: <short description>"`
+1. Re-run the index: `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>`
+2. Commit only the wiki, as two separate calls: `git add <wiki>`, then
+   `git commit -m "lint: <short description>"`. Read the hash with
+   `git log -1 --format=%h` for the footer.
 3. Delete the graph stash from the project root: `rm -f .claude/tmp/wiki-graph.json`. It
    predates your fix commit, so its orphan/edge counts are stale; the
    chained `/wiki-overview --soft` rebuilds the graph inline when the stash
@@ -215,3 +220,15 @@ two-value enum the JSONL row expects.
 - **Always cite exact file paths** in the report so the user can jump to them.
 - **If the mechanical lint script is missing**, say so and stop — don't try
   to reimplement it inline.
+- **One plain command per Bash call.** Run each helper script and git step
+  on its own, in the shape this playbook shows: no `cd`, no `&&` / `;` /
+  `||`, no pipes or `tee`, no `2>&1`, no heredocs, no `python -c` or ad-hoc
+  edit scripts (apply fixes with Edit / Write, one page at a time; search
+  with Grep / Glob). Compound commands fall outside the permission
+  allowlist and go to the auto-mode classifier, which can deny them
+  unpredictably (s139: a `cd … && update_index.py … | tail; git status`
+  call and a heredoc edit script were both denied mid-fix).
+- **On a permission or classifier denial, stop.** Don't retry the command in
+  another shape or work around it. Return to the coordinator at once with
+  the exact command, the denial text, the fixes already applied
+  (uncommitted) and the steps that remain.

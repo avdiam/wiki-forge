@@ -184,3 +184,13 @@ misconfigured.
   reasoning about other sections, stop.
 - **Mode B pull-quote preservation rule is hard.** Every drop carries a
   written justification. "Recency" doesn't count.
+- **One plain command per Bash call.** Run each helper script on its own, in
+  the shape this playbook shows: no `cd`, no `&&` / `;` / `||`, no pipes or
+  `tee`, no `2>&1`, no heredocs, no `python -c` or ad-hoc edit scripts
+  (write JSON and prose with Write / Edit; delete a temp file with a lone
+  `rm -f <path>`). Compound commands fall outside the permission allowlist
+  and go to the auto-mode classifier, which can deny them unpredictably.
+- **On a permission or classifier denial, stop.** Don't retry the command in
+  another shape or work around it. Return to the coordinator at once with
+  the exact command, the denial text, what is already written and the
+  steps that remain.

@@ -101,11 +101,16 @@ convention is overwrite:
    prompt — set on Shape A, `null` on Shape B. Use `Write` (not `Edit`) so
    re-runs overwrite cleanly.
 2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>`.
-3. If git repo, commit:
+3. If git repo, commit, then read the short hash (three separate Bash calls;
+   the playbook's one-plain-command rule applies here too):
    ```bash
-   cd <wiki>
-   git add pages/syntheses/<slug>-coverage.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json
-   git commit -m "survey-filed: <slug>-coverage"
+   git -C <wiki> add pages/syntheses/<slug>-coverage.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json
+   ```
+   ```bash
+   git -C <wiki> commit -m "survey-filed: <slug>-coverage"
+   ```
+   ```bash
+   git -C <wiki> log -1 --format=%h
    ```
 4. Log the operation (reuse the `query-filed` operation type — slug suffix
    `-coverage` and `subtype: coverage-report` frontmatter make the survey
@@ -117,9 +122,12 @@ convention is overwrite:
      --commit "<short-hash>" \
      --wiki <wiki>
    ```
-5. Commit the log entry (it needs the hash, so it can't ride in the first commit):
+5. Commit the log entry (it needs the hash, so it can't ride in the first commit), as two separate calls:
    ```bash
-   git add log.md && git commit -m "query-filed: log entry for <short-hash>"
+   git -C <wiki> add log.md
+   ```
+   ```bash
+   git -C <wiki> commit -m "query-filed: log entry for <short-hash>"
    ```
    Stage only these paths, never `git add .`: the tree may hold the user's unrelated changes.
 

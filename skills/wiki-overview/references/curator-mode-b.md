@@ -184,8 +184,10 @@ and dispatch you again with `mode: full-resume`.
    the same triggers would fire again immediately.
 4. Delete the checkpoint:
    ```bash
-   rm .claude/tmp/wiki-curator-checkpoint.json && rmdir .claude/tmp 2>/dev/null || true
+   rm -f .claude/tmp/wiki-curator-checkpoint.json
    ```
+   Leave `.claude/tmp/` itself in place (it is gitignored); one plain command,
+   no chaining.
 5. Do NOT commit — the `/wiki-overview` skill commits upstream.
 6. Return:
 

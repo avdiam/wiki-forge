@@ -3,17 +3,19 @@
 > Moved out of the wiki-ingestor playbook (s137, script audit Wave 3) so ingests that don't hit this branch don't load it. The ingestor Reads it from the dispatch's `References:` directory when the branch fires. Every rule here is as binding as the playbook's.
 
 - **> 5 NEW contradictions:** HALT immediately. Roll back **surgically** — touch only the files in `WRITE_LIST` (built during 3a–3d), never the broader working tree. This preserves any unrelated pending wiki/ edits the user may have had in flight when the ingest started.
+  Three plain commands, no loop (the playbook's one-plain-command rule applies). First, find which `WRITE_LIST` paths are tracked:
   ```bash
-  # Pseudocode — translate to a real bash loop with WRITE_LIST populated as a bash array:
-  for f in "${WRITE_LIST[@]}"; do
-    if git -C <wiki> ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
-      git -C <wiki> restore -- "$f"      # tracked file: revert to HEAD
-    else
-      rm -f "<wiki>/$f"                   # untracked file: delete the page the agent created
-    fi
-  done
+  git -C <wiki> ls-files -- <every path in WRITE_LIST, wiki-relative>
   ```
-  The list is dedup-safe (`git restore` is idempotent; `rm -f` tolerates missing files), so a path written twice (e.g., source page touched in 3a and again in 3e) needs no special handling. If a single restore/rm errors, continue the loop — partial rollback of the rest is preferable to leaving everything in flight.
+  The paths it prints are tracked (pages you edited): revert them to HEAD.
+  ```bash
+  git -C <wiki> restore -- <the tracked paths>
+  ```
+  The `WRITE_LIST` paths it did **not** print are untracked (pages you created): delete them.
+  ```bash
+  rm -f <wiki>/<untracked path 1> <wiki>/<untracked path 2> ...
+  ```
+  Skip a command whose path list is empty. Deduplicate `WRITE_LIST` first (a path written twice, e.g. the source page touched in 3a and again in 3e, appears once). If one command errors, still run the other: partial rollback is better than leaving everything in flight. A denial is the exception: stop and report it per the playbook rule, listing the paths not yet rolled back.
   Do **not** run step 4 (index regen), do **not** commit, do **not** append to log. Return:
   ```text
   HALT: late-discovered contradictions exceeded threshold (>5).

@@ -133,11 +133,15 @@ When the coordinator instructs you to file:
 1. Create `pages/syntheses/<slug>.md` using the synthesis template from
    AGENTS.md. Fill `summary:` with a one-sentence hook.
 2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>` to add it to the index.
-3. If the wiki is a git repo, commit:
+3. If the wiki is a git repo, commit, then read the short hash (three separate Bash calls):
    ```bash
-   cd <wiki>
-   git add pages/syntheses/<slug>.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json
-   git commit -m "query-filed: <question slug>"
+   git -C <wiki> add pages/syntheses/<slug>.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json
+   ```
+   ```bash
+   git -C <wiki> commit -m "query-filed: <question slug>"
+   ```
+   ```bash
+   git -C <wiki> log -1 --format=%h
    ```
 4. Log the operation:
    ```bash
@@ -147,9 +151,12 @@ When the coordinator instructs you to file:
      --commit "<short-hash>" \
      --wiki <wiki>
    ```
-5. Commit the log entry (it needs the hash, so it can't ride in the first commit):
+5. Commit the log entry (it needs the hash, so it can't ride in the first commit), as two separate calls:
    ```bash
-   git add log.md && git commit -m "query-filed: log entry for <short-hash>"
+   git -C <wiki> add log.md
+   ```
+   ```bash
+   git -C <wiki> commit -m "query-filed: log entry for <short-hash>"
    ```
    Stage only these paths, never `git add .`: the tree may hold the user's unrelated changes.
 
@@ -207,3 +214,14 @@ the answer body.
   don't hide them.
 - When filing a synthesis, use the template and run the index update script —
   never hand-edit the index.
+- **One plain command per Bash call.** Run each helper script and git step
+  on its own, in the shape this playbook shows: no `cd` (use
+  `git -C <wiki>`), no `&&` / `;` / `||`, no pipes or `tee`, no `2>&1`, no
+  heredocs, no `python -c` or ad-hoc edit scripts (write pages with Write /
+  Edit; search with Grep / Glob). Compound commands fall outside the
+  permission allowlist and go to the auto-mode classifier, which can deny
+  them unpredictably.
+- **On a permission or classifier denial, stop.** Don't retry the command in
+  another shape or work around it. Return to the coordinator at once with
+  the exact command, the denial text, what is already done (e.g. the
+  synthesis page written, not committed) and the steps that remain.

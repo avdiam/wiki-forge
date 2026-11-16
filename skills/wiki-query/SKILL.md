@@ -155,7 +155,7 @@ If yes (and handling inline):
 
 1. Create `syntheses/<slug>.md` using the synthesis template.
 2. Run `python "${CLAUDE_PLUGIN_ROOT}/scripts/update_index.py" <wiki>`
-3. If git repo, stage only what this filing touched (never `git add .`): `git -C <wiki> add pages/syntheses/<slug>.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json && git -C <wiki> commit -m "query-filed: <slug>"`
+3. If git repo, stage only what this filing touched (never `git add .`): `git -C <wiki> add pages/syntheses/<slug>.md pages/indexes/ .meta/categories-index.json .meta/index_stats.json`, then, as a separate call, `git -C <wiki> commit -m "query-filed: <slug>"` (chained commands go to the auto-mode classifier)
 4. Log: `python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" query-filed --title "..." --created "syntheses/<slug>" --commit "<hash>" --wiki <wiki>`
 
 If the librarian was dispatched, you are the user gate: relay the filing

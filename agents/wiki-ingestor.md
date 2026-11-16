@@ -129,12 +129,8 @@ file; carry them into step 3):
     candidate-slug-1 candidate-slug-2 candidate-slug-3
   ```
 
-  Or pipe candidates via stdin if the list is long:
-
-  ```bash
-  echo 'slug-1 slug-2 slug-3' | python "${CLAUDE_PLUGIN_ROOT}/scripts/check_wikilinks.py" <wiki> \
-    --stdin --json --planned <comma-sep>
-  ```
+  Pass every candidate as an argument, even for a long list (no `echo … |`
+  into `--stdin`; see Rules § one plain command per Bash call).
 
   The script returns `{slug: "ok" | "planned" | "broken"}`. **Slugs marked
   `broken` are the avoid-wikilinking list.** When attributing or
@@ -286,24 +282,28 @@ page frontmatter. Do not hand-edit any index file.
 
 ### 5. Commit and log
 
-```bash
-cd <wiki>
-git add <every path in WRITE_LIST, wiki-relative> pages/indexes/ .meta/categories-index.json .meta/index_stats.json
-git add "../<vault_source>"   # raw source alongside wiki changes
-# Never `git add .`: the tree may hold the user's unrelated edits.
-git commit -m "ingest: <source title>
+Three separate Bash calls, in this order (no `cd`, no chaining):
 
-- Created: <list>
-- Updated: <list>
-"
+```bash
+git -C <wiki> add <every path in WRITE_LIST, wiki-relative> pages/indexes/ .meta/categories-index.json .meta/index_stats.json "../<vault_source>"
 ```
 
-`<vault_source>` is the project-relative path the ingest consumed, e.g.
-`vault/Web Articles/2026-04-15-foo.md`. With `cd <wiki>`, the `../` prefix
-resolves it from the wiki root. If the vault file is already tracked, this
-is a no-op — safe to always include.
+```bash
+git -C <wiki> commit -m "ingest: <source title>" -m "- Created: <list>" -m "- Updated: <list>"
+```
 
-Capture the short commit hash. Then append the operation log:
+```bash
+git -C <wiki> log -1 --format=%h
+```
+
+Never `git add .`: the tree may hold the user's unrelated edits.
+`<vault_source>` is the project-relative path the ingest consumed, e.g.
+`vault/Web Articles/2026-04-15-foo.md`. `git -C <wiki>` resolves paths from
+the wiki root, so the `../` prefix reaches it; staging the raw source
+alongside the wiki changes is a no-op when it is already tracked, so always
+include it.
+
+The last call gives the short commit hash. Then append the operation log:
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/append_log.py" ingest \
@@ -369,7 +369,7 @@ Keep the report tight — the dispatching skill relays it to the user.
 ## Rules (non-negotiable)
 
 - **You are invoked by `/wiki-ingest` only.** If your dispatch prompt lacks an `Approved plan:` block, halt and return — do not synthesize one.
-- **Never touch `vault/`.** Raw files are immutable. The only `vault/` interaction is `git add ../<vault_source>` in step 5 to stage the raw file alongside wiki changes.
+- **Never touch `vault/`.** Raw files are immutable. The only `vault/` interaction is staging `../<vault_source>` in step 5's `git -C <wiki> add` to stage the raw file alongside wiki changes.
 - **Exclude from any wiki ingestion any path under `vault/` whose top-level segment begins with `.` or `_`.** This catches `vault/_indexes/`, `vault/.skipped/`, `vault/.wiki-identity-bootstrap.md`, OS junk (`.DS_Store`), Obsidian internals (`.obsidian/`), and any future protocol file. Regular content folders (`vault/Web Articles/`, `vault/Research Papers/`, `vault/Transcripts/`) are fair game.
 - **Honor `not_a_source: true`** in any file's frontmatter as an explicit skip marker, regardless of location.
 - **Never silently overwrite contradictions.** Use the `> [!WARNING] Contradiction Detected:` callout — for plan-listed contradictions in 3b, and for late-found ones in the late-contradiction block. **Also populate the `contradicts:` frontmatter symmetrically on both pages** (typed-edge obligation, active 2026-04-30); the lint enforces.
@@ -379,4 +379,6 @@ Keep the report tight — the dispatching skill relays it to the user.
 - **Flag confidence below 0.5 inline** with `⚠ low confidence: <reason>`.
 - **Always use `update_index.py` and `append_log.py`** — never hand-edit those files.
 - **Commit once per ingest** with a descriptive message.
+- **One plain command per Bash call.** Run each helper script and git step on its own, in the shape this playbook shows: no `cd` (use `git -C <wiki>`), no `&&` / `;` / `||`, no pipes or `tee`, no `2>&1`, no heredocs, no `python -c` or ad-hoc edit scripts (edit pages with Edit / Write). Compound commands fall outside the permission allowlist and go to the auto-mode classifier, which can deny them unpredictably.
+- **On a permission or classifier denial, stop.** Don't retry the command in another shape or work around it. Return to the coordinator at once with the exact command, the denial text, what is already written (your `WRITE_LIST`, uncommitted) and the steps that remain. The coordinator resumes you once it's resolved.
 - **No discovery in the fork.** No `hybrid_search.py`, no main-session-style grep across all page directories. The plan tells you which pages to touch. If you find yourself running discovery, stop — your dispatcher passed an incomplete plan and the right action is to halt and return, not to fill the gap.
