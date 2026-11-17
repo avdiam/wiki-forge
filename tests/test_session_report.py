@@ -195,6 +195,30 @@ class TestRender(unittest.TestCase):
             (mem / "MEMORY.md").write_text("- [a](a.md) — x\n- [b](b.md) — y\nnot an entry\n", encoding="utf-8")
             self.assertEqual(sr.memory_count(root, home), 2)
 
+    def test_memory_dir_setting_and_unwired_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, home = Path(tmp) / "proj", Path(tmp) / "home"
+            (root / ".claude").mkdir(parents=True)
+            self.assertFalse(sr.memory_unwired(root, home))  # no repo memories/
+            repo = root / "memories"
+            repo.mkdir()
+            (repo / "MEMORY.md").write_text("- [a](a.md) — x\n", encoding="utf-8")
+            self.assertTrue(sr.memory_unwired(root, home))  # default dir, repo copy ignored
+            self.assertIsNone(sr.memory_count(root, home))
+            (root / ".claude" / "settings.local.json").write_text(
+                json.dumps({"autoMemoryDirectory": str(repo)}), encoding="utf-8")
+            self.assertEqual(sr.memory_dir(root, home), repo)
+            self.assertFalse(sr.memory_unwired(root, home))
+            self.assertEqual(sr.memory_count(root, home), 1)
+            (root / ".claude" / "settings.local.json").write_text(
+                json.dumps({"autoMemoryDirectory": "~/mem"}), encoding="utf-8")
+            self.assertEqual(sr.memory_dir(root, home), home / "mem")
+
+    def test_memory_unwired_render(self):
+        out = sr.render(_data(memory=2, memory_unwired=True))
+        self.assertIn("- Memory: 2 entries loaded; ⚠ repo memories/ not wired on this PC", out)
+        self.assertNotIn("not wired", sr.render(_data(memory=2)))
+
     def test_main_fails_open(self):
         import io
         import contextlib
