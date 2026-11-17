@@ -108,6 +108,36 @@ class TestRender(unittest.TestCase):
         self.assertIn("- Verify: queue empty", out)
         self.assertNotIn("- Verify:", sr.render(_data()))  # older drill JSON without the field
 
+    def test_feed_field_and_offer_outside_cap(self):
+        feed = {"files": ["vault-missing-2026-11-17.html"], "remaining": 602, "pending": False}
+        drill = _drill(lint_counter=13, lint_overdue=True,
+                       overview={"stale_by": 12, "should_rewrite": False, "trigger_reasons": []})
+        out = sr.render(_data(drill=drill, feed=feed))
+        self.assertIn("- Feed: 602 Medium articles to clip (vault-missing-2026-11-17.html)", out)
+        offers = [l for l in out.splitlines() if l.startswith("Offer:")]
+        self.assertEqual(len(offers), 3)  # two health offers + the feed offer, never capped out
+        self.assertIn("/medium-feed? (602 remaining)", offers[2])
+        self.assertIn("<!-- backlog offer line (drop in dev mode): Offer: open the next 10", out)
+        self.assertNotIn("- Feed:", sr.render(_data()))
+
+    def test_feed_pending_batch_and_multiple_files(self):
+        feed = {"files": ["vault-missing-a.html", "vault-missing-b.html"], "remaining": 7, "pending": True}
+        out = sr.render(_data(feed=feed))
+        self.assertIn("- Feed: 7 Medium articles to clip (vault-missing-a.html +1 more); "
+                      "a batch is open, not yet reconciled", out)
+        self.assertIn("Offer: check the open clip batch with /medium-feed?", out)
+
+    def test_medium_feed_gather(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.assertIsNone(sr.medium_feed(root))
+            (root / "medium-incoming").mkdir()
+            (root / "medium-incoming" / "vault-missing-2026-11-17.html").write_text(
+                '<DT><A HREF="https://medium.com/p/aaaaaaaaaaaa">A</A>\n'
+                '<DT><A HREF="https://medium.com/p/bbbbbbbbbbbb">B</A>\n', encoding="utf-8")
+            got = sr.medium_feed(root)
+            self.assertEqual(got, {"files": ["vault-missing-2026-11-17.html"], "remaining": 2, "pending": False})
+
     def test_verify_offer_ranks_after_lint_and_overview(self):
         drill = _drill(lint_counter=11, lint_overdue=True,
                        overview={"stale_by": 12, "should_rewrite": False, "trigger_reasons": []},
