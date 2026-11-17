@@ -387,6 +387,12 @@ def close_query(a, wiki: Path, text: str, warnings: list) -> dict:
             "--filed-as", filed]
     if a.search_mode:
         argv += ["--search-mode", a.search_mode]
+    split = {}
+    for key, flag in (("Pages skimmed", "--pages-skimmed"), ("Pages promoted", "--pages-promoted")):
+        line = footer_value(text, key)
+        if line is not None:  # absent footer line → null field; "none" → []
+            split[flag] = ",".join(dict.fromkeys(stem(s) for s in re.findall(r"\[\[([^\]]+)\]\]", line)))
+            argv += [flag, split[flag]]
     if a.query_variations:
         argv += ["--query-variations", a.query_variations]
     if a.routed_from:
@@ -395,7 +401,9 @@ def close_query(a, wiki: Path, text: str, warnings: list) -> dict:
     ok = run_appender("append_query_log.py", argv, warnings)
     tcommit = commit_paths(wiki, [".meta/query_log.jsonl"], f"{a.op}: telemetry")
     return {"op": a.op, "row": ok, "telemetry_commit": tcommit, "pages_consulted": pages.split(",") if pages else [],
-            "filed_as": filed or None, "usage": _usage_summary(usage)}
+            "filed_as": filed or None, "usage": _usage_summary(usage),
+            **({"pages_skimmed": split["--pages-skimmed"].split(",") if split["--pages-skimmed"] else []}
+               if "--pages-skimmed" in split else {})}
 
 
 def close_ask(a, wiki: Path, text: str, warnings: list) -> dict:

@@ -40,6 +40,7 @@ Row schema:
       "query_variations": ["retrieval-augmented generation", "RAG pipeline"],
       "search_mode": "hybrid",
       "pages_consulted": ["rag", "llm-wiki-pattern"],
+      "pages_skimmed": null, "pages_promoted": null,
       "top_score": 0.82,
       "filed_as": null,
       "total_tokens": null, "input_tokens": null,
@@ -67,6 +68,12 @@ For `query_skill: "summarize"`, `search_mode` is `"slug-anchored"`
 (Shape A) or `"hybrid"` (Shape B). `filed_as` records the coverage
 synthesis slug if filed, else `null`. Empty Shape B results write no
 row (skill emits the dual-onramp inline without librarian dispatch).
+
+Survey read split (`/wiki-summarize` Shape B, s144): `pages_skimmed` lists
+pages the librarian grep-scanned but did not read in full; `pages_promoted`
+lists tail pages it scanned, found substantive and then read in full. Full
+reads = `pages_consulted` minus `pages_skimmed`. Both are `null` when the
+footer omits them (every non-summarize row, and summarize rows before s144).
 
 `query_variations` is the JSON array of paraphrase variations
 `/wiki-query` passed to `hybrid_search.py`'s `--queries-json` flag,
@@ -173,6 +180,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     p.add_argument("--pages-consulted", default="", help="Comma-separated slugs (or paths)")
+    p.add_argument("--pages-skimmed", default=None,
+                   help="Survey: comma slugs grep-scanned, not read in full (null if omitted)")
+    p.add_argument("--pages-promoted", default=None,
+                   help="Survey: comma slugs scanned then promoted to a full read (null if omitted)")
     p.add_argument("--top-score", type=optional_float, default=None, help="Normalized [0,1]; null on inline")
     p.add_argument("--filed-as", type=optional_str, default=None, help="Synthesis slug if filed, else null")
     p.add_argument("--total-tokens", type=optional_int, default=None, help="From <usage>; null on Path A")
@@ -222,6 +233,8 @@ def build_row(args: argparse.Namespace) -> dict:
         "query_variations": args.query_variations,
         "search_mode": args.search_mode,
         "pages_consulted": split_slugs(args.pages_consulted),
+        "pages_skimmed": None if args.pages_skimmed is None else split_slugs(args.pages_skimmed),
+        "pages_promoted": None if args.pages_promoted is None else split_slugs(args.pages_promoted),
         "top_score": args.top_score,
         "filed_as": args.filed_as,
         "total_tokens": args.total_tokens,

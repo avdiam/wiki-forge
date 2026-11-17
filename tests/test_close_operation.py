@@ -253,11 +253,23 @@ class TestCloseOverviewQueryAsk(unittest.TestCase):
         self.assertEqual(code, 0, out)
         row = rows(self.repo.wiki, "query_log.jsonl")[-1]
         self.assertEqual((row["query_skill"], row["filed_as"], row["routed_from"]), ("summarize", None, "ask"))
+        self.assertIsNone(row["pages_skimmed"])
         code, out = run_close(["ask", "--wiki", str(self.repo.wiki), "--query", "topic", "--routed-to",
                                "summarize", "--duration-ms", "3"])
         self.assertEqual(code, 0, out)
         self.assertEqual(rows(self.repo.wiki, "query_log.jsonl")[-1]["routed_to"], "summarize")
         self.assertEqual(git(self.repo.root, "status", "--porcelain"), "")
+
+    def test_summarize_read_split_footer(self):
+        # s144 survey read split: footer lines → pages_skimmed / pages_promoted; "none" → [].
+        text = ("Survey.\n\nPages consulted: [[a]], [[b]], [[c]]\nPages skimmed: [[c]]\n"
+                "Pages promoted: none\nFiled as: Not filed\n<usage><duration_ms>1</duration_ms></usage>")
+        code, out = run_close(["summarize", "--wiki", str(self.repo.wiki), "--query", "topic",
+                               "--search-mode", "hybrid"], text)
+        self.assertEqual(code, 0, out)
+        row = rows(self.repo.wiki, "query_log.jsonl")[-1]
+        self.assertEqual((row["pages_skimmed"], row["pages_promoted"]), (["c"], []))
+        self.assertEqual(out["pages_skimmed"], ["c"])
 
     def test_graph_row_committed(self):
         code, out = run_close(["graph", "--wiki", str(self.repo.wiki), "--query", "neighbors agents --depth 1",

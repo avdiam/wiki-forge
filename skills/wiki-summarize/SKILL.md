@@ -124,8 +124,9 @@ Pages to read:
 - <path 2> — ...
 - ...
 
-Read these specific pages in full and produce the five-section
-topic-coverage survey per the survey instructions file
+Cover these pages at the depth the survey instructions file sets
+(Shape B: ranks 1–15 in full, 16–25 skimmed with promotion; Shape A:
+all in full) and produce the five-section topic-coverage survey per it
 (Themes / Agreements / Disagreements / Coverage gaps / Structural
 footprint). Offer to file as syntheses/<slug>-coverage.md (overwrite
 on re-run).
@@ -173,7 +174,8 @@ refusal (s138).
 ### 6. Close the operation (query_log row + telemetry commit)
 
 Pipe the librarian's result verbatim. The script parses `Pages consulted:
-[[…]]` and `Filed as:` (`Not filed` → null) from the footer and the cost
+[[…]]`, `Pages skimmed:` / `Pages promoted:` (Shape B read split; absent →
+null) and `Filed as:` (`Not filed` → null) from the footer and the cost
 fields from `<usage>` plus the transcript (duration falls back to the
 transcript if no block arrived). It commits the row on its own as
 `summarize: telemetry` (explicit path, never `git add .`).
@@ -227,3 +229,8 @@ Filed as: syntheses/<slug>-coverage.md   (or: Not filed)
 - **Top-k for Shape B is hardcoded at 25.** Survey-mode just *is* this — one
   fewer knob the user thinks about. If telemetry later shows recall problems,
   re-tune in a follow-up.
+- **Two-tier read for Shape B (s144).** Ranks 1–15 are read in full, ranks
+  16–25 skimmed, with promotion to a full read when the skim turns up
+  something substantive (rule in `references/librarian-survey.md`). The
+  `pages_skimmed` / `pages_promoted` telemetry fields are the tuning data for
+  the 15 cutoff.

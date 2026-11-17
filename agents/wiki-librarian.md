@@ -73,8 +73,8 @@ grep -ril "<keyword>" <wiki>/
 
 Cap the total candidate set around 8 pages.
 
-**Survey mode:** the cap and grep-supplement do not apply; see the survey
-instructions file.
+**Survey mode:** the read depth (full vs skim), the cap and the
+grep-supplement all follow the survey instructions file instead.
 
 ### 3. Synthesize
 

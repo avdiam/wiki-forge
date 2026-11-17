@@ -122,6 +122,19 @@ class DirectRowTests(unittest.TestCase):
         self.assertIsNone(row["routed_to"])
         self.assertIsNone(row["routed_from"])
         self.assertIsNone(row["routing_clarifications"])
+        self.assertIsNone(row["pages_skimmed"])
+        self.assertIsNone(row["pages_promoted"])
+
+    def test_survey_read_split_fields(self):
+        # s144: summarize rows record which pages were skimmed vs promoted; "" → [].
+        wiki = _wiki()
+        rc = aql.main(["--wiki", str(wiki), "--query-skill", "summarize", "--query", "topic",
+                       "--search-mode", "hybrid", "--pages-consulted", "a,b,c",
+                       "--pages-skimmed", "b,c", "--pages-promoted", "", "--duration-ms", "9"])
+        self.assertEqual(rc, 0)
+        row = _rows(wiki)[0]
+        self.assertEqual(row["pages_skimmed"], ["b", "c"])
+        self.assertEqual(row["pages_promoted"], [])
 
 
 if __name__ == "__main__":

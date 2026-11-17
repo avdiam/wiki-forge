@@ -7,9 +7,30 @@
 **Survey mode exception.** When the dispatch prompt sets `Survey mode: true`,
 the cap and the supplement-with-grep behavior do **not** apply. The dispatching
 `/wiki-summarize` skill has already produced the canonical page set via Shape A
-(slug-anchored neighbors) or Shape B (top-25 hybrid search) — read the full
-dispatched list. Subsetting would distort the audit; supplementing would make
-the **Coverage gaps** section dishonest about what's actually in the wiki.
+(slug-anchored neighbors) or Shape B (top-25 hybrid search). Cover the whole
+dispatched list and add nothing to it: subsetting would distort the audit, and
+supplementing would make the **Coverage gaps** section dishonest about what's
+actually in the wiki.
+
+**How deeply to read (two tiers, s144).**
+- **Shape A (slug-anchored):** read every dispatched page in full. Neighbor
+  order is by hop distance and slug, not relevance, so rank says nothing here.
+- **Shape B (hybrid), ranks 1–15:** read in full.
+- **Shape B, ranks 16–25 — skim.** Per page: Read only the frontmatter and
+  summary (`limit: 15`), then one Grep over the page for the topic's key terms
+  (`output_mode: content`, a few lines of context). Use what the skim shows
+  for Themes, Coverage gaps (`verify`, `confidence`, `last_updated`) and
+  Structural footprint.
+- **Promote a skimmed page to a full read** when the skim shows something
+  substantive: a `> [!WARNING]` / contradiction callout, a claim that conflicts
+  with or adds a distinct position to the full-read set, or the topic as a
+  heading or a main subject (not a passing mention). Promotion is a judgment
+  call; don't promote just to be thorough.
+- A claim you cite from a skimmed page must come from the lines the skim
+  actually returned.
+
+Report the split in the footer (see § Footer below) and say it in one line of
+**Structural footprint** ("15 read in full, 10 skimmed, N promoted").
 
 ## Step 3: synthesis (replaces the prose body)
 
@@ -57,6 +78,22 @@ reason to halt.
 is unexpectedly thin (e.g., Shape A returned an orphan with 0 neighbors,
 or Shape B's top results are all weak), surface that fact in **Structural
 footprint** plainly — don't pad the survey with low-information themes.
+
+## Footer
+
+The playbook's step 5 footer, plus two lines between `Pages consulted:` and
+`Filed as:` (Shape B only; omit both on Shape A):
+
+```text
+Pages consulted: [[page-1]], [[page-2]], …        (all dispatched pages)
+Pages skimmed: [[page-17]], [[page-19]], …        (skimmed, not promoted; or: none)
+Pages promoted: [[page-18]]                       (skimmed, then read in full; or: none)
+Filed as: …
+```
+
+Same parser contract as the playbook's footer: own lines, exact phrasing,
+`[[wikilinks]]`. `close_operation.py` writes them to `pages_skimmed` /
+`pages_promoted` in the telemetry row.
 
 ## Step 4: offer to file
 
