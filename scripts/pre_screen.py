@@ -5,6 +5,14 @@ Checks frontmatter quality labels, source_tags overlap with the wiki's
 existing tag vocabulary, and keyword density against domain terms.
 Outputs a JSON verdict: pass / warn / auto-skip.
 
+Tag-less sources are the norm since 2026-11-05: the user clips with the
+Obsidian Chrome extension, which writes no topical tags (the retired clipper
+session used to annotate them). A source with no tags is therefore judged on
+the body-level checks only (domain floor, promo, quality, watchlist) and is
+NOT warned for missing tags; the tag-overlap warn fires only when the source
+carries tags and none match the wiki vocabulary. Relevance of tag-less clips
+is decided at the /wiki-ingest takeaway pass.
+
 Usage:
     python pre_screen.py --wiki <wiki-root> --source <vault-file> [--json]
 
@@ -206,8 +214,10 @@ def pre_screen(wiki_root: Path, source_path: Path, vault_root: Path | None = Non
             f"pricing, affiliate links). Likely promotional content."
         )
 
-    # Warn: zero tag overlap but some domain keywords
-    if verdict == "pass" and len(tag_overlap) == 0 and domain_score >= 0.05:
+    # Warn: the source HAS tags but none overlap the wiki vocabulary. A tag-less
+    # source (the Obsidian Chrome extension norm) has nothing to compare, so it
+    # isn't warned here — see the module docstring.
+    if verdict == "pass" and source_tags and len(tag_overlap) == 0 and domain_score >= 0.05:
         verdict = "warn"
         reasons.append(
             f"No source_tags overlap with wiki vocabulary, but some domain "
@@ -231,14 +241,6 @@ def pre_screen(wiki_root: Path, source_path: Path, vault_root: Path | None = Non
             f"marketing content mixed with substance."
         )
 
-    # Warn: no tags at all in frontmatter
-    if len(source_tags) == 0:
-        if verdict == "pass":
-            verdict = "warn"
-        reasons.append(
-            "No tags in source frontmatter. Cannot assess topic relevance "
-            "from metadata alone."
-        )
 
     # -- Check 5: author watchlist --
     author = fm.get("author", None)
@@ -270,6 +272,7 @@ def pre_screen(wiki_root: Path, source_path: Path, vault_root: Path | None = Non
         "author_watchlist": watchlist_hit["slug"] if watchlist_hit else None,
         "author_trust": watchlist_hit["level"] if watchlist_hit else "trusted",
         "source_tags": sorted(source_tags),
+        "tagless": not source_tags,
         "tag_overlap": sorted(tag_overlap),
         "tag_overlap_count": len(tag_overlap),
         "domain_score": round(domain_score, 3),

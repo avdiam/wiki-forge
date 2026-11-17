@@ -27,8 +27,14 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/triage_backlog.py" --wiki <wiki> --vault <
 
 This returns a JSON report with:
 - Total vault files, already-processed count, pending count
-- Per-file records: slug, title, author, tags, word count, pre-screen verdict
-  (`pass` / `warn` / `auto-skip`), reasons, tag overlap, domain score, promo signals
+- Per-file records: slug, `canonical_slug`, title, author, tags, word count,
+  pre-screen verdict (`pass` / `warn` / `auto-skip`), reasons, tag overlap,
+  domain score, promo signals
+
+"Pending" uses the canonical hash+stem matcher (`source_backlog.py`), so the
+count always equals the welcome report's `Backlog:`. Tag-less clips (the
+Obsidian Chrome extension norm) are not warned for missing tags; judge their
+relevance from title, author and the takeaway pass.
 
 If pending count is 0: report "Vault is fully triaged — nothing pending." and stop.
 
@@ -241,6 +247,10 @@ Summarize to the user:
 - **Maybes are honest.** Don't force a decision on ambiguous files — defer
   them with a clear "decide at takeaway pass" trigger. The `/wiki-ingest`
   takeaway pass is the right place for borderline editorial judgment.
+- **List articles by `canonical_slug`.** `close_operation.py` ticks a box by
+  the ingest's canonical slug, so a raw filename (spaces, caps) in the triage
+  file never gets ticked. Arrivals are normally normalized already; the
+  `canonical_slug` field covers any that aren't.
 - **Per-article checkboxes are load-bearing.** Each batch article is a
   task-list item (`- [ ] **`<slug>.md`** …`), not a numbered list entry.
   `/wiki-ingest` ticks them on commit and `drill_state.py` parses the

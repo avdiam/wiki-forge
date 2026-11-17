@@ -298,5 +298,67 @@ class TestDevReport(unittest.TestCase):
         self.assertIn("| 1 | Alpha thing code |", out)
 
 
+@unittest.skipIf(sr is None, ".claude/hooks/ absent (standalone wiki-forge checkout)")
+class TestClipSweep(unittest.TestCase):
+    """clip_sweep normalizes raw-title clip filenames on arrival, then commits
+    explicit paths only (s147: Obsidian Chrome extension clips)."""
+
+    def setUp(self):
+        import shutil
+        import subprocess
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        scripts = self.root / "wiki-forge" / "scripts"
+        scripts.mkdir(parents=True)
+        for name in ("normalize_vault.py", "frontmatter.py"):
+            shutil.copy(_ROOT / "wiki-forge" / "scripts" / name, scripts / name)
+        (self.root / "vault" / "Clippings").mkdir(parents=True)
+        self.git = lambda *a: subprocess.run(["git", *a], cwd=self.root, capture_output=True,
+                                             text=True, encoding="utf-8")
+        self.git("init", "-q")
+        self.git("config", "user.email", "t@example.com")
+        self.git("config", "user.name", "t")
+        self.git("add", "wiki-forge")
+        self.git("commit", "-q", "-m", "init")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _clip(self, name, title):
+        (self.root / "vault" / "Clippings" / name).write_text(
+            f'---\ntitle: "{title}"\n---\nbody\n', encoding="utf-8")
+
+    def test_untracked_raw_title_is_normalized_and_committed(self):
+        self._clip("2026-10-22-My Second Brain’s Cockpit (Now).md", "My Second Brain’s Cockpit (Now)")
+        self._clip("2026-10-23-already-canonical.md", "Already Canonical")
+        (self.root / "notes.md").write_text("unrelated\n", encoding="utf-8")
+        res = sr.clip_sweep(self.root)
+        self.assertTrue(res["hash"])
+        self.assertEqual(len(res["renamed"]), 1)
+        tracked = self.git("ls-files", "vault").stdout.split()
+        self.assertEqual(sorted(tracked), ["vault/Clippings/2026-10-22-my-second-brains-cockpit-now.md",
+                                           "vault/Clippings/2026-10-23-already-canonical.md"])
+        self.assertIn("?? notes.md", self.git("status", "--porcelain").stdout)
+        self.assertIn("normalized 1 filename", self.git("log", "-1", "--format=%s").stdout)
+
+    def test_tracked_raw_title_is_git_mv_renamed(self):
+        self._clip("2026-10-22-Raw Title Here.md", "Raw Title Here")
+        self.git("add", "vault")
+        self.git("commit", "-q", "-m", "raw clip")
+        res = sr.clip_sweep(self.root)
+        self.assertTrue(res["hash"])
+        self.assertEqual(self.git("ls-files", "vault").stdout.split(),
+                         ["vault/Clippings/2026-10-22-raw-title-here.md"])
+        self.assertEqual(self.git("status", "--porcelain", "--", "vault").stdout.strip(), "")
+
+    def test_nothing_to_do(self):
+        self.assertEqual(sr.clip_sweep(self.root), {"hash": None, "renamed": []})
+
+    def test_git_field_mentions_normalized(self):
+        g = {"modified": 0, "untracked": 0, "all_obsidian": False}
+        self.assertEqual(sr.git_field(g, "abc1234", 3),
+                         "clean; committed clip arrivals (abc1234), normalized 3 filenames")
+
+
 if __name__ == "__main__":
     unittest.main()

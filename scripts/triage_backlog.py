@@ -8,6 +8,16 @@ Outputs a JSON array of per-file records sorted by pre-screen verdict
 (auto-skip first, then warn, then pass), each with frontmatter metadata
 and pre-screen results. Designed to feed into the /wiki-triage skill
 for LLM-assisted batch planning.
+
+"Which files are pending" comes from the canonical matcher in
+`source_backlog.compute_backlog` (content hash first, filename stem fallback),
+the same one behind the welcome-report `Backlog:` count, so the two can't
+disagree. A stem-only copy lived here until s147 and counted 7 renamed,
+already-ingested clips as pending (26 vs 19).
+
+Each record carries `canonical_slug`: the `YYYY-MM-DD-<kebab>` stem that
+`normalize_vault.py` gives the file. Triage files list articles by this slug,
+because `close_operation.py` ticks checkboxes by the ingest's canonical slug.
 """
 from __future__ import annotations
 
@@ -26,6 +36,8 @@ if sys.stdout.encoding != "utf-8":
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from frontmatter import parse_frontmatter
 from pre_screen import pre_screen
+from source_backlog import collect_source_hashes, compute_backlog
+from normalize_vault import normalized_name
 
 
 def find_existing_sources(wiki_root: Path) -> set[str]:
@@ -44,36 +56,25 @@ def find_skipped(vault_root: Path) -> set[str]:
     return {f.stem for f in skipped_dir.glob("*.md")}
 
 
-def scan_vault(vault_root: Path) -> list[Path]:
-    """Find all markdown files in vault content directories."""
-    files = []
-    for child in sorted(vault_root.iterdir()):
-        # Skip protocol/config dirs (. or _ prefix) and non-directories
-        if child.name.startswith((".")) or child.name.startswith("_"):
-            continue
-        if not child.is_dir():
-            continue
-        for md in sorted(child.glob("*.md")):
-            files.append(md)
-    return files
+def count_vault_files(vault_root: Path) -> int:
+    """Content files the backlog matcher considers (same walk + exclusions)."""
+    return len(compute_backlog(vault_root, set(), set()))
 
 
 def triage(wiki_root: Path, vault_root: Path) -> dict:
     """Run full triage and return structured report."""
-    existing = find_existing_sources(wiki_root)
-    skipped = find_skipped(vault_root)
-    vault_files = scan_vault(vault_root)
+    handled_slugs = find_existing_sources(wiki_root) | find_skipped(vault_root)
+    handled_hashes = collect_source_hashes(wiki_root / "pages" / "sources")
+    pending = compute_backlog(vault_root, handled_slugs, handled_hashes)
+    total = count_vault_files(vault_root)
 
     records = []
-    counts = {"pass": 0, "warn": 0, "auto-skip": 0, "already-processed": 0}
+    counts = {"pass": 0, "warn": 0, "auto-skip": 0,
+              "already-processed": total - len(pending)}
 
-    for vf in vault_files:
+    for rel in pending:
+        vf = vault_root / rel
         slug = vf.stem
-
-        # Already ingested or skipped?
-        if slug in existing or slug in skipped:
-            counts["already-processed"] += 1
-            continue
 
         # Read frontmatter
         text = vf.read_text(encoding="utf-8", errors="replace")
@@ -87,6 +88,7 @@ def triage(wiki_root: Path, vault_root: Path) -> dict:
         records.append({
             "file": str(vf.relative_to(vault_root)),
             "slug": slug,
+            "canonical_slug": Path(normalized_name(vf)).stem,
             "title": fm.get("title", slug),
             "author": fm.get("author", None),
             "published": str(fm.get("published", "")),
@@ -109,7 +111,7 @@ def triage(wiki_root: Path, vault_root: Path) -> dict:
 
     return {
         "date": date.today().isoformat(),
-        "vault_files_total": len(vault_files),
+        "vault_files_total": total,
         "already_processed": counts["already-processed"],
         "pending": len(records),
         "counts": {
